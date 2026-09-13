@@ -70,7 +70,9 @@ export async function verifyRelease(data, now=Date.now()) {
 export async function makePlan(file, report, policy, app) {
   ensure(matchesContract(policy.compatibility) && report.owner_confirmed_profile===CONTRACT.profile_id,
     'Confirm the printed Waveshare 7B model. A shared chip or USB identity is insufficient.','model_unconfirmed');
-  ensure(report.stock_layout_matches && report.ota_1_erased && report.independent_reads_match,'Verified independent backups and an empty stock slot are required.');
+  ensure(report.stock_layout_matches===true,'These backup files do not match the supported original software layout. Select your original backups.','backup_layout_mismatch');
+  ensure(report.independent_reads_match===true,'Select both original backup copies and their original audit-private.json capture record.','backup_capture_missing');
+  ensure(report.ota_1_erased===true,'These backup files already contain software in the AMPVE installation area. Select the backups saved before the first AMPVE installation. The connected device does not need to be empty.','backup_not_original');
   ensure(await sha256(app)===policy.app.sha256 && app.length===policy.app.size,'App download integrity failed.');
   await inspectImage(app);
   const view=new DataView(app.buffer,app.byteOffset,app.byteLength);

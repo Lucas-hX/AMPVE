@@ -69,7 +69,7 @@ export async function checkRuntime(port,expected,onReport=()=>{},signal,timeout=
   }catch(error){
     // Fixed categories only. Never include raw UART logs, credentials or device identity.
     error.startupSummary={schema:1,kind:'ampve-usb-startup-failure',expected_version:expected.version,
-      expected_app_sha256:expected.sha256,serial_opened:opened,received_bytes:observedBytes,
+      expected_app_sha256:expected.sha256,...startupIdentity(expected,[...elfPrefixes]),serial_opened:opened,received_bytes:observedBytes,
       timed_out:expired,cancelled:signal?.aborted===true,observations:[...observations].sort(),
       capture_stop:signal?.aborted?'cancelled':panicCaptured?'panic_captured':expired?'timeout':observedBytes>65536?'output_limit':'serial_or_validation_error',
       failure_details:[...details].sort(),panic_program_counters:[...programCounters],observed_elf_sha256_prefixes:[...elfPrefixes],startup_initializer_failures:resolveStartupInitializers(expected,[...elfPrefixes],[...initFailures.values()]),
@@ -163,4 +163,15 @@ export function startupHeap(line){
   const free=Number(match[2]),largest=Number(match[3]);
   if(free>1048576||largest>free)return null;
   return {phase:match[1],internal_free_bytes:free,internal_largest_block_bytes:largest};
+}
+
+// An expected release is not evidence of the image that actually panicked.
+// ELF prefixes provide diagnostic correlation only, never write authorization.
+export function startupIdentity(expected,prefixes){
+  const unresolved={build_identity:'unresolved',observed_app_sha256:null};
+  if(prefixes.length!==1||!/^[a-f0-9]{8,64}$/.test(prefixes[0]))return unresolved;
+  const matches=startupSymbols.filter(build=>build.elf_sha256.startsWith(prefixes[0]));
+  if(matches.length!==1)return unresolved;
+  const hash=matches[0].app_sha256;
+  return {build_identity:hash===expected.sha256?'expected_build':'different_known_build',observed_app_sha256:hash};
 }

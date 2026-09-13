@@ -557,3 +557,18 @@ test('startup failure reports retain only the last bounded checkpoint per phase'
   assert.deepEqual(summary.startup_heap,[{phase:'scheduler_pending',internal_free_bytes:19000,internal_largest_block_bytes:17000},{phase:'runtime_pending',internal_free_bytes:400000,internal_largest_block_bytes:390000}]);
   assert.equal(JSON.stringify(summary).includes('private'),false);assert.equal(port.closed,true);
 });
+
+test('observed old ELF never labels the expected new candidate as the failed build',()=>{
+  const expected={sha256:'ca04872053e00abd412ef9f074ed71f43efa39477487d74e423dd20de964d1b9'};
+  assert.deepEqual(api.startupIdentity(expected,['c441d686a']),{build_identity:'different_known_build',observed_app_sha256:'bc334f7d5c744d693f0de9034aaaea26de0694dfc94aed90fcf8087eba466406'});
+  assert.deepEqual(api.startupIdentity(expected,['39deeabeb']),{build_identity:'expected_build',observed_app_sha256:expected.sha256});
+  for(const prefixes of [[],['private'],['aaaaaaaa'],['39deeabeb','c441d686a'],['39deeab']])assert.deepEqual(api.startupIdentity(expected,prefixes),{build_identity:'unresolved',observed_app_sha256:null});
+});
+
+test('backup gates explain saved-file failures before reading files or candidate bytes',async()=>{
+  const report={owner_confirmed_profile:contract.profile_id,stock_layout_matches:true,independent_reads_match:true,ota_1_erased:true};
+  for(const [field,code] of [['stock_layout_matches','backup_layout_mismatch'],['independent_reads_match','backup_capture_missing'],['ota_1_erased','backup_not_original']]){
+    const file=new Proxy({}, {get(){throw Error('Unexpected file access');}});
+    await assert.rejects(api.makePlan(file,{...report,[field]:false},policy,new Uint8Array()),{code});
+  }
+});
