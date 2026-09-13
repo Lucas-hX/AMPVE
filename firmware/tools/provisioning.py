@@ -3,6 +3,7 @@ import argparse
 import shutil
 from pathlib import Path
 from prepare import replace
+from credential_guard import prepare as prepare_credentials
 from wifi_guard import prepare as prepare_wifi
 
 
@@ -13,6 +14,7 @@ def patch(work):
         if not (target/'.ampve-patched').exists():
             raise RuntimeError('Refusing to overwrite an existing component')
         prepare_wifi(work)
+        prepare_credentials(work)
         return
     if 'version: 3.3.1' not in (source/'idf_component.yml').read_text():
         raise RuntimeError('Unreviewed provisioning component version')
@@ -83,6 +85,7 @@ static bool ampve_local_request(httpd_req_t* req) {
             '78/esp-wifi-connect:\n    version: "3.3.1"\n    override_path: ../components/78__esp-wifi-connect')
     (target/'.ampve-patched').write_text('3.3.1\n')
     prepare_wifi(work)
+    prepare_credentials(work)
 
 
 if __name__ == '__main__':

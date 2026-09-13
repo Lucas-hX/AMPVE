@@ -332,7 +332,7 @@ static void worker(void*) {
             if(now-ap_started>300000000){wifi.StopConfigAp();wifi.StartStation();ap_started=0;message("Wi-Fi setup closed after five minutes. Open it locally to retry.");}
         }else ap_started=0;
         {std::lock_guard<std::mutex> lock(ui_mutex);
-            network_text=!ampve_wifi_initialized?"Wi-Fi driver unavailable":connected?"Wi-Fi connected":wifi.IsConfigMode()?"Wi-Fi setup open":"Wi-Fi offline";}
+            network_text=!ampve_wifi_initialized?"Wi-Fi initialization unavailable":connected?"Wi-Fi connected":wifi.IsConfigMode()?"Wi-Fi setup open":"Wi-Fi offline";}
         if(connected && !clock_started){
             esp_sntp_setoperatingmode(SNTP_OPMODE_POLL);
             esp_sntp_setservername(0,"pool.ntp.org");esp_sntp_init();clock_started=true;
