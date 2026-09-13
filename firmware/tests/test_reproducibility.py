@@ -8,6 +8,7 @@ import unittest
 ROOT=Path(__file__).resolve().parents[2]
 sys.path.insert(0,str(ROOT/'firmware/tools'))
 from reproducibility import compare
+from prepare import stage_overlay
 
 class ReproductionTests(unittest.TestCase):
     def setUp(self):
@@ -43,3 +44,19 @@ class ReproductionTests(unittest.TestCase):
             with self.assertRaises(ValueError):compare(self.a,self.b,items)
         (self.b/'build/CMakeCache.txt').unlink()
         with self.assertRaisesRegex(ValueError,'Missing CMake'):compare(self.a,self.b,self.items)
+
+
+class OverlayStagingTests(unittest.TestCase):
+    def test_older_source_bytes_invalidate_a_newer_compiler_object(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory);source=root/'source';target=root/'target'
+            source.mkdir();target.mkdir()
+            (source/'unit.cc').write_text('new source bytes')
+            os.utime(source/'unit.cc',(1,1))
+            (target/'unit.cc').write_text('old source bytes')
+            obj=target/'unit.obj';obj.write_bytes(b'old object')
+            os.utime(obj,(2,2))
+            stage_overlay(source,target)
+            self.assertEqual((target/'unit.cc').read_text(),'new source bytes')
+            self.assertGreater((target/'unit.cc').stat().st_mtime_ns,obj.stat().st_mtime_ns)
+            self.assertEqual(obj.read_bytes(),b'old object')

@@ -21,3 +21,9 @@ The comparison rejects the same project, symlink aliases, nested projects, a bui
 `bit_reproducibility.verified` means those bytes matched across distinct configured directories. It does not prove that a compiler ran; an intentional file copy can recreate matching bytes. Keep build logs and source/configuration provenance as separate evidence. Two builds on this VPS still share the pinned ESP-IDF/compiler and registry cache. Cross-machine/toolchain reproduction and supply-chain authenticity are separate claims.
 
 The synthetic tests in `firmware/tests/test_reproducibility.py` cover intentional path/configuration/hash failures without invoking a compiler. Run them with the firmware tooling virtualenv as part of `python -m unittest discover -s firmware/tests`. No PR workflow receives production signing/device/provider secrets; this local check only produces non-installable review packages.
+
+## Incremental-build timestamp correction
+
+An actual clean build of `0.1.10-improv-dev` exposed a stale object in the earlier incremental fixture: the app differed by 128 bytes despite matching source files and `sdkconfig`. `shutil.copytree` had preserved repository source modification times. When edited source was staged after an older snapshot compiled, its preserved timestamp could precede the compiler object; Ninja then reused that object. Symbol-size comparison localized this case to `ImprovService::feed`.
+
+Overlay staging now writes destination files with fresh timestamps. A regression test stages older-timestamp changed source over a newer simulated compiler object and requires invalidation. The original `firmware-improv-software-fixture` is superseded as compiled-source evidence; retain it only as historical, non-installable diagnostic material. No approved installer release or physical device used that fixture. Compare the corrected incremental build against the independently compiled clean directory before recording reproduction.
