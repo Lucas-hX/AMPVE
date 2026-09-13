@@ -1,5 +1,6 @@
 # Platform foundation
 
+Current device milestone: browser USB/ROM inspection and the pairing/heartbeat/settings backend are implemented. Physical tests, the embedded XiaoZhi client, firmware installation and board audio/OTA remain pending. See [the device runbook](DEVICES.md).
 Date: 2026-09-13
 Architecture: [ADR 0001](../decisions/0001-platform-architecture.md) and [ADR 0002](../decisions/0002-provider-audio-and-xiaozhi.md)
 
@@ -7,7 +8,7 @@ Architecture: [ADR 0001](../decisions/0001-platform-architecture.md) and [ADR 00
 
 Implemented: English public landing, private workspace, email/password sign-in, POST logout, CSRF protection, secure database-backed sessions, own-name profile editing, password changes, Django administration, persisted Companion preview catalog, truthful empty device/setup pages, encrypted user-owned provider connections, and an experimental FastAPI/Pipecat browser voice preview. No public registration. Lucas is a normal user; administration is a separate account.
 
-Not implemented: the XiaoZhi adapter, real device enrollment, USB flashing, firmware, Companion activation on hardware, OTA, or camera. Real provider account access and conversations are not yet validated. No fake production devices or successful integrations are created.
+Not implemented: the XiaoZhi audio adapter, embedded management client, USB flashing, verified firmware, Companion activation on hardware, OTA, or camera. The pairing/management server is implemented; physical enrollment is unvalidated. Lucas reports successful OpenAI key setup and browser voice; Gemini remains unvalidated. No fake production devices or successful integrations are created.
 
 ## Runtime
 
@@ -87,7 +88,7 @@ This smoke test reads the private demo JSON, signs in to the running private ins
 
 ## Next milestones
 
-1. Validate the implemented browser preview with actual Gemini Live and OpenAI Realtime API accounts: three turns, interruption, mute/stop and revocation. No live provider test has been performed yet.
+1. Validate the implemented browser preview with actual Gemini Live and OpenAI Realtime API accounts: three turns, interruption, mute/stop and revocation. Lucas reports successful OpenAI browser voice; Gemini and a systematic regression of interruption/revocation remain pending.
 2. Pin and implement the selected XiaoZhi adapter with Opus software fixtures, cancellation and per-user authorization; do not compare alternative firmware.
 3. Pinned firmware/toolchain and recovery preparation on the owner's local computer, then explicitly approved physical installation.
 4. Enrollment, Companion settings/acknowledgement, real voice/face and tested OTA recovery.

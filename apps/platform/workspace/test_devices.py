@@ -1,0 +1,155 @@
+"""Software fixtures only; no physical hardware or external provider calls."""
+import secrets
+from datetime import timedelta
+from django.test import TestCase, Client
+from django.urls import reverse
+from django.utils import timezone
+from .models import User, Device, DeviceEnrollment, DeviceRateBucket
+from .device_services import PROFILE, begin_enrollment, claim, digest
+
+
+class DeviceTests(TestCase):
+    @classmethod
+    def setUpTestData(cls):
+        cls.owner = User.objects.create_user('device-owner@example.com','Fixture-password-42')
+        cls.other = User.objects.create_user('device-other@example.com','Fixture-password-43')
+        cls.admin = User.objects.create_superuser('device-admin@example.com','Fixture-password-44')
+
+    def setUp(self):
+        self.client.force_login(self.owner)
+        self.machine = Client(enforce_csrf_checks=True)
+        self.credential = secrets.token_urlsafe(32)
+
+    def start(self):
+        response = self.machine.post('/api/devices/v1/enroll/',
+            {'protocol':1,'hardware_profile':PROFILE}, content_type='application/json')
+        self.assertEqual(response.status_code,201)
+        self.ticket = response.json()
+        return self.ticket
+
+    def claim(self):
+        ticket=self.start()
+        response=self.client.post(reverse('onboarding'), {'code':ticket['code'],
+            'name':'Software fixture P4','confirm':'on','owner':self.other.pk})
+        self.assertEqual(response.status_code,302)
+        self.device=Device.objects.get()
+        return self.device
+
+    def exchange(self, credential=None, proof=None):
+        return self.machine.post('/api/devices/v1/enroll/'+self.ticket['enrollment_id']+'/exchange/',
+            {'credential':credential or self.credential}, content_type='application/json',
+            HTTP_AUTHORIZATION='Bearer '+(proof or self.ticket['bootstrap_proof']))
+
+    def beat(self, **changes):
+        payload={'protocol':1,'firmware_version':'fixture-0.1','chip_revision':'1.3',
+            'transport':'wifi','acknowledged_version':0,**changes}
+        return self.machine.post(f'/api/devices/v1/{self.device.pk}/heartbeat/',payload,
+            content_type='application/json',HTTP_AUTHORIZATION='Bearer '+self.credential)
+
+    def test_complete_pairing_and_acknowledgement(self):
+        device=self.claim()
+        self.assertEqual(device.owner,self.owner)
+        self.assertEqual(device.connection_state,'Awaiting device')
+        self.assertEqual(self.exchange().status_code,200)
+        device.refresh_from_db()
+        self.assertEqual(device.credential_hash,digest(self.credential))
+        self.assertNotEqual(device.credential_hash,self.credential)
+        first=self.beat();self.assertEqual(first.status_code,200)
+        self.assertNotIn('credential',first.content.decode())
+        self.assertFalse(first.json()['audio_available'])
+        self.client.post(reverse('device_detail',args=[device.pk]),{'name':'Desk','volume':50,'microphone_muted':'on'})
+        device.refresh_from_db();self.assertEqual(device.config_version,2)
+        self.assertEqual(device.acknowledged_version,0)
+        Device.objects.update(last_seen=timezone.now()-timedelta(seconds=31))
+        self.assertEqual(self.beat(acknowledged_version=2).status_code,200)
+        device.refresh_from_db();self.assertEqual(device.acknowledged_version,2)
+        self.assertEqual(device.connection_state,'Online')
+
+    def test_codes_and_proofs_hashed_and_single_claim(self):
+        self.claim();row=DeviceEnrollment.objects.get()
+        self.assertEqual(row.code_hash,digest(self.ticket['code']))
+        self.assertEqual(row.proof_hash,digest(self.ticket['bootstrap_proof']))
+        with self.assertRaises(ValueError):claim(self.other,self.ticket['code'],'Stolen')
+        self.assertEqual(Device.objects.count(),1)
+
+    def test_pending_wrong_proof_retry_and_changed_credential(self):
+        self.start();self.assertEqual(self.exchange().status_code,202)
+        self.assertEqual(self.exchange(proof=secrets.token_urlsafe(32)).status_code,400)
+        claim(self.owner,self.ticket['code'],'Fixture')
+        self.assertEqual(self.exchange().status_code,200)
+        self.assertEqual(self.exchange().status_code,200)
+        self.assertEqual(self.exchange(credential=secrets.token_urlsafe(32)).status_code,400)
+
+    def test_expiry_blocks_claim_and_exchange(self):
+        self.start();DeviceEnrollment.objects.update(expires_at=timezone.now()-timedelta(seconds=1))
+        with self.assertRaises(ValueError):claim(self.owner,self.ticket['code'],'Late')
+        self.assertEqual(self.exchange().status_code,400)
+
+    def test_normal_and_admin_owner_isolation(self):
+        device=self.claim()
+        for user in [self.other,self.admin]:
+            client=Client();client.force_login(user)
+            self.assertNotContains(client.get(reverse('devices')),'Software fixture P4')
+            for route in ['device_detail','device_revoke']:
+                self.assertEqual(client.post(reverse(route,args=[device.pk]),{'name':'Stolen','volume':70}).status_code,404)
+            self.assertEqual(client.get(reverse('device_detail',args=[device.pk])).status_code,404)
+
+    def test_browser_csrf_and_revoke_post_only(self):
+        device=self.claim();client=Client(enforce_csrf_checks=True);client.force_login(self.owner)
+        for route,args in [('onboarding',[]),('device_detail',[device.pk]),('device_revoke',[device.pk])]:
+            self.assertEqual(client.post(reverse(route,args=args),{}).status_code,403)
+        self.assertEqual(client.get(reverse('device_revoke',args=[device.pk])).status_code,405)
+
+    def test_revocation_blocks_heartbeat_and_reissue(self):
+        device=self.claim();self.exchange();self.beat()
+        self.client.post(reverse('device_revoke',args=[device.pk]))
+        self.assertEqual(self.beat().status_code,401)
+        self.assertEqual(self.exchange().status_code,400)
+        device.refresh_from_db();self.assertEqual(device.connection_state,'Revoked')
+        self.client.post(reverse('device_detail',args=[device.pk]),{'name':'Changed','volume':70})
+        device.refresh_from_db();self.assertEqual(device.name,'Software fixture P4')
+
+    def test_browser_cookie_is_not_device_credential(self):
+        device=self.claim();self.exchange()
+        response=self.client.post(f'/api/devices/v1/{device.pk}/heartbeat/',{},content_type='application/json')
+        self.assertEqual(response.status_code,400)
+        self.credential=secrets.token_urlsafe(32)
+        self.assertEqual(self.beat().status_code,401)
+
+    def test_inactive_owner_blocked(self):
+        self.claim();self.exchange();User.objects.filter(pk=self.owner.pk).update(is_active=False)
+        self.assertEqual(self.beat().status_code,401)
+        self.assertEqual(self.exchange().status_code,400)
+
+    def test_heartbeat_limits_schema_and_ack(self):
+        self.claim();self.exchange()
+        for payload in [{'acknowledged_version':99},{'acknowledged_version':-1},
+                        {'acknowledged_version':True},{'firmware_version':'secret\nlog'}, {'transport':'usb'}, {'extra':'ignored'}]:
+            self.assertEqual(self.beat(**payload).status_code,400)
+        self.assertEqual(self.beat(acknowledged_version=1).status_code,200)
+        Device.objects.update(last_seen=timezone.now()-timedelta(seconds=31))
+        self.assertEqual(self.beat().status_code,400)
+        self.assertEqual(self.beat(acknowledged_version=1).status_code,200)
+        self.assertEqual(self.beat(acknowledged_version=1).status_code,429)
+
+    def test_last_seen_staleness(self):
+        self.claim();self.exchange();self.beat()
+        Device.objects.update(last_seen=timezone.now()-timedelta(seconds=91))
+        self.device.refresh_from_db();self.assertEqual(self.device.connection_state,'Offline')
+
+    def test_pairing_limits_and_unknown_uuid_no_bucket_growth(self):
+        for _ in range(5):self.start()
+        response=self.machine.post('/api/devices/v1/enroll/',{'protocol':1,'hardware_profile':PROFILE},content_type='application/json')
+        self.assertEqual(response.status_code,429)
+        before=DeviceRateBucket.objects.count()
+        import uuid
+        self.ticket['enrollment_id']=str(uuid.uuid4())
+        self.assertEqual(self.exchange().status_code,400)
+        self.assertEqual(DeviceRateBucket.objects.count(),before)
+        for _ in range(6):self.client.post(reverse('onboarding'),{'code':'A'*12,'name':'Fixture','confirm':'on'})
+        self.assertContains(self.client.post(reverse('onboarding'),{}),'Too many pairing attempts')
+
+    def test_invalid_profile_and_oversized_request(self):
+        for profile in ['raspberry-pi','esp32-c6']:
+            self.assertEqual(self.machine.post('/api/devices/v1/enroll/',{'protocol':1,'hardware_profile':profile},content_type='application/json').status_code,400)
+        self.assertEqual(self.machine.post('/api/devices/v1/enroll/','x'*3000,content_type='application/json').status_code,413)

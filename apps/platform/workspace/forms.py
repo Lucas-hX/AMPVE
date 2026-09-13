@@ -48,3 +48,23 @@ class ReplaceKeyForm(forms.Form):
 
     def clean_api_key(self):
         return ConnectionForm.clean_api_key(self)
+
+
+class ClaimDeviceForm(forms.Form):
+    code = forms.CharField(max_length=20, label='Pairing code',
+        widget=forms.PasswordInput(render_value=False, attrs={'autocomplete': 'off'}))
+    name = forms.CharField(max_length=80, label='Device name')
+    confirm = forms.BooleanField(label='I can see this code on the device I want to add.')
+
+    def clean_code(self):
+        import re
+        code = self.cleaned_data['code'].replace('-', '').replace(' ', '').upper()
+        if not re.fullmatch('[A-HJ-NP-Z2-9]{12}', code):
+            raise forms.ValidationError('Enter the 12-character code shown by AMPVE firmware.')
+        return code
+
+
+class DeviceSettingsForm(forms.Form):
+    name = forms.CharField(max_length=80, label='Device name')
+    volume = forms.IntegerField(min_value=0, max_value=80, label='Speaker volume (0–80)')
+    microphone_muted = forms.BooleanField(required=False, label='Mute microphone')

@@ -12,6 +12,7 @@ ExecStart=/home/ampve/projects/AMPVE/.venv/bin/python manage.py clearsessions
 ExecStart=/home/ampve/projects/AMPVE/.venv/bin/python manage.py axes_reset_logs --age 30
 ExecStart=/home/ampve/projects/AMPVE/.venv/bin/python manage.py axes_reset_failure_logs --age 30
 ExecStart=/home/ampve/projects/AMPVE/.venv/bin/python manage.py cleanup_audio_metadata
+ExecStart=/home/ampve/projects/AMPVE/.venv/bin/python manage.py cleanup_device_metadata
 UMask=0077
 NoNewPrivileges=true
 PrivateTmp=true

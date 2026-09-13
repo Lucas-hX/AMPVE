@@ -1,10 +1,11 @@
 # AMPVE — MVP Implementation Brief
 
-Current delivery: see [the platform runbook](runbooks/PLATFORM.md) and [ADR 0002](decisions/0002-provider-audio-and-xiaozhi.md). Browser audio is experimental pending live provider validation; XiaoZhi remains the sole selected firmware foundation.
+Current device milestone: browser USB/ROM inspection and the pairing/heartbeat/settings backend are implemented. Physical tests, the embedded XiaoZhi client, firmware installation and board audio/OTA remain pending. See [the device runbook](runbooks/DEVICES.md).
+Current delivery: see [the platform runbook](runbooks/PLATFORM.md) and [ADR 0002](decisions/0002-provider-audio-and-xiaozhi.md). OpenAI browser voice is user-validated; Gemini remains unvalidated; XiaoZhi remains the sole selected firmware foundation.
 
 Date: 2026-09-12
 
-Status: Django platform foundation delivered; provider integration and hardware validation pending
+Status: Platform, browser voice and device-management server delivered; embedded client and hardware validation pending
 
 Audience: Developers and coding agents building AMPVE on a Debian VPS
 
