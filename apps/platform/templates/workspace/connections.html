@@ -1,1 +1,29 @@
-{% extends 'workspace/base.html' %}{% block subtitle %}Your choice of intelligence. Your own connection.{% endblock %}{% block content %}<div class="provider-grid"><article class="provider-card"><span class="provider-symbol" aria-hidden="true">✦</span><span class="pill">Coming next</span><h2>Gemini Live</h2><p>A natural voice conversation, powered by Google.</p><p class="muted">Connect with your own Gemini API key when provider connections become available.</p></article><article class="provider-card"><span class="provider-symbol" aria-hidden="true">◎</span><span class="pill">Coming next</span><h2>OpenAI Realtime</h2><p>A responsive voice companion, powered by OpenAI.</p><p class="muted">Connect with your own OpenAI API key when provider connections become available.</p></article></div><aside class="notice"><strong>Your connections stay yours.</strong><p>API key storage and connection tests are the next step. This preview does not collect provider keys or make AI requests. API access is separate from consumer subscriptions.</p></aside>{% endblock %}
+{% extends 'workspace/base.html' %}{% load static %}
+{% block subtitle %}Your choice of intelligence. Your own connection.{% endblock %}
+{% block content %}
+<div class="settings-grid connections-layout">
+  <section>
+    {% for connection in connections %}
+    <article class="form-card connection-card">
+      <span class="pill">{{ connection.get_provider_display }}</span>
+      <h2>{{ connection.label }}</h2>
+      <p class="key-mask" aria-label="API key is stored and hidden">•••••••••••••••• <small>Encrypted on your server</small></p>
+      <p class="helptext">Model: {{ connection.preset.model }} · Voice: {{ connection.preset.voice }}</p>
+      <p class="connection-result" role="status">{% if connection.checked_at %}{{ connection.result_message }}<br><small>Last check: {{ connection.checked_at|date:'M j, Y H:i' }} UTC</small>{% else %}Not tested yet.{% endif %}</p>
+      <form class="connection-check" data-ticket-url="{% url 'audio_ticket' connection.pk %}">
+        {% csrf_token %}
+        <label class="check-label"><input type="checkbox" required> Allow a connection test that may use API quota.</label>
+        <button class="button secondary" type="submit">Test connection</button>
+      </form>
+      <div class="connection-actions"><a href="{% url 'voice_preview' connection.pk %}">Try voice preview →</a><a href="{% url 'replace_key' connection.pk %}">Replace key</a></div>
+      <details class="danger-zone"><summary>Remove connection</summary><p>Deleting this connection stops its audio sessions and removes the saved key.</p><form method="post" action="{% url 'delete_connection' connection.pk %}">{% csrf_token %}<button class="text-button" type="submit">Delete connection</button></form></details>
+    </article>
+    {% empty %}
+    <section class="large-empty"><span class="circle-icon" aria-hidden="true">↗</span><h2>A little intelligence.<br>Your own connection.</h2><p>Add a Gemini Live or OpenAI Realtime API key to begin testing Companion.</p></section>
+    {% endfor %}
+  </section>
+  <section class="form-card connection-add"><p class="eyebrow">ADD A CONNECTION</p><h2>Bring your own AI.</h2><p>Stored securely on your AMPVE server. Used only to connect to your provider.</p><form method="post" autocomplete="off">{% csrf_token %}{{ form.as_p }}<button class="button" type="submit">Save connection</button></form><p class="helptext">Saving does not contact the provider. Your saved API key is never displayed again. API access is separate from consumer subscriptions.</p></section>
+</div>
+<aside class="notice"><strong>Voice preview, before the board.</strong><p>Connection tests open a short realtime session. The browser voice preview is experimental and limited to five minutes. A successful connection test does not prove a voice conversation or hardware compatibility.</p></aside>
+<script src="{% static 'workspace/audio.js' %}" defer></script>
+{% endblock %}

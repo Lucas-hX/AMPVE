@@ -98,7 +98,7 @@ class PlatformTests(TestCase):
         for page in ['home', 'devices', 'onboarding', 'apps', 'connections', 'settings']:
             self.assertEqual(self.client.get(reverse(page)).status_code, 200)
         self.assertContains(self.client.get(reverse('devices')), 'No devices have been added')
-        self.assertContains(self.client.get(reverse('connections')), 'does not collect provider keys')
+        self.assertContains(self.client.get(reverse('connections')), 'Saving does not contact the provider')
         self.assertContains(self.client.get(reverse('apps')), 'In development')
 
     def test_proxy_ip_only_trusted_locally(self):

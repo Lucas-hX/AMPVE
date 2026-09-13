@@ -1,13 +1,13 @@
 # Platform foundation
 
 Date: 2026-09-13
-Architecture: [ADR 0001](../decisions/0001-platform-architecture.md)
+Architecture: [ADR 0001](../decisions/0001-platform-architecture.md) and [ADR 0002](../decisions/0002-provider-audio-and-xiaozhi.md)
 
 ## Scope
 
-Implemented: English public landing, private workspace, email/password sign-in, POST logout, CSRF protection, secure database-backed sessions, own-name profile editing, password changes, Django administration, persisted Companion preview catalog, and truthful empty device/provider/setup pages. No public registration. Lucas is a normal user; administration is a separate account.
+Implemented: English public landing, private workspace, email/password sign-in, POST logout, CSRF protection, secure database-backed sessions, own-name profile editing, password changes, Django administration, persisted Companion preview catalog, truthful empty device/setup pages, encrypted user-owned provider connections, and an experimental FastAPI/Pipecat browser voice preview. No public registration. Lucas is a normal user; administration is a separate account.
 
-Not implemented: encrypted provider credential storage, connection tests, FastAPI/Pipecat sessions, real device enrollment, USB flashing, firmware, Companion activation, OTA, or camera. Buttons on preview pages navigate to explanatory content; no fake devices or successful integrations are created.
+Not implemented: the XiaoZhi adapter, real device enrollment, USB flashing, firmware, Companion activation on hardware, OTA, or camera. Real provider account access and conversations are not yet validated. No fake production devices or successful integrations are created.
 
 ## Runtime
 
@@ -63,7 +63,7 @@ Expired Django sessions can be removed with `manage.py clearsessions`. Authentic
 
 ## Verification evidence
 
-- 13 Django automated tests passed: access control, CSRF, session cookie flags, POST logout, normal/admin separation, profile ownership and privilege injection, password checks and session invalidation, redirect safety, persisted rate limiting, inactive accounts, email uniqueness, preview states and trusted-proxy IP handling.
+- 26 Django automated tests passed (13 foundation tests plus 13 credential/authorization tests): access control, CSRF, session cookie flags, POST logout, normal/admin separation, profile ownership and privilege injection, password checks and session invalidation, redirect safety, persisted rate limiting, inactive accounts, email uniqueness, preview states and trusted-proxy IP handling.
 - All production PostgreSQL migrations applied; no pending model changes.
 - Local HTTP origin and public HTTPS return 200; existing NEUROSIS services remain active.
 - Production deployment checks report only the two intentionally deferred HSTS policy warnings described above.
@@ -87,9 +87,63 @@ This smoke test reads the private demo JSON, signs in to the running private ins
 
 ## Next milestones
 
-1. Encrypted user-owned provider connections and real Pipecat audio sessions with Gemini Live and OpenAI Realtime, using a development audio client first.
-2. XiaoZhi adapter proof with Opus software fixtures, cancellation and per-user authorization.
+1. Validate the implemented browser preview with actual Gemini Live and OpenAI Realtime API accounts: three turns, interruption, mute/stop and revocation. No live provider test has been performed yet.
+2. Pin and implement the selected XiaoZhi adapter with Opus software fixtures, cancellation and per-user authorization; do not compare alternative firmware.
 3. Pinned firmware/toolchain and recovery preparation on the owner's local computer, then explicitly approved physical installation.
 4. Enrollment, Companion settings/acknowledgement, real voice/face and tested OTA recovery.
 
 This foundation alone does not satisfy the full provider-path or hardware MVP acceptance criteria.
+
+## Provider connections and audio operations
+
+The audio environment is separate: `.venv-audio`, locked by `apps/audio/requirements.txt` (Pipecat 1.10.0, FastAPI 0.141.1, Uvicorn 0.52.4). It includes the Django dependencies because the gateway imports the same ORM/authorization code. Platform encryption uses cryptography 46.0.7. Keep shared dependency versions aligned when updating either lock.
+
+`ampve-audio.service` runs one Uvicorn worker on `127.0.0.1:3001`, capped at 1500 MB by systemd. The existing tunnel routes `/audio/.*` for `ampve.com` to that port before the Django catch-all on port 3000. The prior tunnel configuration is saved privately at `/home/ampve/.cloudflared/config.pre-audio.yml`. The audio gateway refuses unapproved origins and unauthenticated tickets. Do not expose either origin port directly or add multiple workers: the concurrency cap is process-local.
+
+Encryption configuration: `/home/ampve/.config/ampve/provider-encryption.json`, mode 0600, contains `{"keys": ["FERNET_KEY_PLACEHOLDER"]}` with an actual generated random Fernet key on the VPS. It is deliberately outside the repository and database. Protect an independent copy: database backups alone cannot recover provider keys. The existing database backup timer does not back up this secret. `platform.json` may override `provider_key_file`, `gemini_live_model`, or `openai_realtime_model`; never put provider API keys there.
+
+Rotation: securely prepend a newly generated Fernet key to the private key ring while retaining the old keys, then run `manage.py rotate_provider_keys`. The transaction re-encrypts current rows using the first key. Keep old keys securely available for any retained database backups; remove them from the active ring only after current rows are rotated and backup recovery is planned. Restart audio after rotation as an operational check. Do not print the key ring or use shell arguments containing keys. A restore test must use a separate database and the matching private key ring.
+
+After preparing the private encryption file and virtual environments:
+
+```bash
+python3 -m venv .venv-audio
+.venv-audio/bin/pip install -r apps/audio/requirements.txt
+.venv/bin/python apps/platform/manage.py migrate --noinput
+.venv/bin/python apps/platform/manage.py collectstatic --noinput
+AMPVE_TESTING=1 .venv/bin/python apps/platform/manage.py test workspace --noinput
+AMPVE_TESTING=1 .venv-audio/bin/python -m unittest discover -s apps/audio -p 'test_*.py' -v
+mkdir -p /home/ampve/.cache/ampve-audio
+sudo install -m 644 infra/ampve-audio.service /etc/systemd/system/ampve-audio.service
+sudo install -m 644 infra/ampve-maintenance.service /etc/systemd/system/ampve-maintenance.service
+sudo systemctl daemon-reload
+sudo systemctl enable --now ampve-audio
+sudo systemctl restart ampve-platform
+# Review/adapt infra/cloudflared.example.yml in the existing tunnel config.
+cloudflared tunnel ingress validate
+sudo systemctl restart ampve-tunnel
+```
+
+Ten fixture-only audio tests verify grant rejection/origins, readiness, connection limits, revocation, disconnect cleanup, actual Pipecat transport PCM flow, frame validation/rate limits, both provider constructors and sanitized errors. They replace external provider calls and persistence; Django tests separately exercise persistence/ownership. They are not evidence of upstream service access or physical-device compatibility.
+
+`manage.py cleanup_audio_metadata` removes expired grants older than one day and session metadata older than 30 days; the existing maintenance unit now includes it. Audio service startup marks unfinished sessions as ended after a restart. Public `/health/` remains platform liveness only; use the browser workflow to test audio functionality.
+
+### What Lucas can test now
+
+1. Sign in at `https://ampve.com` using the existing private demo credentials.
+2. Open Connections, choose a provider and save its API key. Saving is local and does not contact the provider. Refresh and confirm only a mask is shown; replacement resets validation, and deletion removes the key.
+3. Consent to API quota usage and select **Test connection**. This opens a short upstream realtime session and reports configuration acceptance or a sanitized failure. A consumer subscription is not API credit, and a successful check does not prove audio quality.
+4. Select **Try voice preview**, use desktop Chrome/Edge with headphones, consent, then start. Test at least three turns, interruption, mute/unmute and stop. Repeat for the second provider. Sessions are capped at five minutes.
+5. While voice runs, replace/delete the connection in another tab or sign out. Verify the microphone/session stops promptly. Report the displayed result and provider/model, never the API key.
+
+`tests/browser/connections.py` is a private-demo smoke test: it saves/replaces/deletes an explicitly named synthetic connection, checks actual public WSS rejection, then intercepts only its own browser socket to exercise microphone PCM/mute/stop with a fixture. It never contacts a provider or leaves a fixture connection behind. Do not interpret its simulated readiness as provider success.
+
+### Additional delivery evidence (2026-09-13)
+
+- The new PostgreSQL migration was applied after a successful pre-change database backup. Two concurrent real PostgreSQL consumers of the same temporary fixture ticket admitted exactly one session; temporary records were removed without contacting a provider.
+- Both virtual environments passed dependency consistency checks. The audio service is active with zero automatic restarts at verification; existing NEUROSIS services remain active.
+- Public HTTPS browser tests passed connection creation/replacement/deletion, hidden key output and layout at 390/768/1440 px. Actual public WSS rejected an invalid grant. A browser-only socket fixture verified microphone worklet PCM capture, mute and stop. No provider connection success was simulated in persistent records.
+- The original authenticated platform smoke test still passed, with no JavaScript errors. New views were visually inspected. Production checks retain only the two previously documented HSTS warnings.
+
+
+Validation update (2026-09-13): Lucas reports successful OpenAI API-key setup and a real browser voice conversation. Gemini and physical hardware remain unvalidated. The revised Companion instructions discourage prompt disclosure; this is behavioral guidance, not a security guarantee. Provider keys remain outside model context and the model has no device-management tools.

@@ -6,7 +6,7 @@ AMPVE gives the devices you already own new ways to help, create, and connect. S
 
 Our first experience is **AMPVE Companion**: an expressive AI companion that listens, speaks, and lives on a small screen. It is the first application in a broader vision of bringing useful software and AI to everyday hardware.
 
-**Current status:** Django platform foundation with an English frontend, private accounts, profile/password settings, administration, and a Companion preview catalog. Provider sessions, device installation, and firmware remain unimplemented. See the [platform runbook](docs/runbooks/PLATFORM.md) for commands and delivery limits.
+**Current status:** Django platform foundation with an English frontend, private accounts, profile/password settings, administration, and a Companion preview catalog. Encrypted provider connections and an experimental FastAPI/Pipecat browser voice preview are implemented; real provider conversations still need account validation. Device installation, the XiaoZhi adapter, and firmware remain unimplemented. See the [platform runbook](docs/runbooks/PLATFORM.md) for commands and delivery limits.
 
 ## The first experience
 
@@ -58,3 +58,6 @@ The images are design concepts. Illustrated enclosures are not exact hardware ph
 The repository contains the Django platform, migrations and tests, deployment definitions, architecture decisions, contributor guidance, and selected graphic assets. Credentials, dependencies, generated assets, firmware binaries, and private hardware backups stay outside Git.
 
 Begin implementation with the milestones in the [MVP brief](docs/MVP_IMPLEMENTATION.md#11-implementation-sequence-and-completion-criteria). Do not treat mockups or roadmap items as already working features.
+
+
+Validation update (2026-09-13): Lucas reports successful OpenAI API-key setup and a real browser voice conversation. Gemini and physical hardware remain unvalidated. The revised Companion instructions discourage prompt disclosure; this is behavioral guidance, not a security guarantee. Provider keys remain outside model context and the model has no device-management tools.

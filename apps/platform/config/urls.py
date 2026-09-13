@@ -1,7 +1,7 @@
 from django.contrib import admin
 from django.contrib.auth import views as auth
 from django.urls import path
-from workspace import views
+from workspace import views, connection_views
 
 urlpatterns = [
     path('', views.landing, name='landing'),
@@ -14,7 +14,11 @@ urlpatterns = [
     path('devices/', views.page, {'section': 'devices'}, name='devices'),
     path('devices/add/', views.page, {'section': 'onboarding'}, name='onboarding'),
     path('apps/', views.page, {'section': 'apps'}, name='apps'),
-    path('connections/', views.page, {'section': 'connections'}, name='connections'),
+    path('connections/', connection_views.connections, name='connections'),
+    path('connections/<uuid:pk>/replace/', connection_views.replace_key, name='replace_key'),
+    path('connections/<uuid:pk>/delete/', connection_views.delete_connection, name='delete_connection'),
+    path('connections/<uuid:pk>/voice/', connection_views.voice_preview, name='voice_preview'),
+    path('connections/<uuid:pk>/ticket/', connection_views.audio_ticket, name='audio_ticket'),
     path('settings/', views.settings, name='settings'),
     path('admin/', admin.site.urls),
 ]

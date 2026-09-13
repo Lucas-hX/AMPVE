@@ -1,5 +1,7 @@
 # AMPVE — MVP Implementation Brief
 
+Current delivery: see [the platform runbook](runbooks/PLATFORM.md) and [ADR 0002](decisions/0002-provider-audio-and-xiaozhi.md). Browser audio is experimental pending live provider validation; XiaoZhi remains the sole selected firmware foundation.
+
 Date: 2026-09-12
 
 Status: Django platform foundation delivered; provider integration and hardware validation pending
@@ -295,3 +297,6 @@ Sources reviewed for the selected approach; upstream content may change, so pin 
 - [Waveshare hardware documentation](https://www.waveshare.com/wiki/ESP32-P4-WIFI6-Touch-LCD-7B)
 
 The hardware observations summarized in section 4 came from the owner's local audit on 2026-08-27. The original audit and private flash backup are not published here. Reconfirm hardware state before using them as the basis for a write operation.
+
+
+Validation update (2026-09-13): Lucas reports successful OpenAI API-key setup and a real browser voice conversation. Gemini and physical hardware remain unvalidated. The revised Companion instructions discourage prompt disclosure; this is behavioral guidance, not a security guarantee. Provider keys remain outside model context and the model has no device-management tools.

@@ -1,0 +1,28 @@
+[Unit]
+Description=AMPVE FastAPI and Pipecat audio preview
+After=network-online.target neurosis-postgresql.service
+Requires=neurosis-postgresql.service
+
+[Service]
+Type=simple
+User=ampve
+Group=ampve
+WorkingDirectory=/home/ampve/projects/AMPVE/apps/audio
+Environment=AMPVE_CONFIG=/home/ampve/.config/ampve/platform.json
+Environment=PYTHONUNBUFFERED=1
+Environment=NUMBA_CACHE_DIR=/home/ampve/.cache/ampve-audio
+ExecStart=/home/ampve/projects/AMPVE/.venv-audio/bin/uvicorn server:app --host 127.0.0.1 --port 3001 --workers 1 --ws websockets --ws-max-size 4096 --ws-max-queue 8 --no-access-log --timeout-graceful-shutdown 10
+Restart=on-failure
+RestartSec=3
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/home/ampve/.cache/ampve-audio
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+MemoryMax=1500M
+TasksMax=128
+
+[Install]
+WantedBy=multi-user.target

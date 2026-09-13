@@ -38,3 +38,4 @@ tmp/
 Thumbs.db
 staticfiles/
 .browser-tests/
+.venv-audio/

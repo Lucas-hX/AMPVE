@@ -46,3 +46,50 @@ class Application(models.Model):
 
     def __str__(self):
         return self.name
+
+
+class ProviderConnection(models.Model):
+    import uuid
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    owner = models.ForeignKey(User, on_delete=models.CASCADE, related_name='provider_connections')
+    provider = models.CharField(max_length=16, choices=[('gemini', 'Gemini Live'), ('openai', 'OpenAI Realtime')])
+    label = models.CharField(max_length=80)
+    encrypted_key = models.TextField(editable=False)
+    revision = models.PositiveIntegerField(default=1, editable=False)
+    validation = models.CharField(max_length=16, default='untested', editable=False)
+    checked_at = models.DateTimeField(null=True, editable=False)
+    result_code = models.CharField(max_length=40, blank=True, editable=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['created_at']
+
+    def __str__(self):
+        return self.label
+
+
+class AudioGrant(models.Model):
+    token_hash = models.CharField(max_length=64, unique=True)
+    owner = models.ForeignKey(User, on_delete=models.CASCADE)
+    connection = models.ForeignKey(ProviderConnection, on_delete=models.CASCADE)
+    revision = models.PositiveIntegerField()
+    browser_session = models.CharField(max_length=40)
+    mode = models.CharField(max_length=8, choices=[('check', 'check'), ('voice', 'voice')])
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField()
+    used_at = models.DateTimeField(null=True)
+
+
+class AudioSession(models.Model):
+    import uuid
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    owner = models.ForeignKey(User, on_delete=models.CASCADE)
+    connection = models.ForeignKey(ProviderConnection, null=True, on_delete=models.SET_NULL)
+    revision = models.PositiveIntegerField()
+    provider = models.CharField(max_length=16)
+    mode = models.CharField(max_length=8)
+    status = models.CharField(max_length=16, default='starting')
+    result_code = models.CharField(max_length=40, blank=True)
+    started_at = models.DateTimeField(auto_now_add=True)
+    ended_at = models.DateTimeField(null=True)

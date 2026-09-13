@@ -1,0 +1,2 @@
+{% extends 'workspace/base.html' %}
+{% block content %}<section class="form-card narrow"><span class="pill">{{ connection.get_provider_display }}</span><h2>{{ connection.label }}</h2><p>Enter a new API key. Replacing it resets the connection test and stops sessions using the previous key.</p><form method="post" autocomplete="off">{% csrf_token %}{{ form.as_p }}<button type="submit" class="button">Replace key</button> <a class="quiet-link" href="{% url 'connections' %}">Cancel</a></form></section>{% endblock %}
