@@ -1,6 +1,6 @@
 # Native OTA client
 
-Candidate `0.1.7-boot-guard-dev` integrates the native update worker with the [persistent backend](FIRMWARE_DEPLOYMENTS.md). The code implements authenticated polling, signed-policy verification, app-only inactive-slot streaming, progress, durable report retries, local cancellation and confirmed startup/rollback outcomes. Physical Wi-Fi OTA and recovery remain **unvalidated** (#26–#27). No board has been flashed by this implementation work.
+Candidate `0.1.8-display-guard-dev` integrates the native update worker with the [persistent backend](FIRMWARE_DEPLOYMENTS.md). The code implements authenticated polling, signed-policy verification, app-only inactive-slot streaming, progress, durable report retries, local cancellation and confirmed startup/rollback outcomes. Physical Wi-Fi OTA and recovery remain **unvalidated** (#26–#27). No board has been flashed by this implementation work.
 
 ## Build trust and release gates
 

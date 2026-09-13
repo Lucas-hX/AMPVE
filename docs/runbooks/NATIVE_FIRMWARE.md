@@ -103,7 +103,7 @@ The comparison rehashes both full backups and proposed artifact files, checks th
 ## Next implementation after this candidate
 
 - Finish the owner's local audit and C6 compatibility review; then prepare a specific first USB write/restore plan for approval.
-- Validate and harden the native drivers, screen legibility, provisioning and management on this physical board. The optional BoxAudioCodec diagnostic now degrades on checked failures; essential LCD/C6 initialization, allocation limits and actual driver failure behavior still require review and physical validation before calling the runtime production ready.
+- Validate and harden the native drivers, screen legibility, provisioning and management on this physical board. The optional BoxAudioCodec diagnostic now degrades on checked failures; the checked LCD sequence still needs physical validation, while C6 initialization, allocation limits and underlying driver failure behavior still require review and physical validation before calling the runtime production ready.
 - Implement the XiaoZhi Opus/audio adapter to FastAPI/Pipecat and explicit local Companion start/stop, echo behavior and interruption. Browser voice success does not prove this adapter.
 - Add a permissioned local microphone meter before enabling network capture; keep local mute authoritative.
 - Validate the implemented native inactive-slot OTA candidate and complete physical rollback tests; see [NATIVE_OTA.md](NATIVE_OTA.md). ESP-IDF rollback configuration alone is not an update service.
@@ -162,3 +162,20 @@ python3 firmware/tests/native/boot_run.py
 The host scenarios cover fresh/missing counters, normal increments, the recovery threshold and maximum integer, read/type errors, write/commit errors, a held input at entry, the exact five-second boundary, repeated samples, interrupted holds and a backwards timer input. ASan/UBSan checks this software behavior; physical BOOT behavior, NVS power loss and repeated cold boots remain unvalidated.
 
 Software evidence (2026-09-13): **20 boot-counter/physical-retry scenarios** passed under ASan/UBSan and **31 firmware-tool tests** passed. P4 revision-1.x fixture compilation completed without compiler warnings: **2,841,072 bytes**, SHA-256 `f01e048f38475532619cf4efca0842694363e168543ae9432062aa12e185cbb8`, with 31% remaining in each OTA slot. Built overlay bytes matched repository inputs. Private `firmware-boot-guard-software-fixture` is traced to source `cd5a6ea`, testing-only and non-installable. This revision has one build and no two-build reproduction claim. No hardware write, public installer selection, production key or service configuration changed.
+
+
+## Checked display startup
+
+Candidate `0.1.8-display-guard-dev` applies a checked Waveshare startup integration through `firmware/tools/board_guard.py`. It checks I2C bus creation, DSI power, DSI/DBI transport, panel creation/reset/initialization, display-object allocation and LVGL port/display registration. Error returns or missing required handles stop the dependent sequence before touch, codec probing, buttons or backlight initialization. A failed MIPI LVGL port initialization no longer proceeds to display registration. Touch registration only logs successful initialization when a handle was actually returned.
+
+This essential display failure does not provide an on-screen recovery UI. The existing startup supervisor, created before board construction, observes missing startup health, attempts available OTA rollback or restarts, and the checked boot counter stops driver initialization after three unconfirmed boots. Serial diagnostics and the audited USB recovery route remain necessary. Acquired low-level display resources are retained until restart; this path does not retry initialization repeatedly within the same boot.
+
+The transformation accepts the pinned original, the earlier documented integration or its exact current output; it refuses unrelated board/display modifications. The upstream source and its notices remain outside Git, with changes archived in the review bundle's integration patch. The checked-in tool records the integration rather than copying an entire board implementation.
+
+Run targeted failure injection:
+
+```bash
+python3 firmware/tests/native/display_run.py --work "$HOME/.cache/ampve-firmware/xiaozhi-ota"
+```
+
+The runner compiles the actual transformed I2C/LCD/DSI-power methods, board-constructor body and MIPI constructor with the 7B branch enabled. Driver APIs, base-display/theme construction and later peripheral methods are simulated. Cases cover each checked stage, successful calls returning missing handles, display allocation failure and absent default display, ensuring dependent initialization stops. This is not a test of physical drivers, resource cleanup across resets, full theme/LVGL heap exhaustion, other board branches or C6 startup. Those remain acceptance/review work under #11–#12.
