@@ -42,3 +42,9 @@ Browser trust ultimately depends on the HTTPS platform serving the script and in
 ## Validation
 
 Run the firmware unittest suite with the pinned firmware-tools Python, the Django workspace suite and `npm test && npm run build` in `tools/browser`. Fixtures exercise signature/key/hash/profile tampering, invalid metadata, purpose substitution, revocations, sequence ordering/concurrency, deterministic ZIP output and revocation during preflight. All signing keys and images in those tests are temporary software fixtures. Physical P4/C6 operation, first installation and interrupted-update recovery remain hardware acceptance gates.
+
+## Delivery evidence — 2026-09-13
+
+Source `3b89760`: 51 Django tests, 26 firmware/tool tests and 17 Node tests passed. Two concurrent fixture publishers admitted exactly one reservation for a sequence. Rendered onboarding fixtures passed backup import/no-upload and three viewport widths. The deployed private-instance fixture passed pairing, schema-2 heartbeat, pending settings and revocation, then removed its temporary records.
+
+The real unsigned candidate was repackaged in `/home/ampve/.local/state/ampve/firmware-review-trust-v2` with the unchanged `0.1.2-profile-dev` app. Repeating ZIP creation over that exact tree produced identical **1,693,914-byte** archives, SHA-256 `a81fccc30c71b7fc248f22bef3e95fc45b07a355b3fc5ada52bab48aa32f2630`. App SHA-256 remains `13e015e52ebe4b75fb83967208423623bbf32e8d0d1021f8dc518574d2222db9`. Authenticated public ZIP/app downloads were rehashed; anonymous ZIP access was refused. The platform selects this review directory through private configuration and still returns `installable: false`. No production signing key, publisher ledger/trust registry, approved release or hardware write was created by delivery.
