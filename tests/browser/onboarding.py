@@ -1,4 +1,7 @@
 """Local rendered-template browser fixtures. No server writes, USB or provider calls."""
+import base64
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+from cryptography.hazmat.primitives.serialization import Encoding,PublicFormat
 import hashlib
 import json
 import mimetypes
@@ -50,12 +53,24 @@ with tempfile.TemporaryDirectory(prefix='ampve-browser-fixture-') as directory,s
     browser=p.chromium.launch();page=browser.new_page();errors=[];requests=[]
     page.on('pageerror',lambda e:errors.append(str(e)))
     review_candidate=False
+    approved_candidate=False
     app=bytes(image()); app_hash=hashlib.sha256(app).hexdigest()
+    key=Ed25519PrivateKey.generate()
+    def approved_release(previous=False):
+        policy=json.loads((ROOT/'tests/fixtures/initial-release-v2.json').read_text())
+        policy.update(sequence=7 if previous else 8,firmware_version='fixture-old' if previous else 'fixture-new',commissioning='usb-assisted-v1',usb_review='Fixture USB commissioning')
+        policy['app'].update(size=len(app),sha256=app_hash)
+        policy['bootloader_sha256']=hashlib.sha256(data[0x2000:0x8000]).hexdigest()
+        policy['table_sha256']=hashlib.sha256(data[0x8000:0x9000]).hexdigest()
+        payload=json.dumps(policy,sort_keys=True,separators=(',',':')).encode()
+        return {'status':'reviewed-development-release','publisher_key':key.public_key().public_bytes(Encoding.Raw,PublicFormat.Raw).hex(),
+            'envelope':{'payload':base64.b64encode(payload).decode(),'signature':base64.b64encode(key.sign(payload)).decode()},
+            'release_id':hashlib.sha256(payload).hexdigest(),'minimum_sequence':1}
     def route(r):
         req=r.request;requests.append((req.method,req.url))
         path=urlparse(req.url).path
         if path=='/devices/add/':r.fulfill(status=200,content_type='text/html',body=html)
-        elif path=='/devices/firmware/release/':r.fulfill(status=200,content_type='application/json',body=json.dumps({'status':'development-review','installable':False,'profile':'waveshare-7b-stock-v1','app':{'offset':0xe00000,'size':len(app),'sha256':app_hash}} if review_candidate else {'status':'no-reviewed-release','installable':False}))
+        elif path=='/devices/firmware/release/':r.fulfill(status=200,content_type='application/json',body=json.dumps(approved_release(previous=urlparse(req.url).query=='recovery=1') if approved_candidate else {'status':'development-review','installable':False,'profile':'waveshare-7b-stock-v1','app':{'offset':0xe00000,'size':len(app),'sha256':app_hash}} if review_candidate else {'status':'no-reviewed-release','installable':False}))
         elif path=='/devices/firmware/artifacts/'+app_hash+'.bin':r.fulfill(status=200,content_type='application/octet-stream',body=app)
         elif path.startswith('/static/'):
             file=finders.find(path[len('/static/'):])
@@ -129,21 +144,29 @@ with tempfile.TemporaryDirectory(prefix='ampve-browser-fixture-') as directory,s
     # Recovery must be reachable after reloading/importing original files, without a live ROM reader.
     page.evaluate("""() => {Object.defineProperty(navigator,'serial',{configurable:true,value:{
       requestPort:async()=>{window.recoveryPortRequests=(window.recoveryPortRequests||0)+1;throw new DOMException('Fixture cancellation','AbortError');},addEventListener(){}}});}""")
+    approved_candidate=True
     page.locator('#recover-device').click()
     page.locator('#board-confirm').check();page.locator('#confirm-device').click()
     assert page.locator('#existing-backups').is_visible()
     page.locator('#import-backups').set_input_files([])
     page.wait_for_function('!document.querySelector("#import-backups").disabled')
     page.locator('#import-backups').set_input_files([str(root/name) for name in ['backup-a.bin','backup-b.bin','audit-private.json']])
-    page.wait_for_function('document.querySelector("#setup-status").textContent.includes("Original-backup recovery prepared")')
+    page.wait_for_function('document.querySelector("#installation-method").textContent.includes("fixture-new")')
     assert any(url.endswith('/devices/firmware/release/?recovery=1') for _,url in requests)
     assert any(url.endswith('/devices/firmware/artifacts/'+app_hash+'.bin?recovery=1') for _,url in requests)
     assert page.locator('#restore-panel').is_visible()
     assert page.locator('#restore-original').is_enabled()
     assert page.locator('#install-ampve').is_disabled()
+    assert page.locator('#wifi-step').is_hidden()
+    page.locator('#save-recovery').click()
+    page.wait_for_function('document.querySelector("#setup-status").textContent.includes("Recovery files saved")')
+    for checkbox in ['separate-copy','rom-recovery','approve-plan']:page.locator('#'+checkbox).check()
+    assert page.locator('#install-ampve').is_enabled()
+    page.locator('#install-ampve').click()
+    page.wait_for_function('window.recoveryPortRequests===1 && !document.querySelector("#restore-original").disabled')
     page.once('dialog',lambda dialog:dialog.accept())
     page.locator('#restore-original').click()
-    page.wait_for_function('window.recoveryPortRequests===1 && !document.querySelector("#restore-original").disabled')
+    page.wait_for_function('window.recoveryPortRequests===2 && !document.querySelector("#restore-original").disabled')
     assert page.locator('#setup-status').inner_text().startswith('Stopped.')
     assert page.locator('#restore-panel').is_visible()
     page.evaluate(r"""() => {
@@ -183,4 +206,4 @@ with tempfile.TemporaryDirectory(prefix='ampve-browser-fixture-') as directory,s
         page.screenshot(path=f'.browser-tests/stock-onboarding-{width}.png',full_page=True)
     assert not errors,errors
     browser.close()
-print('Rendered browser fixtures passed: local backup import/integrity, sanitized backup/plan downloads, candidate comparison and saved recovery, recovery entry without a live reader and cancelled-port retry, unsigned write gate, simulated USB Wi-Fi/password clearing, no uploads and three viewport widths. No physical hardware tested.')
+print('Rendered browser fixtures passed: local backup import/integrity, sanitized backup/plan downloads, candidate comparison and saved recovery, signed latest-version reinstall preparation without a live reader, enabled install after consent and cancelled-port retry, unsigned write gate, simulated USB Wi-Fi/password clearing, no uploads and three viewport widths. No physical hardware tested.')

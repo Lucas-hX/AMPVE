@@ -1,5 +1,6 @@
 import {openReader,readChunk,captureRead,compareBackups,parseTable,matchesStock,ensure,sha256,FLASH_BYTES} from './audit.js';
 import {verifyRelease,makePlan,makeReviewPlan,planReviewSummary,executePlan,allowsUsbCommissioning} from './install.js';
+import {prepareReinstall,executeInstallOrReinstall} from './reinstall.js';
 import {openWifi,validCredentials} from './wifi.js';
 import {CONTRACT} from './profile.js';
 import {reviewSummary} from './review.js';
@@ -11,6 +12,7 @@ import {prepareRecovery,validateRecovery,executeRecovery} from './recovery.js';
 const root=document.querySelector('#firmware-setup');
 if(root) {
   const get=id=>document.getElementById(id),status=get('setup-status'),meter=get('setup-progress'),detail=get('setup-progress-detail');
+  let reinstallReference;
   let wifi,c6Observation,recoveryPlan,installedRuntime,recoveryMode=false,currentFlashChanged=false;
   const downloadUrls=new Map();
   function downloadLink(id,summary){
@@ -50,7 +52,7 @@ if(root) {
     get('save-recovery').disabled=busy||!plan||!window.showDirectoryPicker;
     get('export-plan-review').setAttribute('aria-disabled',String(busy||!plan));
     get('approve-plan').disabled=busy||!policy||plan?.review_only===true;
-    get('install-ampve').disabled=busy||recoveryMode||currentFlashChanged||!policy||plan?.review_only===true||!plan?.recovery_saved||!port||
+    get('install-ampve').disabled=busy||((recoveryMode||currentFlashChanged)&&!reinstallReference)||!policy||plan?.review_only===true||!plan?.recovery_saved||!navigator.serial||
       (!allowsUsbCommissioning(policy)&&(!c6Observation?.version_matches||!c6Observation.unit_identity||c6Observation.unit_identity!==report?.hardware?.identity))||
       !get('approve-plan').checked||!get('separate-copy').checked||!get('rom-recovery').checked;
     get('cancel-setup').disabled=!busy||writing||!controller;
@@ -68,9 +70,9 @@ if(root) {
       // Never display raw transport data or exception messages from serial libraries.
       status.textContent=error.name==='AbortError'?'Stopped. Incomplete reads are not valid backups.':
         error.userMessage||'Setup stopped. Check the cable, programming port and current operation. No installation is approved by a failed check.';
-      if(error.startupSummary){downloadLink('export-runtime-review',error.startupSummary);show('wifi-step');}
+      if(error.startupSummary){downloadLink('export-runtime-review',error.startupSummary);recoveryMode=true;installedRuntime=null;show('device-confirmation');show('backup-step');show('existing-backups');get('wifi-step').hidden=true;status.textContent='AMPVE did not start. Select your original backup files below to prepare installation of the latest version.';}
       detail.textContent=writing?'A write may be incomplete. Keep your recovery files; use the reviewed USB recovery procedure.':
-        'If AMPVE did not start, use Recover a device that did not start. Keep the original backups. Use the USB TO UART port; an accessible RESET button is not required for the first automatic reconnect attempt.';
+        'If AMPVE did not start, use Repair or reinstall AMPVE. Keep the original backups. Use the USB TO UART port; an accessible RESET button is not required for the first automatic reconnect attempt.';
       await close();plan=null;
     }finally{busy=false;writing=false;sync();}
   }
@@ -165,8 +167,8 @@ if(root) {
     status.textContent='Recovery comparison complete. The device was not changed.';
   }
   get('recover-device').onclick=()=>{
-    recoveryMode=true;installedRuntime=null;plan=null;show('device-confirmation');show('wifi-step');
-    get('model-evidence').textContent='Confirm the board name, then select your original backups. You can check USB startup or restore without starting another installation.';
+    recoveryMode=true;installedRuntime=null;plan=null;show('device-confirmation');get('wifi-step').hidden=true;
+    get('model-evidence').textContent='Confirm the board name, then select your original backups. Setup will check whether AMPVE can be reinstalled directly over USB.';
     status.textContent='Recovery mode. Use your backups from before AMPVE was installed.';
     get('device-confirmation').scrollIntoView({behavior:'smooth'});sync();
   };
@@ -213,8 +215,8 @@ if(root) {
   };
   get('prepare-install').onclick=()=>run(prepareInstallation);
   async function prepareInstallation(){
-    plan=null;policy=null;get('release-status').textContent='Checking availability…';get('candidate-download').hidden=true;get('export-plan-review').hidden=true;get('plan-panel').hidden=true;status.textContent='Checking the curated AMPVE release…';
-    const response=await fetch(root.dataset.release+(recoveryMode?'?recovery=1':''),{cache:'no-store'});ensure(response.ok,'Release unavailable.');
+    plan=null;policy=null;reinstallReference=null;get('release-status').textContent='Checking availability…';get('candidate-download').hidden=true;get('export-plan-review').hidden=true;get('plan-panel').hidden=true;status.textContent='Checking the curated AMPVE release…';
+    const response=await fetch(root.dataset.release,{cache:'no-store'});ensure(response.ok,'Release unavailable.');
     const data=await response.json();
     const approved=data.status==='reviewed-development-release';
     if(!approved && data.status!=='development-review') {
@@ -226,12 +228,22 @@ if(root) {
     if(approved)policy=await verifyRelease(data);
     const appInfo=approved?policy.app:data.app;
     ensure(appInfo && /^[a-f0-9]{64}$/.test(appInfo.sha256),'Candidate identity missing.');
-    const appResponse=await fetch(`/devices/firmware/artifacts/${appInfo.sha256}.bin${recoveryMode?'?recovery=1':''}`,{cache:'no-store'});
+    const appResponse=await fetch(`/devices/firmware/artifacts/${appInfo.sha256}.bin`,{cache:'no-store'});
     ensure(appResponse.ok,'App unavailable.');
     ensure(get('board-confirm').checked,'Confirm the printed board model before preparing an installation.');
     const checkedReport={...report,owner_confirmed_profile:CONTRACT.profile_id};
     const app=new Uint8Array(await appResponse.arrayBuffer());
     plan=approved?await makePlan(backup,checkedReport,policy,app):await makeReviewPlan(backup,checkedReport,data,app);
+    if(approved){
+      const previousResponse=await fetch(root.dataset.release+'?recovery=1',{cache:'no-store'});
+      ensure(previousResponse.ok,'Previous installation reference unavailable.');
+      const previousPolicy=await verifyRelease(await previousResponse.json());
+      const previousApp=await fetch(`/devices/firmware/artifacts/${previousPolicy.app.sha256}.bin?recovery=1`,{cache:'no-store'});
+      ensure(previousApp.ok,'Previous installation reference unavailable.');
+      const previousPlan=await makePlan(backup,checkedReport,previousPolicy,new Uint8Array(await previousApp.arrayBuffer()));
+      const prepared=await prepareReinstall(backup,report,plan,policy,previousPlan,previousPolicy);
+      plan=prepared.plan;recoveryPlan=prepared.recovery;reinstallReference=previousPolicy;
+    }
     get('candidate-info').textContent=`Stock-preserving candidate · ${(appInfo.size/1048576).toFixed(2)} MiB · SHA-256 ${appInfo.sha256}`;
     const link=get('candidate-download');link.href='/devices/firmware/review-bundle/';link.hidden=approved;
     const list=get('write-regions');list.replaceChildren();
@@ -240,7 +252,7 @@ if(root) {
     downloadLink('export-plan-review',planReviewSummary(plan));
     recoveryPlan=await prepareRecovery(backup,report,plan);show('restore-panel');
     if(port && get('read-consent').checked)await checkRecovery(controller?.signal);
-    if(recoveryMode||currentFlashChanged){
+    if((recoveryMode||currentFlashChanged)&&!reinstallReference){
       get('release-status').textContent='Use USB startup checking or restore your original software. A changed device cannot be treated as a new installation.';
       status.textContent='Original-backup recovery prepared. No software has been changed.';
       show('wifi-step');return;
@@ -248,6 +260,7 @@ if(root) {
     get('installation-method').textContent=(approved?allowsUsbCommissioning(policy):data.commissioning==='usb-assisted-v1')?'Keep original software · install AMPVE, then finish setup over USB. Wi-Fi and peripherals are checked after installation.':'Keep original software · verify Wi-Fi compatibility before installation.';
     get('release-status').textContent=approved?'Ready to install after you save your return-to-original files.':'This board’s first AMPVE release is still being validated. Installation is not available yet. Your device has not been changed.';
     status.textContent=approved?'Installation prepared. Save your return-to-original files to continue.':'Candidate compared with your backups. The installation option is prepared for review.';
+    if(reinstallReference){get('installation-method').textContent=`Install AMPVE ${policy.firmware_version} · automatically replace a recognized AMPVE installation if present. Original software and saved settings are kept. No successful startup or return to original software is required first.`;get('install-ampve').textContent='Install AMPVE';}
     detail.textContent=approved?'': 'You do not need to run commands or interpret technical details. The development review must finish before installation becomes available.';
   }
   get('save-recovery').onclick=()=>run(async()=>{
@@ -263,7 +276,7 @@ if(root) {
     plan.recovery_saved=true;downloadLink('export-plan-review',planReviewSummary(plan));status.textContent='Recovery files saved and checked on your computer.';
   });
   get('install-ampve').onclick=()=>run(async signal=>{
-    boardConsent();ensure(!recoveryMode&&!currentFlashChanged,'Restore the original software before installing again.');ensure(policy&&plan?.review_only!==true,'A reviewed signed release is required before installation.');ensure(plan?.recovery_saved&&port,'Save recovery files and select the same board first.');
+    if(!port)port=await navigator.serial.requestPort();get('read-consent').checked=true;boardConsent();ensure(!(recoveryMode||currentFlashChanged)||reinstallReference,'Prepare the known installation reference first.');ensure(policy&&plan?.review_only!==true,'A reviewed signed release is required before installation.');ensure(plan?.recovery_saved&&port,'Save recovery files and select the same board first.');
     const consent={exact_plan:get('approve-plan').checked,separate_copy:get('separate-copy').checked,rom_recovery:get('rom-recovery').checked};
     ensure(Object.values(consent).every(Boolean),'Confirm the exact write/recovery plan first.');
     // Revalidate approval/signature at click time, then hold the same transport through all writes.
@@ -274,12 +287,13 @@ if(root) {
     ensure(allowsUsbCommissioning(policy) || (c6Observation?.version_matches && c6Observation.unit_identity &&
       c6Observation.unit_identity===reader.hardware.identity),'Complete the Wi-Fi hardware check on this unit before installing.');
     recoveryPlan=await prepareRecovery(backup,report,plan);show('restore-panel');
-    await executePlan(reader,plan,policy,consent,progress,signal,async()=>{
+    await (reinstallReference?executeInstallOrReinstall:executePlan)(reader,plan,policy,consent,progress,signal,async()=>{
       const response=await fetch(root.dataset.release,{cache:'no-store'});ensure(response.ok,'Release unavailable.');
       const latest=await verifyRelease(await response.json());
       ensure(JSON.stringify(latest)===JSON.stringify(policy),'Release or publisher trust changed; prepare a new plan.');
+      if(reinstallReference){const previous=await fetch(root.dataset.release+'?recovery=1',{cache:'no-store'});ensure(previous.ok && JSON.stringify(await verifyRelease(await previous.json()))===JSON.stringify(reinstallReference),'Previous release or publisher trust changed; prepare again.');}
     });await close();
-    writing=false;get('cancel-setup').disabled=false;
+    writing=false;recoveryMode=false;currentFlashChanged=false;get('cancel-setup').disabled=false;
     const expectedVersion=policy.firmware_version;
     const usbAssisted=allowsUsbCommissioning(policy);plan=null;
     if(usbAssisted){
