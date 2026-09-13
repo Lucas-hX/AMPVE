@@ -5,7 +5,7 @@ import {resetApplication} from './reset.js';
 // connection or verify the app before switching boot selection; do not expose it.
 import crc32 from 'pako/lib/zlib/crc32.js';
 import {createSHA256} from 'hash-wasm';
-import {ensure,sha256,inspectImage,readChunk,FLASH_BYTES,BLOCK,PROFILE} from './audit.js';
+import {ensure,sha256,inspectImage,readChunk,readTransferDiagnostics,FLASH_BYTES,BLOCK,PROFILE} from './audit.js';
 import {HARDWARE_PROFILE, CONTRACT, PARTITIONS, matchesContract} from './profile.js';
 
 const SLOT=PARTITIONS[HARDWARE_PROFILE.layout.initial_app], OTA=PARTITIONS.otadata;
@@ -173,10 +173,10 @@ export async function executePlan(reader,plan,policy,consent,progress=()=>{},sig
       if(trace.phase==='preflight')trace.preflight_bytes=done;
       progress(phase,done,total);
     },signal,revalidate,trace);
-    return {...result,installation_summary:{...trace,outcome:'written_and_verified',elapsed_ms:Math.round(performance.now()-started)}};
+    return {...result,installation_summary:{...trace,...readTransferDiagnostics(reader),outcome:'written_and_verified',elapsed_ms:Math.round(performance.now()-started)}};
   }catch(error){
-    const category=['AbortError','TimeoutError','TypeError'].includes(error.name)?error.name:'operation_failed';
-    error.installationSummary={...trace,outcome:'failed',error_category:category,elapsed_ms:Math.round(performance.now()-started)};
+    const category=error.readFailure?.code||(['AbortError','TimeoutError','TypeError'].includes(error.name)?error.name:'operation_failed');
+    error.installationSummary={...trace,...readTransferDiagnostics(reader),...(error.readFailure?{read_failure:error.readFailure}:{}),outcome:'failed',error_category:category,elapsed_ms:Math.round(performance.now()-started)};
     if(trace.app_readback_verified&&trace.selection_readback_verified){
       error.userMessage='AMPVE and its startup selection were written and verified. The automatic restart did not complete. Reconnect USB and check AMPVE startup.';
     }else if(!error.userMessage){
