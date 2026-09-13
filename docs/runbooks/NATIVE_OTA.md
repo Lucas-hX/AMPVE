@@ -35,3 +35,9 @@ The runner checks the resolved dependency lock, compiles actual AMPVE verifier/i
 2. Add bounded authenticated deployment polling, persistent job/report retry state and inactive-slot download using ESP-IDF primitives. Validate image headers and full stream/hash before boot selection; reauthorize the backend boundary. Keep UI/local mute responsive and restart interrupted downloads with explicit integrity semantics.
 3. Persist enough predecessor/target identity to report the true confirmed boot or rollback after reset, even if approval has expired. Advance the local sequence only after successful confirmation; do not confuse a lost network response with a failed image.
 4. Complete the owner's exact stock/C6/recovery review and approved physical test plan. Exercise power loss, malformed/truncated images, failed startup, Wi-Fi loss and fallback on the actual P4. First USB installation still has no guaranteed previous AMPVE app.
+
+## Verified software evidence — 2026-09-13
+
+The final candidate compiled for ESP32-P4 revision 1.x using the pinned ESP-IDF 6.1 toolchain, with no compiler warnings reported. App size: **2,768,208 bytes**; SHA-256: `4af935c10210ea1dac5aa21b2e2172117a5856773fc2945857d4ac37cd7fb85e`. The IDF partition-size check passed. This is one final build; the earlier two-build reproducibility result does not prove reproduction of this changed candidate.
+
+All **61 native policy cases**, **nine streaming identity cases** and **26 firmware-tool tests** passed. The private non-installable review package is `firmware-review-native-ota-verification` under the existing external private state directory, traced to source commit `0046077`. No production trust or release was created, no USB/OTA write occurred, and the public browser review selection was not changed by this firmware-only work. Board startup, image reads, identity reporting over the physical Wi-Fi stack and recovery remain unvalidated.
