@@ -126,6 +126,7 @@ def package(work, idf, destination, comparison=None):
     (destination/'xiaozhi-integration.patch').write_bytes(patch)
     # Keep the modified third-party component and its original license reproducible outside Git.
     shutil.copytree(work/'components/78__esp-wifi-connect', destination/'provisioning-component')
+    shutil.copytree(work/'components/ampve_improv_sdk', destination/'improv-component')
     inputs = {}
     for base in [ROOT/'firmware', ROOT/'images/ampve-brand-kit-v1/brand', ROOT/'images/ampve-brand-kit-v1/apps']:
         for path in sorted(base.rglob('*')):
@@ -142,6 +143,7 @@ def package(work, idf, destination, comparison=None):
         (destination/name).write_bytes(subprocess.check_output([str(executable), '-m', 'pip', 'freeze']))
     manifest = {'schema': 1, 'installable': False, 'status': 'software-build-fixture-not-for-installation' if json.loads(trust_bytes)['testing_only'] else 'development-candidate-awaiting-local-audit',
                 'hardware_profile': upstream['hardware_profile'], 'runtime_revision_guard': 103,
+                'improv_sdk': json.loads((ROOT/'firmware/xiaozhi/improv.json').read_text()),
                 'xiaozhi_commit': upstream['commit'], 'esp_idf_commit': IDF_PIN, 'compiler': compiler,
                 'repository_commit': subprocess.check_output(['git', '-C', str(ROOT), 'rev-parse', 'HEAD']).decode().strip(),
                 'repository_inputs': inputs, 'generated_inputs': overlay_inputs,

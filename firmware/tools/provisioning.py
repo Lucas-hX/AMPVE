@@ -3,6 +3,7 @@ import argparse
 import shutil
 from pathlib import Path
 from prepare import replace
+from improv_integration import prepare as prepare_improv
 from credential_guard import prepare as prepare_credentials
 from wifi_guard import prepare as prepare_wifi
 
@@ -15,6 +16,7 @@ def patch(work):
             raise RuntimeError('Refusing to overwrite an existing component')
         prepare_wifi(work)
         prepare_credentials(work)
+        prepare_improv(work)
         return
     if 'version: 3.3.1' not in (source/'idf_component.yml').read_text():
         raise RuntimeError('Unreviewed provisioning component version')
@@ -86,6 +88,7 @@ static bool ampve_local_request(httpd_req_t* req) {
     (target/'.ampve-patched').write_text('3.3.1\n')
     prepare_wifi(work)
     prepare_credentials(work)
+    prepare_improv(work)
 
 
 if __name__ == '__main__':

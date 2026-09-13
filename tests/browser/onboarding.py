@@ -69,6 +69,33 @@ with tempfile.TemporaryDirectory(prefix='ampve-browser-fixture-') as directory,s
     page.wait_for_function('document.querySelector("#setup-status").textContent.includes("waiting for a reviewed release")')
     assert page.locator('#install-ampve').is_disabled()
     assert page.locator('#plan-panel').is_hidden()
+    page.evaluate(r"""() => {
+      const packet=(type,data)=>{const p=[73,77,80,82,79,86,1,type,data.length,...data];p.push(p.reduce((a,b)=>a+b,0)&255);return new Uint8Array([10,...p,10]);};
+      const rpc=(command,strings)=>{const data=strings.flatMap(s=>{const b=[...new TextEncoder().encode(s)];return [b.length,...b];});return packet(4,[command,data.length,...data]);};
+      const port={getInfo:()=>({usbVendorId:0x1a86,usbProductId:0x55d3}),async open(){
+        this.readable=new ReadableStream({start:c=>this.input=c});
+        this.writable=new WritableStream({write:bytes=>{
+          if(bytes[9]===2)this.input.enqueue(packet(1,[2]));
+          if(bytes[9]===3)this.input.enqueue(rpc(3,['AMPVE','fixture','waveshare-p4-7b','Fixture']));
+          if(bytes[9]===1){window.fixtureCredentialWrites=(window.fixtureCredentialWrites||0)+1;setTimeout(()=>{this.input.enqueue(packet(1,[4]));this.input.enqueue(rpc(1,['https://untrusted.invalid/']));},300);}
+        }});
+      },async close(){if(this.readable.locked||this.writable.locked)throw new Error('Leaked reader');window.fixtureClosed=true;}};
+      Object.defineProperty(navigator,'serial',{configurable:true,value:{requestPort:async()=>port,addEventListener(){}}});
+    }""")
+    # The existing page initially had Web Serial disabled in headless Chromium.
+    page.locator('#connect-wifi').evaluate('(button)=>button.disabled=false')
+    page.locator('#connect-wifi').click()
+    page.wait_for_function('!document.querySelector("#send-wifi").disabled')
+    page.locator('#wifi-ssid').fill('Fixture')
+    page.locator('#wifi-password').fill('fixture-password')
+    page.locator('#send-wifi').click()
+    assert page.locator('#wifi-password').input_value()==''
+    assert page.locator('#inspect-chip').is_disabled()
+    page.wait_for_function('document.querySelector("#wifi-status").textContent.includes("reports a Wi-Fi connection")')
+    assert page.evaluate('window.fixtureCredentialWrites')==1
+    assert page.url=='https://ampve.test/devices/add/'
+    page.locator('#close-wifi').click()
+    page.wait_for_function('window.fixtureClosed===true')
     assert not any(method!='GET' for method,_ in requests),requests
     Path('.browser-tests').mkdir(exist_ok=True)
     for width in [390,768,1440]:
@@ -78,4 +105,4 @@ with tempfile.TemporaryDirectory(prefix='ampve-browser-fixture-') as directory,s
         page.screenshot(path=f'.browser-tests/stock-onboarding-{width}.png',full_page=True)
     assert not errors,errors
     browser.close()
-print('Rendered browser fixtures passed: local backup import/integrity, release gate, no uploads and three viewport widths. No physical hardware tested.')
+print('Rendered browser fixtures passed: local backup import/integrity, release gate, simulated USB Wi-Fi/password clearing, no uploads and three viewport widths. No physical hardware tested.')

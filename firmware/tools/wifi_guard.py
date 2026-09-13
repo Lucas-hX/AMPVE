@@ -1,4 +1,5 @@
 """Preserve NVS and propagate native Wi-Fi initialization failure."""
+from improv_integration import manager as extend_manager
 MANAGER='wifi_manager.cc'
 BOARD='main/boards/common/wifi_board.cc'
 
@@ -18,6 +19,6 @@ def prepare(work):
     target=work/'components/78__esp-wifi-connect'/MANAGER
     if not target.exists():return # provisioning.py applies this after making the first override.
     original=(work/'managed_components/78__esp-wifi-connect'/MANAGER).read_text()
-    updated=transform_manager(original)
-    if target.read_text() not in [original,updated]:raise ValueError('Refusing unrelated Wi-Fi manager changes')
+    baseline=transform_manager(original);updated=extend_manager(baseline)
+    if target.read_text() not in [original,baseline,updated]:raise ValueError('Refusing unrelated Wi-Fi manager changes')
     if target.read_text()!=updated:target.write_text(updated)

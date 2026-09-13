@@ -4,13 +4,14 @@
   "type": "module",
   "scripts": {
     "build": "node build.mjs",
-    "test": "node --test inspect.test.js onboarding.test.js"
+    "test": "node --test inspect.test.js onboarding.test.js wifi.test.js"
   },
   "dependencies": {
     "esp-web-tools": "10.4.0",
     "esptool-js": "0.6.1",
     "hash-wasm": "4.12.0",
-    "pako": "2.2.0"
+    "pako": "2.2.0",
+    "improv-wifi-serial-sdk": "2.8.0"
   },
   "devDependencies": {
     "esbuild": "0.28.2"

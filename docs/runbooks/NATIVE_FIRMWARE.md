@@ -193,3 +193,6 @@ Software evidence (2026-09-13): **18 display startup scenarios** and **14 Wi-Fi 
 
 
 See [NATIVE_WIFI.md](NATIVE_WIFI.md) for candidate `0.1.9-wifi-storage-dev`: checked credential storage, read-only legacy import, retained previous settings and portal failure reporting. Improv Serial remains pending.
+
+
+Improv development update (2026-09-13): candidate `0.1.10-improv-dev` adds the official pinned Improv Serial SDK, UART0 service, physical five-minute authorization and shared portal/USB provisioning transaction. The browser form waits for the board's saved-network reconnection response. Protocol/transport fixtures and the P4 build are software evidence; UART/C6 provisioning and hardware acceptance remain pending. See [NATIVE_WIFI.md](NATIVE_WIFI.md).

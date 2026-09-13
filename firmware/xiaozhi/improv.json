@@ -1,0 +1,6 @@
+{
+  "repository": "https://github.com/improv-wifi/sdk-cpp.git",
+  "commit": "8e87b560bd5dd7de296847538ea11edb70401d65",
+  "version": "1.2.7",
+  "license": "Apache-2.0"
+}
