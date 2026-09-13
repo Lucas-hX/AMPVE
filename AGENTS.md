@@ -1,6 +1,6 @@
 # Working on AMPVE
 
-Current device milestone: the native stock-preserving candidate and browser audit/backup/gated installer are implemented. No release is approved for physical installation yet; exact stock bootloader/C6 review and local comparison remain pending. See docs/runbooks/BROWSER_INSTALLATION.md. Pairing/heartbeat/settings are implemented; board audio/OTA remain pending. See docs/runbooks/NATIVE_FIRMWARE.md. See [docs/runbooks/DEVICES.md](docs/runbooks/DEVICES.md).
+Current device milestone: the native stock-preserving candidate and browser audit/backup/gated installer are implemented. No release is approved for physical installation yet; exact stock bootloader/C6 review and local comparison remain pending. See docs/runbooks/BROWSER_INSTALLATION.md. The 7B RAM-only C6 diagnostic and bounded recovery comparison/executor are described in docs/runbooks/C6_DIAGNOSTIC_RECOVERY.md; physical diagnostic/restore evidence is still pending. Current validation scope is the 7B profile only; other profiles are deferred. Pairing/heartbeat/settings are implemented; board audio/OTA remain pending. See docs/runbooks/NATIVE_FIRMWARE.md. See [docs/runbooks/DEVICES.md](docs/runbooks/DEVICES.md).
 Task tracking: use [the ESP32 Project](https://github.com/users/Lucas-hX/projects/10), [tracking issue #6](https://github.com/Lucas-hX/AMPVE/issues/6) and [docs/PROJECT_TRACKING.md](docs/PROJECT_TRACKING.md) for scope, dependencies and evidence-based status updates. The active roadmap is ESP32-only; Raspberry Pi remains future work.
 
 ## Read this first

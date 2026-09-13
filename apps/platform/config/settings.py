@@ -78,3 +78,5 @@ SECURE_HSTS_PRELOAD = False
 SECURE_CONTENT_TYPE_NOSNIFF = True
 X_FRAME_OPTIONS = 'DENY'
 EMAIL_BACKEND = 'django.core.mail.backends.dummy.EmailBackend'
+
+C6_PROBE_ROOT = CONFIG.get("c6_probe_root", "/home/ampve/.local/state/ampve/c6-probe-unselected")
