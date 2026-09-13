@@ -1,5 +1,14 @@
 # First Waveshare 7B installation handoff
 
+## First registered physical device — 2026-09-13
+
+The owner reports successful browser onboarding and the first registered device on 0.1.13. Read-only server inspection confirms a recent authenticated Wi-Fi heartbeat, reported firmware `0.1.13-scheduler-fix-dev`, configuration version 1 and acknowledgement version 1. The initially displayed `0 · Pending` was a page snapshot before acknowledgement; the device already acknowledged the configuration. The detail page requires refresh to display newer reports. This validates the observed registration/heartbeat/settings round trip, not every peripheral, audio, OTA or physical restoration. No DeviceFirmware identity row was present at inspection; firmware-update readiness is not inferred from the version string. The owner reports touch/Home-navigation problems; reproduction details are pending.
+
+A preceding startup report expected 0.1.13 but contained the known 0.1.12 ELF prefix `c441d686a`. The browser now distinguishes expected, different-known and unresolved observed builds. A captured panic pauses only the positively correlated observed app, never a newer candidate merely selected as the expectation. ELF correlation is diagnostic only; signature, current-device and write/readback gates remain unchanged. Startup failures also retain the installation result when this tab has one for the same port and expected app, distinguishing an unperformed write from a verified write followed by an unexpected boot.
+
+Backup preparation now reports separate layout, capture-record and original-slot failures. The empty-area requirement applies to the original saved backup, not the connected board; an existing known AMPVE installation remains eligible for the reviewed replacement route. The picker explicitly requests the pre-installation .bin copies and their original audit-private.json. No firmware update is introduced by these browser corrections.
+
+
 ## Idle-task allocation failure — 2026-09-13
 
 The owner's expanded 0.1.12 report matches ELF `c441d686a` and identifies `vApplicationGetIdleTaskMemory`, `port_common.c:53`. The exact pinned SDK asserts a non-null idle task control block there; its allocator requires internal 8-bit memory. This is before `app_main`, so Wi-Fi, dashboard pairing and AMPVE peripheral initialization have not run. The report does not measure the remaining heap or prove which earlier allocation exhausted it.

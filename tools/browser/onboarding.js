@@ -12,7 +12,7 @@ import {prepareRecovery,validateRecovery,executeRecovery} from './recovery.js';
 const root=document.querySelector('#firmware-setup');
 if(root) {
   const get=id=>document.getElementById(id),status=get('setup-status'),meter=get('setup-progress'),detail=get('setup-progress-detail');
-  let reinstallReference,failedRuntimeHash=null;
+  let reinstallReference,failedRuntimeHash=null,installationEvidence=null;
   let wifi,c6Observation,recoveryPlan,installedRuntime,recoveryMode=false,currentFlashChanged=false;
   const downloadUrls=new Map();
   function downloadLink(id,summary){
@@ -71,17 +71,19 @@ if(root) {
       status.textContent=error.name==='AbortError'?'Stopped. Incomplete reads are not valid backups.':
         error.userMessage||'Setup stopped. Check the cable, programming port and current operation. No installation is approved by a failed check.';
       if(error.startupSummary){
+        if(installationEvidence?.port===port&&installationEvidence.summary.expected_app_sha256===error.startupSummary.expected_app_sha256)error.startupSummary.installation_result=installationEvidence.summary;
         downloadLink('export-runtime-review',error.startupSummary);downloadLink('export-install-result',error.startupSummary);
         // A startup failure is not a failed flash. Preserve session evidence and the installed identity.
-        if(error.startupSummary.observations.includes('panic'))failedRuntimeHash=error.startupSummary.expected_app_sha256;
+        if(error.startupSummary.observations.includes('panic')&&error.startupSummary.observed_app_sha256)failedRuntimeHash=error.startupSummary.observed_app_sha256;
         show('wifi-step');
         get('runtime-status').textContent='Startup needs attention. Restart and check AMPVE over USB to collect the failure location; this does not reinstall firmware.';
-        status.textContent=failedRuntimeHash?'AMPVE stopped during startup. Reinstalling this same version is paused.':'AMPVE startup was not confirmed. Check it again over USB.';
+        status.textContent=error.startupSummary.build_identity==='different_known_build'?'The board reported a different AMPVE build. Startup of the selected version has not been confirmed.':error.startupSummary.build_identity==='expected_build'&&failedRuntimeHash?'AMPVE stopped during startup. Reinstalling this same version is paused.':'AMPVE startup was not confirmed. The running build could not be identified.';
+        if(error.startupSummary.build_identity==='different_known_build')get('runtime-status').textContent='Checking startup does not install firmware. Use the installation step for the selected version. If its writes were already verified, keep the installation result for startup-selection diagnosis.';
       }
       detail.textContent=writing?'A write may be incomplete. Keep your recovery files; use the reviewed USB recovery procedure.':
         'If AMPVE did not start, use Repair or reinstall AMPVE. Keep the original backups. Use the USB TO UART port; an accessible RESET button is not required for the first automatic reconnect attempt.';
       if(error.installationSummary){
-        downloadLink('export-install-result',error.installationSummary);
+        installationEvidence={port,summary:error.installationSummary};downloadLink('export-install-result',error.installationSummary);
         if(error.installationSummary.app_readback_verified&&error.installationSummary.selection_readback_verified){
           installedRuntime={version:error.installationSummary.expected_version,sha256:error.installationSummary.expected_app_sha256};
           show('wifi-step');
@@ -311,7 +313,7 @@ if(root) {
       const latest=await verifyRelease(await response.json());
       ensure(JSON.stringify(latest)===JSON.stringify(policy),'Release or publisher trust changed; prepare a new plan.');
       if(reinstallReference){const previous=await fetch(root.dataset.release+'?recovery=1',{cache:'no-store'});ensure(previous.ok && JSON.stringify(await verifyRelease(await previous.json()))===JSON.stringify(reinstallReference),'Previous release or publisher trust changed; prepare again.');}
-    });downloadLink('export-install-result',installed.installation_summary);await close();
+    });installationEvidence={port,summary:installed.installation_summary};downloadLink('export-install-result',installed.installation_summary);await close();
     writing=false;recoveryMode=false;currentFlashChanged=false;get('cancel-setup').disabled=false;
     const expectedVersion=policy.firmware_version;
     const usbAssisted=allowsUsbCommissioning(policy);

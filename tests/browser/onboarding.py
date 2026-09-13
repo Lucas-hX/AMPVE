@@ -213,11 +213,13 @@ with tempfile.TemporaryDirectory(prefix='ampve-browser-fixture-') as directory,s
     assert page.locator('#check-startup').is_enabled()
     assert page.locator('#connect-wifi').is_disabled()
     assert page.locator('#install-ampve').is_disabled()
-    assert 'same version is paused' in page.locator('#setup-status').inner_text()
+    assert 'different AMPVE build' in page.locator('#setup-status').inner_text()
     failure_status=page.locator('#setup-status').inner_text()
     with page.expect_download() as result_download:page.locator('#export-install-result').click()
     failure=json.loads(Path(result_download.value.path()).read_text())
     assert failure['kind']=='ampve-usb-startup-failure' and failure['capture_stop']=='panic_captured'
+    assert failure['build_identity']=='different_known_build'
+    assert failure['observed_app_sha256']=='9431969a70d060db94f92a11873ce5200d597a6df199ceeed90c80de2deae33e'
     assert failure['assertion_locations']==[{'function':'fixture_init','file':'fixture.c','line':42}]
     assert 'private' not in json.dumps(failure)
     page.locator('#check-startup').click()
