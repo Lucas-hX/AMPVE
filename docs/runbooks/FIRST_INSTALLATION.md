@@ -1,5 +1,17 @@
 # First Waveshare 7B installation handoff
 
+## Buffered serial receiver — 2026-09-13
+
+The next owner attempt stopped with `flash_packet_incomplete` after 1,495,040 bytes; the failing 64 KiB read began at 1,441,792 and had accepted 53,248 bytes. No write was attempted. The report did not record the unexpected packet's actual length, so it cannot establish whether the cause was an empty SLIP frame, dropped bytes, corruption or another transport problem.
+
+Local inspection of pinned esptool-js 0.6.1 found that `Transport.read()` reallocates/copies the accumulated decoded frame for each byte and the inherited receive loop silently continues after Web Serial overrun/framing errors. A measured 4,096-byte decode made 4,096 append calls and copied 8,390,656 accumulated bytes. This is concrete implementation overhead, not proof of the physical failure's cause.
+
+The audit/install reader now uses a small `BufferedTransport` subclass while retaining the pinned loader, framing writer and reset strategies. It explicitly configures a 64 KiB Web Serial buffer at both initial connection and baud changes ([Chrome's bufferSize documentation](https://developer.chrome.com/docs/capabilities/serial)). It holds one stream reader until close/error, bounds pending input to 256 KiB, and decodes SLIP linearly into an 8 KiB maximum packet buffer. Split escape sequences, multiple frames and empty delimiter runs are handled without per-byte append allocations. Non-empty short flash packets still fail; no data is stitched across invalid frame boundaries. Timeouts and malformed framing remain fatal to the operation, with no raw serial contents in errors.
+
+Overrun/framing/parity/disconnection errors now terminate the receiver with fixed diagnostic codes instead of silently continuing after lost bytes. `packet_bytes` records the actual decoded packet length when available; `transport_revision: buffered-slip-v1` identifies the active receiver in subsequent results. Existing complete-transaction MD5 retries and all image/protected-region/readback checks remain unchanged. Baud rate, firmware and write regions are unchanged.
+
+Validation: 66 Node tests, including a 32 MiB framed decoder workload, split escapes, malformed/oversized frames, partial-frame timeout, one-reader lifecycle across reconnects, overrun/queue limits, and the actual buffered receiver feeding fragmented data through `readChunk` with all acknowledgements and terminal MD5. Rendered Chromium onboarding remains covered. The new decoder makes zero per-byte append calls in the measured 4 KiB case. Physical USB stability/startup and real elapsed time remain unverified.
+
 ## Bounded USB transfer retries — 2026-09-13
 
 The owner clarified the stopped preflight message: `Flash transfer MD5 mismatch`. The report recorded 20,512,768 received bytes and 533,247 ms with `write_attempted=false`; this was a transfer-integrity failure before any flash write, not evidence of a user cancellation or a protected-region mismatch. The earlier report did not distinguish a malformed terminal digest from an actual digest disagreement. The physical reason for the USB transfer error is not established.

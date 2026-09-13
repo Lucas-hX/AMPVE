@@ -1,4 +1,5 @@
-import {ESPLoader, Transport} from 'esptool-js';
+import {ESPLoader} from 'esptool-js';
+import {BufferedTransport} from './serial-transport.js';
 import {createSHA256, md5, sha256} from 'hash-wasm';
 import {HARDWARE_PROFILE, PARTITIONS} from './profile.js';
 
@@ -115,7 +116,7 @@ export function decodeSecurity(bytes) {
   return {flash_crypt_cnt:bytes[4],parsed_flags:{SECURE_BOOT_EN:false,SECURE_BOOT_AGGRESSIVE_REVOKE:false,SECURE_DOWNLOAD_ENABLE:false}};
 }
 
-export async function openReader(port, {Loader=ESPLoader,SerialTransport=Transport,baud=460800,stub=true}={}) {
+export async function openReader(port, {Loader=ESPLoader,SerialTransport=BufferedTransport,baud=460800,stub=true}={}) {
   const transport=new SerialTransport(port,false);
   const loader=new Loader({transport,baudrate:baud,debugLogging:false,terminal:{clean(){},write(){},writeLine(){}}});
   try {
@@ -141,12 +142,12 @@ export async function openReader(port, {Loader=ESPLoader,SerialTransport=Transpo
 // Use its transport/command implementation with Espressif's documented stub READ_FLASH
 // framing, bounded buffers and the digest check used by Python esptool 5.4.0.
 const readRetries=new WeakMap();
-export function readTransferDiagnostics(reader){return {read_retry_count:readRetries.get(reader)||0};}
+export function readTransferDiagnostics(reader){return {read_retry_count:readRetries.get(reader)||0,transport_revision:reader.transport instanceof BufferedTransport?'buffered-slip-v1':'custom'};}
 export async function readChunk(reader, offset, size, signal, onProgress=()=>{}) {
   aborted(signal);
   ensure(size>0 && size<=BLOCK && !(size%4096),'Invalid bounded read.');
   for(let attempt=1;attempt<=3;attempt++){
-    let received=0,stage='command';
+    let received=0,stage='command',packetBytes=null;
     try{
       aborted(signal);
       await reader.loader.checkCommand('read flash',reader.loader.ESP_READ_FLASH,words(offset,size,4096,64));
@@ -154,6 +155,7 @@ export async function readChunk(reader, offset, size, signal, onProgress=()=>{})
       while(received<size){
         aborted(signal);stage='data';
         const packet=await reader.transport.read(5000);
+        packetBytes=packet instanceof Uint8Array?packet.length:null;
         ensure(packet instanceof Uint8Array && packet.length===Math.min(4096,size-received),
           'Incomplete flash packet. USB reading stopped.','flash_packet_incomplete');
         output.set(packet,received);received+=packet.length;stage='acknowledgement';
@@ -174,9 +176,11 @@ export async function readChunk(reader, offset, size, signal, onProgress=()=>{})
       }
       ensure(false,'Flash transfer MD5 mismatch after bounded retries. Nothing from this block was accepted.','flash_transfer_md5_mismatch');
     }catch(error){
-      const codes=['flash_packet_incomplete','flash_digest_incomplete','flash_transfer_md5_mismatch'];
+      const codes=['flash_packet_incomplete','flash_digest_incomplete','flash_transfer_md5_mismatch','serial_buffer_overrun',
+        'serial_framing_error','serial_parity_error','serial_break','serial_disconnected','serial_stream_closed',
+        'serial_queue_limit','serial_receive_error','serial_packet_timeout','serial_packet_head','serial_packet_escape','serial_packet_limit'];
       error.readFailure={code:codes.includes(error.code)?error.code:error.name==='AbortError'?'read_cancelled':'flash_read_transport',
-        offset,size,attempt,received_bytes:received,stage};
+        offset,size,attempt,received_bytes:received,packet_bytes:packetBytes,stage};
       throw error;
     }
   }
