@@ -9,6 +9,7 @@
 #include "wifi_board.h"
 #include "audio_codec.h"
 #include "ampve/boot_guard.h"
+#include "ampve/improv_platform.h"
 #include "wifi_manager.h"
 #include "display.h"
 #include "esp_lvgl_port.h"
@@ -323,13 +324,15 @@ static void worker(void*) {
         const auto now=esp_timer_get_time();
         if(wifi_requested.exchange(false)){
             static_cast<WifiBoard&>(Board::GetInstance()).EnterWifiConfigMode();
+            if(WifiManager::GetInstance().IsConfigMode())ap_started=now;
+            ampve_improv_authorize();
             show_pair_page();
         }
         auto& wifi=WifiManager::GetInstance();
         const bool connected=wifi.IsConnected();
         if(wifi.IsConfigMode()){
             if(!ap_started)ap_started=now;
-            if(now-ap_started>300000000){wifi.StopConfigAp();wifi.StartStation();ap_started=0;message("Wi-Fi setup closed after five minutes. Open it locally to retry.");}
+            if(now-ap_started>300000000){wifi.StopConfigAp();wifi.StartStation();if(!wifi.IsConfigMode()){ap_started=0;message("Wi-Fi setup closed after five minutes. Open it locally to retry.");}}
         }else ap_started=0;
         {std::lock_guard<std::mutex> lock(ui_mutex);
             network_text=!ampve_wifi_initialized?"Wi-Fi initialization unavailable":connected?"Wi-Fi connected":wifi.IsConfigMode()?"Wi-Fi setup open":"Wi-Fi offline";}
@@ -524,6 +527,7 @@ void ampve_runtime_start() {
         std::to_string(esp_psram_get_size()/(1024*1024))+" MiB\nDisplay 1024 x 600 | microphone capture disabled";
     create_ui();
     board.StartNetwork();
+    if(!ampve_improv_start())message("USB Wi-Fi setup unavailable. Use the local setup portal.");
     if(xTaskCreate(worker,"ampve_management",16384,nullptr,3,nullptr)!=pdPASS)
         message("Management task unavailable. Restart after reviewing diagnostics.");
 }

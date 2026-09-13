@@ -1,6 +1,7 @@
 """Apply the reviewed integration to an isolated pinned XiaoZhi checkout; never flash."""
 import argparse
 import os
+from improv_integration import prepare as prepare_improv
 from credential_guard import prepare as prepare_credentials
 from wifi_guard import prepare as prepare_wifi
 from board_guard import prepare as prepare_board
@@ -86,6 +87,8 @@ def prepare(work):
         replace(cmake,'set(PROJECT_VER "0.1.8-display-guard-dev")',f'set(PROJECT_VER "{UPSTREAM["candidate_version"]}")')
     if 'set(PROJECT_VER "0.1.8-startup-guard-dev")' in cmake.read_text():
         replace(cmake,'set(PROJECT_VER "0.1.8-startup-guard-dev")',f'set(PROJECT_VER "{UPSTREAM["candidate_version"]}")')
+    if 'set(PROJECT_VER "0.1.9-wifi-storage-dev")' in cmake.read_text():
+        replace(cmake,'set(PROJECT_VER "0.1.9-wifi-storage-dev")',f'set(PROJECT_VER "{UPSTREAM["candidate_version"]}")')
     if f'set(PROJECT_VER "{UPSTREAM["candidate_version"]}")' not in cmake.read_text():
         raise RuntimeError('Prepared project version differs from the candidate version')
     component=work/'main/idf_component.yml'
@@ -109,8 +112,12 @@ def prepare(work):
     if '    wifi_manager.Initialize(config);' in wifi_board.read_text():
         replace(wifi_board,'    wifi_manager.Initialize(config);',
             '    ampve_wifi_initialized = wifi_manager.Initialize(config);\n    if (!ampve_wifi_initialized) { ESP_LOGE(TAG, "Wi-Fi driver initialization failed; startup remains unconfirmed"); return; }')
+    if '"ampve/improv_service.cc"' not in component_cmake.read_text():
+        replace(component_cmake,'set(SOURCES ', 'set(SOURCES "ampve/improv_service.cc" "ampve/improv_platform.cc" ')
+        replace(component_cmake,'PRIV_REQUIRES\n','PRIV_REQUIRES\n                        ampve_improv_sdk esp_driver_uart\n')
     prepare_wifi(work)
     prepare_credentials(work)
+    prepare_improv(work)
     if 'SsidManager::GetInstance().IsStorageReady()' not in wifi_board.read_text():
         replace(wifi_board,'    // Set unified event callback',
             '    if (!SsidManager::GetInstance().IsStorageReady()) { ampve_wifi_initialized = false; ESP_LOGE(TAG, "Wi-Fi credentials unavailable; data preserved"); return; }\n\n    // Set unified event callback')

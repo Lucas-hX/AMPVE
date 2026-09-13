@@ -1,10 +1,12 @@
 import {openReader,readChunk,captureRead,compareBackups,parseTable,matchesStock,ensure,sha256,FLASH_BYTES} from './audit.js';
 import {verifyRelease,makePlan,executePlan} from './install.js';
+import {openWifi,validCredentials} from './wifi.js';
 import {CONTRACT} from './profile.js';
 
 const root=document.querySelector('#firmware-setup');
 if(root) {
   const get=id=>document.getElementById(id),status=get('setup-status'),meter=get('setup-progress'),detail=get('setup-progress-detail');
+  let wifi;
   let port,reader,report,backup,plan,policy,busy=false,controller,writing=false,phaseStart=0,lastPhase='',lastPaint=0;
   const actions=[...root.querySelectorAll('button[data-action]')];
   function progress(phase,done,total) {
@@ -25,13 +27,18 @@ if(root) {
     get('prepare-install').disabled=busy||!report;
     get('install-ampve').disabled=busy||!plan?.recovery_saved||!port||
       !get('approve-plan').checked||!get('separate-copy').checked||!get('rom-recovery').checked;
-    get('cancel-setup').disabled=!busy||writing;
+    get('cancel-setup').disabled=!busy||writing||!controller;
     get('import-backups').disabled=busy;
+    get('connect-wifi').disabled=busy||!navigator.serial;
+    get('send-wifi').disabled=busy||wifi?.state!==2;
+    get('close-wifi').disabled=busy||!wifi;
+    get('wifi-password').disabled=busy;
+    get('wifi-ssid').disabled=busy;
   }
-  async function close(){if(reader){await reader.transport.disconnect().catch(()=>{});reader=null;}}
-  async function run(task) {
-    if(busy)return;busy=true;writing=false;controller=new AbortController();lastPhase='';sync();
-    try{await task(controller.signal);}catch(error){
+  async function close(){if(wifi){const active=wifi;wifi=null;await active.close().catch(()=>{});}if(reader){await reader.transport.disconnect().catch(()=>{});reader=null;}}
+  async function run(task,cancellable=true) {
+    if(busy)return;busy=true;writing=false;controller=cancellable?new AbortController():null;lastPhase='';sync();
+    try{await task(controller?.signal);}catch(error){
       // Never display raw transport data or exception messages from serial libraries.
       status.textContent=error.name==='AbortError'?'Stopped. Incomplete reads are not valid backups.':
         error.userMessage||'Setup stopped. Check the cable, programming port and current operation. No installation is approved by a failed check.';
@@ -159,9 +166,30 @@ if(root) {
       ensure(JSON.stringify(latest)===JSON.stringify(policy),'Release or publisher trust changed; prepare a new plan.');
     });await close();plan=null;
     status.textContent='Firmware written and read back. Check the board screen to confirm startup.';
-    detail.textContent='Open Wi-Fi on the board, join its temporary protected network, then return here and enter the AMPVE pairing code. USB write success does not prove physical startup or pairing.';
+    detail.textContent='Open Wi-Fi on the board and use USB Wi-Fi setup below or its temporary protected network. Then enter the AMPVE pairing code. USB write success does not prove physical startup or pairing.';
     get('pairing-step').scrollIntoView({behavior:'smooth'});
   });
+  function wifiState(state){
+    const labels={1:'Open Wi-Fi on the board to allow setup for five minutes.',2:'The board allows Wi-Fi setup. Enter your 2.4 GHz network.',3:'Checking and saving Wi-Fi. Keep the board connected.',4:'The board reports a Wi-Fi connection. Continue with its AMPVE pairing code.'};
+    get('wifi-status').textContent=labels[state]||'USB Wi-Fi disconnected. Reconnect to check the board.';
+    sync();
+  }
+  get('connect-wifi').onclick=()=>run(async()=>{
+    const selected=await navigator.serial.requestPort();
+    await close();port=selected;plan=null;
+    get('wifi-status').textContent='Connecting to the running AMPVE firmware…';
+    // Select before awaiting transport work. No reset/download-mode commands are sent.
+    wifi=await openWifi(port,wifiState);wifiState(wifi.state);
+  },false);
+  get('send-wifi').onclick=()=>run(async()=>{
+    const ssid=get('wifi-ssid').value,password=get('wifi-password').value;
+    get('wifi-password').value='';
+    ensure(wifi?.state===2&&validCredentials(ssid,password),'Open Wi-Fi on the board and check the network name/password lengths.');
+    get('wifi-status').textContent='Waiting for the board to save and reconnect…';
+    try{await wifi.provision(ssid,password);wifiState(wifi.state);}
+    catch(error){get('wifi-status').textContent='Wi-Fi was not confirmed. Check the board and reopen local setup before retrying.';throw error;}
+  },false);
+  get('close-wifi').onclick=()=>run(async()=>{get('wifi-password').value='';await close();wifiState(undefined);},false);
   get('cancel-setup').onclick=()=>{if(!writing)controller?.abort();};
   for(const id of ['approve-plan','separate-copy','rom-recovery'])get(id).addEventListener('change',sync);
   navigator.serial?.addEventListener('disconnect',event=>{if(event.target===port&&!busy){port=null;plan=null;close();status.textContent='Selected board disconnected. Reconnect before continuing.';sync();}});
