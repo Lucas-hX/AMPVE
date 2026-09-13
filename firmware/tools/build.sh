@@ -28,6 +28,11 @@ if [[ -f sdkconfig ]] && grep -q '^CONFIG_PM_SLEEP_CLK_ICG_ENABLE=y$' sdkconfig;
     cp sdkconfig sdkconfig.pre-startup-retention-fix
     sed -i 's/^CONFIG_PM_SLEEP_CLK_ICG_ENABLE=y$/# CONFIG_PM_SLEEP_CLK_ICG_ENABLE is not set/' sdkconfig
 fi
+# Preserve AMPVE's runtime stack, but allocate it only after IDF reclaims startup RAM.
+if [[ -f sdkconfig ]] && grep -q '^CONFIG_ESP_MAIN_TASK_STACK_SIZE=16384$' sdkconfig; then
+    cp sdkconfig sdkconfig.pre-scheduler-stack-fix
+    sed -i 's/^CONFIG_ESP_MAIN_TASK_STACK_SIZE=16384$/CONFIG_ESP_MAIN_TASK_STACK_SIZE=4096/' sdkconfig
+fi
 if [[ ! -d components/78__esp-wifi-connect ]]; then
     idf.py -DIDF_TARGET=esp32p4 reconfigure
     "$AMPVE_TOOL_PYTHON" "$AMPVE_ROOT/firmware/tools/provisioning.py" --work "$AMPVE_WORK"

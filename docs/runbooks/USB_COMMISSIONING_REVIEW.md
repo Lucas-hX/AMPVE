@@ -39,3 +39,10 @@ The same installation action now admits an already-written known AMPVE image aft
 ## Single-pass preflight revision
 
 Initial installation and known-image reinstall now perform one complete live flash comparison immediately before publisher revalidation and writes on the same stopped ROM connection. Image identity and protected-region checks consume that same byte stream; no preparation-time device scan or second complete comparison is required. There is no intervening device reset or application execution. Written regions are independently read back as before. Installation results distinguish write/readback failures from reset failure after both verified writes; no physical success is inferred. See FIRST_INSTALLATION.md for software byte-count and failure-injection evidence.
+
+
+## Early scheduler allocation revision
+
+The 0.1.13 candidate addresses the observed idle-TCB allocation failure by reducing the pre-scheduler main stack, then allocating AMPVE's unchanged 16 KiB runtime stack after IDF's normal startup-memory reclamation. See NATIVE_FIRMWARE.md for the exact allocation order and remaining uncertainty. Heap checkpoints contain only fixed phases and bounded numeric counts. The SDK pin, memory allocator, assertions, 32 MiB flash profile, stock bootloader/table preservation, C6 firmware and USB core acceptance criteria remain unchanged. This is an initial-install development trial; physical success and OTA acceptance remain pending.
+
+The selected previous signed reference for this transition is 0.1.12, matching the image observed on the owner's device. Original-backup recovery and known-image comparison use the union of the new/previous rounded application spans, still preserving the original boot record and protected areas. The older 0.1.11 release remains privately archived; selecting a reference is an administrator-controlled configuration, not a browser-supplied artifact or path.
