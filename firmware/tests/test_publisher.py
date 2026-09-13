@@ -89,6 +89,31 @@ class PublisherTests(unittest.TestCase):
         self.assertEqual(read_release(output,trust_path)[1],release_id)
         with self.assertRaises(FileExistsError):self.run_publish()
 
+    def add_notes(self,raw):
+        (self.candidate/'release-notes.txt').write_bytes(raw)
+        path=self.candidate/'review-manifest.json';manifest=json.loads(path.read_bytes())
+        manifest['release_notes']={'file':'release-notes.txt','size':len(raw),'sha256':hashlib.sha256(raw).hexdigest()}
+        path.write_bytes(canonical(manifest));(self.root/'candidate.zip').unlink()
+        archive_tree(self.candidate,self.root/'candidate.zip')
+
+    def test_notes_are_bound_to_signed_archive_and_trust(self):
+        raw=b'Fixture improvements\n<literal text>\n';self.add_notes(raw)
+        _,output=self.run_publish();trust=self.root/'trust.json';trust.write_bytes(canonical(self.trust))
+        self.assertEqual(read_release(output,trust,include_notes=True)[5],raw.decode())
+        self.assertEqual(len(read_release(output,trust)),5)
+        self.trust['keys']['fixture-key']['revoked']=True;trust.write_bytes(canonical(self.trust))
+        with self.assertRaises(ValueError):read_release(output,trust,include_notes=True)
+        self.trust['keys']['fixture-key']['revoked']=False;trust.write_bytes(canonical(self.trust))
+        (output/'review.zip').chmod(0o644)
+        with zipfile.ZipFile(output/'review.zip','a') as bundle:bundle.writestr('unexpected.txt','tampered')
+        with self.assertRaises(ValueError):read_release(output,trust,include_notes=True)
+
+    def test_malformed_notes_do_not_consume_a_sequence_or_publish(self):
+        self.add_notes(b'bad\x00notes')
+        with self.assertRaises(ValueError):self.run_publish()
+        self.assertFalse((self.root/'publisher-ledger.sqlite3').exists())
+        self.assertFalse((self.root/'release').exists())
+
     def test_corruption_or_missing_evidence_never_publishes(self):
         (self.candidate/'xiaozhi.bin').write_bytes(self.app[:-1]+b'!')
         with self.assertRaises(ValueError):self.run_publish()

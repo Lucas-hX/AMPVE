@@ -74,6 +74,14 @@ def publish(candidate, review_file, key_file, output, ledger_file):
         for filename,field in [('sdkconfig','sdkconfig_sha256'),('dependencies.lock','dependency_lock_sha256')]:
             if sha256(bundle.read(filename))!=manifest[field]:
                 raise ValueError('Archived build provenance differs from the review')
+    from workspace.release_notes import archived_notes
+    notes=archived_notes(archive) # Validate before reserving a publisher sequence.
+    if notes is not None:
+        raw=notes.encode('utf-8')
+        if manifest.get('release_notes')!={'file':'release-notes.txt','size':len(raw),'sha256':sha256(raw)} or (candidate/'release-notes.txt').read_bytes()!=raw:
+            raise ValueError('Archived release notes differ from candidate provenance')
+    elif manifest.get('release_notes') is not None:
+        raise ValueError('Declared release notes are missing from the review archive')
     app_metadata={'sha256':sha256(app),'size':len(app)}
     if review['purpose']=='initial-install':app_metadata['offset']=0xe00000
     policy={'schema':2,**{k:v for k,v in review.items() if k!='app_sha256'},

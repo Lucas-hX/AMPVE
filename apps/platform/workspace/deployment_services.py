@@ -18,13 +18,14 @@ def verified_release(release, purpose=None):
     if release.revoked_at:
         raise DeploymentError('This release has been withdrawn.')
     try:
-        policy, identity, public_key, envelope, floor = read_release(Path(release.directory),Path(settings.FIRMWARE_PUBLISHER_TRUST))
+        policy, identity, public_key, envelope, floor, notes = read_release(Path(release.directory),Path(settings.FIRMWARE_PUBLISHER_TRUST),include_notes=True)
         if identity != release.pk or canonical(policy) != canonical(release.policy) or policy['sequence'] != release.sequence or sha256(canonical(policy['compatibility'])) != release.scope or policy['channel'] != release.channel:
             raise ValueError()
         if purpose is not None and policy['purpose'] != purpose:
             raise ValueError()
     except Exception as error:
         raise DeploymentError('The signed release, trust or artifact is no longer available.') from error
+    release.release_notes=notes
     return policy, envelope, public_key, floor
 
 
