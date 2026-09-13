@@ -16,6 +16,7 @@ from .models import Device, DeviceEnrollment
 from .forms import ClaimDeviceForm, DeviceSettingsForm
 from .device_services import PROFILE, HARDWARE_NAME, allowed, begin_enrollment, claim, exchange, digest
 from .security import client_ip
+from .hardware_reports import validate_report, display_report
 
 
 def context(**extra):
@@ -66,7 +67,7 @@ def detail(request, pk):
                 device.save()
                 messages.success(request, 'Settings saved. They take effect only after device acknowledgement.')
                 return redirect('device_detail', pk=pk)
-    return render(request, 'workspace/device_detail.html', context(title=device.name, device=device, form=form))
+    return render(request, 'workspace/device_detail.html', context(title=device.name, device=device, form=form, capabilities=display_report(device.hardware_report)))
 
 
 @never_cache
@@ -143,13 +144,14 @@ def enrollment_exchange(request, data, pk):
 def heartbeat(request, data, pk):
     token = bearer(request)
     required = {'protocol', 'firmware_version', 'chip_revision', 'transport', 'acknowledged_version'}
-    if set(data) != required or data['protocol'] != 1:
+    if not required <= set(data) or set(data) - required - {'hardware_report'} or type(data['protocol']) is not int or data['protocol'] != 1:
         raise ValueError()
     for field, length in [('firmware_version', 80), ('chip_revision', 20)]:
         if not isinstance(data[field], str) or not re.fullmatch(r'[A-Za-z0-9._+-]{1,' + str(length) + '}', data[field]):
             raise ValueError()
     if data['transport'] not in ['wifi', 'ethernet'] or type(data['acknowledged_version']) is not int:
         raise ValueError()
+    report = validate_report(data['hardware_report']) if 'hardware_report' in data else None
     with transaction.atomic():
         device = Device.objects.select_for_update().select_related('owner').filter(pk=pk).first()
         if not device or device.revoked_at or not device.owner.is_active or not device.credential_hash or not constant_time_compare(device.credential_hash, digest(token)):
@@ -160,6 +162,9 @@ def heartbeat(request, data, pk):
         if device.last_seen and (timezone.now() - device.last_seen).total_seconds() < 5:
             return JsonResponse({'error': 'Poll every 30 seconds.'}, status=429)
         device.last_seen = timezone.now()
+        if report is not None:
+            device.hardware_report = report
+            device.hardware_reported_at = device.last_seen
         for field in ['firmware_version', 'chip_revision', 'transport', 'acknowledged_version']:
             setattr(device, field, data[field])
         device.save()
@@ -167,3 +172,9 @@ def heartbeat(request, data, pk):
             'configuration': {'version': device.config_version, 'name': device.name,
                 'volume': device.volume, 'microphone_muted': device.microphone_muted},
             'audio_available': False, 'ota_available': False})
+
+
+@never_cache
+@login_required
+def interface_preview(request):
+    return render(request, 'workspace/interface_preview.html', context(title='A little space for possibility.'))

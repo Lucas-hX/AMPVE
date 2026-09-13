@@ -13,6 +13,7 @@ urlpatterns = [
     path('home/', views.page, name='home'),
     path('devices/', device_views.devices, name='devices'),
     path('devices/add/', device_views.onboarding, name='onboarding'),
+    path('devices/interface-preview/', device_views.interface_preview, name='interface_preview'),
     path('devices/<uuid:pk>/', device_views.detail, name='device_detail'),
     path('devices/<uuid:pk>/revoke/', device_views.revoke, name='device_revoke'),
     path('api/devices/v1/enroll/', device_views.enrollment_start),
