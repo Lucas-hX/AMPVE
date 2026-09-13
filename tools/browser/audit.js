@@ -140,21 +140,46 @@ export async function openReader(port, {Loader=ESPLoader,SerialTransport=Transpo
 // The pinned esptool-js readFlash omits the terminal MD5 frame and accumulates by copying.
 // Use its transport/command implementation with Espressif's documented stub READ_FLASH
 // framing, bounded buffers and the digest check used by Python esptool 5.4.0.
+const readRetries=new WeakMap();
+export function readTransferDiagnostics(reader){return {read_retry_count:readRetries.get(reader)||0};}
 export async function readChunk(reader, offset, size, signal, onProgress=()=>{}) {
   aborted(signal);
   ensure(size>0 && size<=BLOCK && !(size%4096),'Invalid bounded read.');
-  await reader.loader.checkCommand('read flash',reader.loader.ESP_READ_FLASH,words(offset,size,4096,64));
-  const output=new Uint8Array(size); let received=0;
-  while(received<size) {
-    aborted(signal);
-    const packet=await reader.transport.read(5000);
-    ensure(packet instanceof Uint8Array && packet.length===Math.min(4096,size-received),'Incomplete flash packet; retry this read.');
-    output.set(packet,received); received+=packet.length;
-    await reader.transport.write(words(received)); onProgress(received);
+  for(let attempt=1;attempt<=3;attempt++){
+    let received=0,stage='command';
+    try{
+      aborted(signal);
+      await reader.loader.checkCommand('read flash',reader.loader.ESP_READ_FLASH,words(offset,size,4096,64));
+      const output=new Uint8Array(size);
+      while(received<size){
+        aborted(signal);stage='data';
+        const packet=await reader.transport.read(5000);
+        ensure(packet instanceof Uint8Array && packet.length===Math.min(4096,size-received),
+          'Incomplete flash packet. USB reading stopped.','flash_packet_incomplete');
+        output.set(packet,received);received+=packet.length;stage='acknowledgement';
+        await reader.transport.write(words(received));onProgress(received);
+      }
+      stage='digest';
+      const digest=await reader.transport.read(5000);
+      aborted(signal);
+      ensure(digest instanceof Uint8Array && digest.length===16,
+        'Incomplete flash transfer checksum. USB reading stopped.','flash_digest_incomplete');
+      if(hex(digest)===await md5(output))return output;
+      // All data, acknowledgements and the terminal digest have been consumed. Only
+      // this completed command can safely be retried without resetting the ROM stub.
+      // Never retry a partial frame, timeout, disconnect or unknown stream boundary.
+      if(attempt<3 && (readRetries.get(reader)||0)<8){
+        aborted(signal);readRetries.set(reader,(readRetries.get(reader)||0)+1);
+        continue;
+      }
+      ensure(false,'Flash transfer MD5 mismatch after bounded retries. Nothing from this block was accepted.','flash_transfer_md5_mismatch');
+    }catch(error){
+      const codes=['flash_packet_incomplete','flash_digest_incomplete','flash_transfer_md5_mismatch'];
+      error.readFailure={code:codes.includes(error.code)?error.code:error.name==='AbortError'?'read_cancelled':'flash_read_transport',
+        offset,size,attempt,received_bytes:received,stage};
+      throw error;
+    }
   }
-  const digest=await reader.transport.read(5000);
-  ensure(digest instanceof Uint8Array && digest.length===16 && hex(digest)===await md5(output),'Flash transfer MD5 mismatch.');
-  return output;
 }
 
 export async function captureRead(reader, handle, signal, progress) {

@@ -1,5 +1,15 @@
 # First Waveshare 7B installation handoff
 
+## Bounded USB transfer retries — 2026-09-13
+
+The owner clarified the stopped preflight message: `Flash transfer MD5 mismatch`. The report recorded 20,512,768 received bytes and 533,247 ms with `write_attempted=false`; this was a transfer-integrity failure before any flash write, not evidence of a user cancellation or a protected-region mismatch. The earlier report did not distinguish a malformed terminal digest from an actual digest disagreement. The physical reason for the USB transfer error is not established.
+
+`readChunk` now retries a block only after consuming all expected data, sending all acknowledgements and receiving the complete 16-byte terminal digest. A digest disagreement allows at most three attempts for that block and eight extra read attempts across the current connection. Hashing/comparison receives only a successful block, so a transient error does not discard preceding validated blocks or restart the full preflight. Packet/digest truncation, timeouts, disconnects and unknown command boundaries stop rather than issuing another potentially desynchronized command. Cancellation remains honored before a retry. This is read-only retry; no flash write is retried automatically.
+
+The installation result records a fixed read-failure code, block offset/size, attempt, received bytes and read stage, plus the connection retry count. Raw bytes, digests and transport exception text are excluded. The existing stopped attempt cannot resume retrospectively after its reader/state has been discarded; the optimization applies within a new attempt.
+
+Validation: 60 Node tests cover transient/persistent corruption, malformed packets, the per-block and connection limits, cancellation, continuation at the same mid-preflight block and zero writes after exhaustion. Rendered Chromium onboarding remains covered. Real USB reliability and physical installation/startup remain pending; firmware stays 0.1.12.
+
 ## Single-pass installation and retained results — 2026-09-13
 
 The owner reported more than one hour spent on repeated comparisons, followed by a generic possible-write warning. The supplied JSON is an imported-backup review, not installation evidence; clicking its download had replaced the actual operation error. The previous failure phase cannot be reconstructed from that report.

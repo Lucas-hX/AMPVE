@@ -481,3 +481,57 @@ test('write transport failure exports its actual phase without claiming a verifi
   assert.equal(error.installationSummary.preflight_bytes,FLASH_BYTES);
   assert.equal(error.userMessage.includes('PRIVATE'),false);
 });
+
+test('completed MD5 failure retries only that block; malformed frames and exhausted retries stop',async()=>{
+  const bytes=new Uint8Array(4096).fill(19),good=Uint8Array.from((await md5(bytes)).match(/../g),h=>parseInt(h,16));
+  for(const mode of ['transient','persistent','short']){
+    let commands=0,packets=[];
+    const reader={loader:{ESP_READ_FLASH:0xd2,checkCommand:async()=>{commands++;packets=mode==='short'?[bytes.slice(0,10)]:[bytes,mode==='transient'&&commands===2?good:new Uint8Array(16)];}},transport:{read:async()=>packets.shift(),write:async()=>{}}};
+    if(mode==='transient')assert.deepEqual(await readChunk(reader,0x1380000,4096),bytes);
+    else{
+      let failure;try{await readChunk(reader,0x1380000,4096);}catch(error){failure=error.readFailure;}
+      assert.equal(failure.code,mode==='short'?'flash_packet_incomplete':'flash_transfer_md5_mismatch');
+      assert.equal(failure.offset,0x1380000);assert.equal(failure.attempt,mode==='short'?1:3);
+    }
+    assert.equal(commands,mode==='transient'?2:mode==='short'?1:3);
+  }
+});
+test('read retry budget is bounded across the connection and cancellation prevents a retry',async()=>{
+  const bytes=new Uint8Array(4096).fill(19),good=Uint8Array.from((await md5(bytes)).match(/../g),h=>parseInt(h,16));
+  let commands=0,packets=[];
+  const reader={loader:{ESP_READ_FLASH:0xd2,checkCommand:async()=>{commands++;packets=[bytes,commands%2===0?good:new Uint8Array(16)];}},transport:{read:async()=>packets.shift(),write:async()=>{}}};
+  for(let i=0;i<8;i++)await readChunk(reader,i*4096,4096);
+  await assert.rejects(readChunk(reader,8*4096,4096));assert.equal(commands,17);
+  const controller=new AbortController();commands=0;
+  reader.loader.checkCommand=async()=>{commands++;packets=[bytes,new Uint8Array(16)];};
+  reader.transport.read=async()=>{const packet=packets.shift();if(packet.length===16)controller.abort();return packet;};
+  await assert.rejects(readChunk(reader,0,4096,controller.signal),{name:'AbortError'});assert.equal(commands,1);
+});
+test('mid-preflight USB corruption recovers without rereading earlier flash or accepting bad bytes',async()=>{
+  const {flash,plan,latest}=await reinstallFixture(),{reader,writes,reads}=flashFixture(flash);
+  const command=reader.loader.checkCommand,read=reader.transport.read;let corrupt=false,injected=false;
+  reader.loader.checkCommand=async(...args)=>{
+    await command(...args);const offset=new DataView(args[2].buffer).getUint32(0,true);
+    if(offset===0x1380000&&!injected){injected=true;corrupt=true;}
+  };
+  reader.transport.read=async(...args)=>{const packet=await read(...args);if(corrupt){corrupt=false;packet[0]^=1;}return packet;};
+  const result=await api.executeInstallOrReinstall(reader,plan,latest,installConsent);
+  assert.equal(result.installation_summary.read_retry_count,1);
+  assert.equal(reads.filter(read=>read.offset===0).length,1);
+  assert.equal(reads.filter(read=>read.offset===0x1380000).length,2);
+  assert.equal(reads.reduce((sum,read)=>sum+read.size,0),FLASH_BYTES+65536+8192+4096);
+  assert.deepEqual(writes,[0xe00000,0x10d000,'reset']);
+});
+
+test('persistent USB corruption reports the failed read block and never reaches a flash write',async()=>{
+  const {flash,plan,latest}=await reinstallFixture(),{reader,writes}=flashFixture(flash);
+  const command=reader.loader.checkCommand,read=reader.transport.read;let corrupt=false;
+  reader.loader.checkCommand=async(...args)=>{await command(...args);corrupt=new DataView(args[2].buffer).getUint32(0,true)===0x1380000;};
+  reader.transport.read=async(...args)=>{const packet=await read(...args);if(corrupt){corrupt=false;packet[0]^=1;}return packet;};
+  let error;try{await api.executeInstallOrReinstall(reader,plan,latest,installConsent);}catch(e){error=e;}
+  const result=error.installationSummary;
+  assert.equal(result.error_category,'flash_transfer_md5_mismatch');
+  assert.equal(result.phase,'preflight');assert.equal(result.write_attempted,false);
+  assert.equal(result.read_failure.offset,0x1380000);assert.equal(result.read_failure.attempt,3);
+  assert.equal(result.read_retry_count,2);assert.deepEqual(writes,[]);
+});
