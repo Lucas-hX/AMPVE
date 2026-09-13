@@ -4,7 +4,9 @@ Status: native source and build tooling merged in PR #5, followed by the stock-p
 
 ## Stock-preserving successor
 
-The active build now uses `7b-stock-v1.csv` and `0.1.1-stock-dev`. See [browser installation](BROWSER_INSTALLATION.md) and [ADR 0004](../decisions/0004-stock-preserving-browser-installation.md). The original 2026-09-13 layout-migration build and hashes below are historical evidence, not the current write plan. The current installer proposes only the empty stock OTA slot plus locally generated boot selection; it never writes the generated bootloader/table/blank otadata. Lucas reports completed matching physical backups and confirms stock startup after audit; exact local candidate comparison, C6/bootloader review, separate-storage confirmation and write approval remain pending.
+The current source builds `0.1.2-profile-dev` with the [shared versioned hardware contract](HARDWARE_PROFILES.md). Its generated native header checks board pins, initialized PSRAM and partition entries; new review bundles include the matching compatibility tuple. The `0.1.1-stock-dev` evidence below remains historical until the new candidate's build evidence is recorded.
+
+The active build uses `7b-stock-v1.csv`; the previous stock candidate was `0.1.1-stock-dev`. See [browser installation](BROWSER_INSTALLATION.md) and [ADR 0004](../decisions/0004-stock-preserving-browser-installation.md). The original 2026-09-13 layout-migration build and hashes below are historical evidence, not the current write plan. The current installer proposes only the empty stock OTA slot plus locally generated boot selection; it never writes the generated bootloader/table/blank otadata. Lucas reports completed matching physical backups and confirms stock startup after audit; exact local candidate comparison, C6/bootloader review, separate-storage confirmation and write approval remain pending.
 
 ## What this milestone contains
 

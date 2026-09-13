@@ -17,6 +17,7 @@ from .forms import ClaimDeviceForm, DeviceSettingsForm
 from .device_services import PROFILE, HARDWARE_NAME, allowed, begin_enrollment, claim, exchange, digest
 from .security import client_ip
 from .hardware_reports import validate_report, display_report
+from .hardware_profiles import runtime_reasons, REASON_LABELS
 
 
 def context(**extra):
@@ -67,7 +68,9 @@ def detail(request, pk):
                 device.save()
                 messages.success(request, 'Settings saved. They take effect only after device acknowledgement.')
                 return redirect('device_detail', pk=pk)
-    return render(request, 'workspace/device_detail.html', context(title=device.name, device=device, form=form, capabilities=display_report(device.hardware_report)))
+    return render(request, 'workspace/device_detail.html', context(title=device.name, device=device, form=form,
+        capabilities=display_report(device.hardware_report),
+        compatibility_reasons=[REASON_LABELS[key] for key in runtime_reasons(device)]))
 
 
 @never_cache

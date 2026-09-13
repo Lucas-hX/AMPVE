@@ -6,6 +6,7 @@ import json
 import os
 import struct
 from pathlib import Path
+from profile_contract import PROFILE
 
 MIB = 1024 * 1024
 
@@ -120,7 +121,8 @@ def capture(port, output, baud, use_ram_stub):
     with (output/'serial-private.log').open('w') as log, contextlib.redirect_stdout(log), contextlib.redirect_stderr(log):
         try:
             esp = cmds.detect_chip(port=port, baud=115200)
-            if esp.CHIP_NAME != 'ESP32-P4' or esp.get_chip_revision() != 103:
+            revision = esp.get_chip_revision()
+            if esp.CHIP_NAME != PROFILE['chip']['name'] or not PROFILE['chip']['revision_min'] <= revision <= PROFILE['chip']['revision_max']:
                 raise ValueError('Expected ESP32-P4 revision 1.3; stop and review this unit')
             info = esp.get_security_info()
             if not security_is_unprotected(info):
@@ -128,9 +130,9 @@ def capture(port, output, baud, use_ram_stub):
             cmds.attach_flash(esp)
             flash_id = esp.flash_id()
             capacity = (flash_id >> 16) & 255
-            if capacity != 25:
+            if 1 << capacity != PROFILE['resources']['flash_bytes']:
                 raise ValueError('Expected 32 MiB JEDEC capacity; do not guess a flash size')
-            metadata = {'schema': 1, 'chip': esp.CHIP_NAME, 'revision': 103,
+            metadata = {'schema': 1, 'chip': esp.CHIP_NAME, 'revision': revision,
                         'flash_bytes': 1 << capacity, 'jedec_id': flash_id, 'security': info,
                         'ram_stub': use_ram_stub, 'esptool': esptool.__version__}
             (output/'hardware-private.json').write_text(json.dumps(metadata, indent=2)+'\n')

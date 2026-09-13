@@ -6,11 +6,12 @@ import struct
 from pathlib import Path
 from audit import analyze, digest, private_directory, image_metadata
 from compare import compare
+from profile_contract import CONTRACT, PROFILE, PARTITIONS, matches_contract
 
 SECTOR = 4096
-SLOT = 0xE00000
-SLOT_SIZE = 0x3F0000
-OTA = 0x10D000
+SLOT = PARTITIONS[PROFILE['layout']['initial_app']]['offset']
+SLOT_SIZE = PARTITIONS[PROFILE['layout']['initial_app']]['size']
+OTA = PARTITIONS['otadata']['offset']
 
 
 def select_record(data):
@@ -59,7 +60,7 @@ def prepare_plan(audit_dir, candidate_dir, output):
     if not result['partition_layout_identical']:
         raise ValueError('Stock and generated partition entries differ; no table migration is permitted')
     manifest=json.loads((candidate_dir/'review-manifest.json').read_text())
-    if manifest.get('installation_profile')!='waveshare-7b-stock-v1':
+    if manifest.get('installation_profile')!=PROFILE['installation_id'] or not matches_contract(manifest.get('compatibility')):
         raise ValueError('Wrong installation profile')
     original=(audit_dir/'backup-a.bin').read_bytes()
     report=analyze(original)
@@ -91,7 +92,7 @@ def prepare_plan(audit_dir, candidate_dir, output):
         content=original[offset:offset+size];filename='restore-after-boot-'+name+'.bin'
         (output/filename).write_bytes(content)
         recovery.append({'file':filename,'offset':offset,'size':size,'sha256':digest(content)})
-    plan={'schema':1,'profile':'waveshare-7b-stock-v1','installable':False,
+    plan={'schema':1,'profile':PROFILE['installation_id'],'compatibility':CONTRACT,'installable':False,
         'backup_sha256':report['sha256'],'stock_bootloader_region_sha256':digest(original[0x2000:0x8000]),
         'stock_table_sector_sha256':digest(original[0x8000:0x9000]),
         'current_selection':current,'write_order':regions,'post_boot_recovery_regions':recovery,

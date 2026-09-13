@@ -1,5 +1,6 @@
 import {openReader,readChunk,captureRead,compareBackups,parseTable,matchesStock,ensure,sha256,FLASH_BYTES} from './audit.js';
 import {verifyRelease,makePlan,executePlan} from './install.js';
+import {CONTRACT} from './profile.js';
 
 const root=document.querySelector('#firmware-setup');
 if(root) {
@@ -124,7 +125,8 @@ if(root) {
     policy=await verifyRelease(data);
     const appResponse=await fetch(`/devices/firmware/artifacts/${policy.app.sha256}.bin`,{cache:'no-store'});
     ensure(appResponse.ok,'App unavailable.');
-    plan=await makePlan(backup,report,policy,new Uint8Array(await appResponse.arrayBuffer()));
+    ensure(get('board-confirm').checked,'Confirm the printed board model before preparing an installation.');
+    plan=await makePlan(backup,{...report,owner_confirmed_profile:CONTRACT.profile_id},policy,new Uint8Array(await appResponse.arrayBuffer()));
     const list=get('write-regions');list.replaceChildren();
     for(const item of plan.writes) {const li=document.createElement('li');li.textContent=`${item.name}: 0x${item.offset.toString(16)} · ${item.bytes.length} bytes · SHA-256 ${item.sha256}`;list.append(li);}
     get('plan-panel').hidden=false;get('approve-plan').checked=false;

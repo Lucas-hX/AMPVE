@@ -8,6 +8,7 @@ import shutil
 import subprocess
 from pathlib import Path
 from audit import partition_table, private_directory, image_metadata
+from profile_contract import CONTRACT, PROFILE, matches_layout, native_header
 
 ROOT = Path(__file__).resolve().parents[2]
 IDF_PIN = 'fff9895c82d744c7237be8847347bdd1b07c6643'
@@ -41,7 +42,14 @@ def package(work, idf, destination, comparison=None):
         if subprocess.check_output(['git', '-C', str(checkout), 'rev-parse', 'HEAD']).decode().strip() != pin:
             raise ValueError('Unreviewed source revision')
     build = work/'build'
+    if (work/'main/ampve/profile.h').read_text() != native_header():
+        raise ValueError('Generated native profile differs from the canonical contract')
+    if (work/'main/ampve/profile.h').stat().st_mtime > (build/'xiaozhi.bin').stat().st_mtime:
+        raise ValueError('Profile changed after compilation; rebuild before packaging')
     image=image_metadata((build/'xiaozhi.bin').read_bytes())
+    app_bytes=(build/'xiaozhi.bin').read_bytes()
+    if app_bytes[32:36] != b'\x32\x54\xcd\xab' or app_bytes[48:80].split(b'\0')[0].decode('ascii') != upstream['candidate_version']:
+        raise ValueError('Compiled app descriptor differs from the candidate version')
     if image['min_revision']>103 or image['max_revision'] not in (0,65535) and image['max_revision']<103:
         raise ValueError('App image does not support P4 revision 1.3')
     validate_config(config_values(work/'sdkconfig'))
@@ -72,6 +80,8 @@ def package(work, idf, destination, comparison=None):
     table_path = build/'partition_table/partition-table.bin'
     table_offset = int(config_values(work/'sdkconfig')['CONFIG_PARTITION_TABLE_OFFSET'], 0)
     partitions = partition_table(b'\xff'*table_offset+table_path.read_bytes(), table_offset, 32*1024*1024)
+    if not matches_layout(partitions, table_offset):
+        raise ValueError('Generated partition entries differ from the canonical profile')
     app = next(item for item in planned if item['file'] == 'xiaozhi.bin')
     slots = [p for p in partitions if p['type'] == 0 and p['subtype'] in [16, 17]]
     if len(slots) != 2 or any(app['size'] > p['size'] for p in slots):
@@ -95,6 +105,8 @@ def package(work, idf, destination, comparison=None):
     for source, name in [(work/'sdkconfig', 'sdkconfig'), (work/'dependencies.lock', 'dependencies.lock'),
                          (build/'project_description.json', 'project_description.json')]:
         shutil.copyfile(source, destination/name)
+    shutil.copyfile(ROOT/'firmware/profiles/waveshare-7b-stock-v1.json', destination/'hardware-profile.json')
+    shutil.copyfile(work/'main/ampve/profile.h', destination/'generated-profile.h')
     for notice in work.glob('LICENSE*'):
         if notice.is_file():shutil.copyfile(notice,destination/(notice.name+'.xiaozhi'))
     patch = subprocess.check_output(['git', '-C', str(work), 'diff', '--no-ext-diff', '--binary'])
@@ -121,7 +133,8 @@ def package(work, idf, destination, comparison=None):
                 'repository_commit': subprocess.check_output(['git', '-C', str(ROOT), 'rev-parse', 'HEAD']).decode().strip(),
                 'repository_inputs': inputs, 'generated_inputs': overlay_inputs,
                 'sdkconfig_sha256': sha(work/'sdkconfig'), 'dependency_lock_sha256': sha(work/'dependencies.lock'),
-                'installation_profile': 'waveshare-7b-stock-v1',
+                'installation_profile': PROFILE['installation_id'], 'compatibility': CONTRACT,
+                'firmware_version': upstream['candidate_version'],
                 'app_image': image,
                 'build_artifacts_not_installation_plan': planned,
                 'proposed_regions_not_approved_writes': proposed, 'partitions': partitions,

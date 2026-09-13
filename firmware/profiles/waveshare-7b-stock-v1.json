@@ -1,0 +1,44 @@
+{
+  "schema": 1,
+  "id": "waveshare-esp32-p4-wifi6-touch-lcd-7b",
+  "version": 1,
+  "name": "Waveshare ESP32-P4-WIFI6-Touch-LCD-7B",
+  "installation_id": "waveshare-7b-stock-v1",
+  "firmware_lineage": "ampve-xiaozhi-stock-v1",
+  "chip": {"name": "ESP32-P4", "image_id": 18, "revision_min": 103, "revision_max": 103},
+  "resources": {"flash_bytes": 33554432, "minimum_psram_bytes": 33554432},
+  "security": {"secure_boot": false, "flash_encryption": false, "secure_download": false},
+  "layout": {
+    "id": "waveshare-7b-stock-v1",
+    "bootloader_offset": 8192,
+    "table_offset": 32768,
+    "initial_app": "ota_1",
+    "partitions": [
+      {"name":"nvsfactory","type":1,"subtype":2,"offset":36864,"size":204800,"flags":0},
+      {"name":"nvs","type":1,"subtype":2,"offset":241664,"size":860160,"flags":0},
+      {"name":"otadata","type":1,"subtype":0,"offset":1101824,"size":8192,"flags":0},
+      {"name":"phy_init","type":1,"subtype":1,"offset":1110016,"size":4096,"flags":0},
+      {"name":"factory","type":0,"subtype":0,"offset":1114112,"size":9437184,"flags":0},
+      {"name":"ota_0","type":0,"subtype":16,"offset":10551296,"size":4128768,"flags":0},
+      {"name":"ota_1","type":0,"subtype":17,"offset":14680064,"size":4128768,"flags":0},
+      {"name":"assets","type":1,"subtype":130,"offset":18808832,"size":9437184,"flags":0},
+      {"name":"storage","type":1,"subtype":130,"offset":28246016,"size":5242880,"flags":0}
+    ]
+  },
+  "peripherals": {
+    "display": {"width":1024,"height":600,"interface":"MIPI-DSI","reset_gpio":33,"backlight_gpio":32},
+    "touch": {"controller":"GT911","interface":"I2C"},
+    "audio": {"input":"ES7210","output":"ES8311","mclk_gpio":13,"ws_gpio":10,"bclk_gpio":12,"din_gpio":11,"dout_gpio":9,"pa_gpio":53,"sda_gpio":7,"scl_gpio":8},
+    "boot_button_gpio": 35
+  },
+  "connectivity": {"transport":"wifi","coprocessor":"ESP32-C6","interface":"ESP-Hosted/SDIO","host_version":"2.12.13","sdio_pins":{"cmd":19,"clk":18,"d0":14,"d1":15,"d2":16,"d3":17,"reset":54},"compatibility":"unverified","required_review":"Identify the installed C6 firmware and verify compatibility with the pinned ESP-Hosted host. P4 flash bytes and USB identity do not establish C6 firmware identity."},
+  "source": {"repository":"https://github.com/78/xiaozhi-esp32","commit":"563a4f0a70d34eea5547977f2a39efa401c2ea35","board":"esp32-p4-wifi6-touch-lcd-7b"},
+  "recovery": {"usb_regions":"prepared-not-physically-validated","stock_bootloader_rollback":"unverified","ota":"not-validated"},
+  "evidence": {
+    "chip":"Owner-reported physical ROM inspection on 2026-09-13: ESP32-P4 revision 1.3.",
+    "layout":"Sanitized owner audit recorded in ADR 0004; exact local MD5-verified entries and fingerprints must match before writes.",
+    "psram":"32 MiB from the owner's earlier local audit; browser ROM reads cannot verify PSRAM. Native startup must check initialized capacity.",
+    "peripherals":"Configured by pinned upstream 7B source; not a successful physical functional test.",
+    "model":"Owner must confirm the printed 7B model. Chip family, MAC and USB VID/PID do not identify the board or establish ownership."
+  }
+}

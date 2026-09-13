@@ -191,3 +191,34 @@ class DeviceTests(TestCase):
         self.assertEqual(Client().get(reverse('interface_preview')).status_code,302)
         self.assertContains(self.client.get(reverse('interface_preview')),'Interactive concept')
         self.assertEqual(Device.objects.count(),0)
+
+    def test_versioned_report_is_stored_without_promising_ota(self):
+        from .hardware_profiles import CONTRACT, runtime_reasons
+        self.claim();self.exchange()
+        report={'schema':2,'compatibility':CONTRACT,'flash_bytes':33554432,'psram_bytes':33554432,
+            'display':{'width':1024,'height':600},
+            'capabilities':dict.fromkeys(['display','touch','speaker','microphone','wifi'],'configured')}
+        response=self.beat(hardware_report=report)
+        self.assertEqual(response.status_code,200)
+        self.assertFalse(response.json()['ota_available'])
+        self.device.refresh_from_db()
+        self.assertEqual(runtime_reasons(self.device),['security_unverified','c6_compatibility_unverified','recovery_unverified'])
+        page=self.client.get(reverse('device_detail',args=[self.device.pk]))
+        self.assertContains(page,'installed ESP32-C6 firmware still needs review')
+        for field,value,reason in [('compatibility',{**CONTRACT,'profile_id':'waveshare-esp32-p4-wifi6-touch-lcd-4b'},'profile_contract_unverified'),
+                                  ('psram_bytes',8*1024*1024,'psram_insufficient_or_unverified'),
+                                  ('flash_bytes',16*1024*1024,'flash_capacity_mismatch')]:
+            with self.subTest(field=field):
+                self.device.hardware_report={**report,field:value}
+                self.assertIn(reason,runtime_reasons(self.device))
+
+    def test_versioned_report_cannot_smuggle_unbounded_fields(self):
+        from .hardware_profiles import CONTRACT
+        self.claim();self.exchange()
+        report={'schema':2,'compatibility':CONTRACT,'flash_bytes':33554432,'psram_bytes':33554432,
+            'display':None,'capabilities':dict.fromkeys(['display','touch','speaker','microphone','wifi'],'unknown')}
+        for changes in [{'profile_version':True},{'profile_id':'x'*81},{'credential':'secret-fixture'}]:
+            self.assertEqual(self.beat(hardware_report={**report,'compatibility':{**CONTRACT,**changes}}).status_code,400)
+        self.assertEqual(self.beat(hardware_report={**report,'schema':1}).status_code,400)
+        del report['compatibility']
+        self.assertEqual(self.beat(hardware_report=report).status_code,400)

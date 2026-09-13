@@ -6,9 +6,10 @@ from django.db import transaction
 from django.utils import timezone
 from django.utils.crypto import constant_time_compare
 from .models import Device, DeviceEnrollment, DeviceRateBucket, User
+from .hardware_profiles import PROFILE as HARDWARE_PROFILE
 
-PROFILE = 'waveshare-esp32-p4-wifi6-touch-lcd-7b'
-HARDWARE_NAME = 'Waveshare ESP32-P4-WIFI6-Touch-LCD-7B'
+PROFILE = HARDWARE_PROFILE['id']
+HARDWARE_NAME = HARDWARE_PROFILE['name']
 
 
 def digest(value):

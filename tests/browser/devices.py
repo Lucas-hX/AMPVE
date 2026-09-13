@@ -9,6 +9,7 @@ os.environ.setdefault('DJANGO_SETTINGS_MODULE','config.settings')
 import django
 django.setup()
 from workspace.models import Device, DeviceEnrollment
+from workspace.hardware_profiles import CONTRACT
 from playwright.sync_api import sync_playwright
 
 base='https://ampve.com'
@@ -53,7 +54,7 @@ with sync_playwright() as p:
         assert exchange.status==200
         device_id=exchange.json()['device_id']
         heartbeat={'protocol':1,'firmware_version':'software-fixture','chip_revision':'1.3','transport':'wifi','acknowledged_version':0}
-        heartbeat['hardware_report']={'schema':1,'flash_bytes':33554432,'psram_bytes':None,
+        heartbeat['hardware_report']={'schema':2,'compatibility':CONTRACT,'flash_bytes':33554432,'psram_bytes':None,
             'display':{'width':1024,'height':600},'capabilities':{
                 'display':'initialized','touch':'configured','speaker':'configured',
                 'microphone':'unknown','wifi':'passed'}}
@@ -63,6 +64,9 @@ with sync_playwright() as p:
         assert page.get_by_text('Driver initialized',exact=False).is_visible()
         assert page.get_by_text('Not checked',exact=False).is_visible()
         assert page.get_by_text('Not reported',exact=True).is_visible()
+        page.get_by_text('Firmware compatibility checks',exact=True).click()
+        assert page.get_by_text('Compatibility with the installed ESP32-C6 firmware still needs review.',exact=True).is_visible()
+        assert page.get_by_text('The required 32 MiB initialized PSRAM has not been reported.',exact=True).is_visible()
         page.get_by_label('Speaker volume').fill('45')
         page.get_by_role('button',name='Save device settings').click()
         page.get_by_text('Settings saved.',exact=False).wait_for()
