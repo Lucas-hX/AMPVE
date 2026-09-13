@@ -25,6 +25,13 @@ def replace(path, old, new):
     path.write_text(data.replace(old, new))
 
 
+def stage_overlay(source, destination):
+    # Restaging changed bytes must invalidate existing compiler objects even when
+    # the repository source timestamp predates the last compilation. copy2 can
+    # otherwise preserve an old timestamp and silently reuse a stale object.
+    shutil.copytree(source, destination, dirs_exist_ok=True, copy_function=shutil.copyfile)
+
+
 def prepare(work):
     if PROFILE['source']['commit'] != PIN or PROFILE['id'] != UPSTREAM['hardware_profile']:
         raise RuntimeError('Hardware profile and pinned firmware source differ')
@@ -123,7 +130,7 @@ def prepare(work):
             '    if (!SsidManager::GetInstance().IsStorageReady()) { ampve_wifi_initialized = false; ESP_LOGE(TAG, "Wi-Fi credentials unavailable; data preserved"); return; }\n\n    // Set unified event callback')
     prepare_board(work, PIN)
     prepare_audio(work, PIN)
-    shutil.copytree(overlay,work,dirs_exist_ok=True)
+    stage_overlay(overlay,work)
     (work/'main/ampve/profile.h').write_text(native_header())
     trust_header,trust_metadata=generate_native_trust(os.environ.get('AMPVE_NATIVE_TRUST'))
     (work/'main/ampve/publisher_trust.h').write_text(trust_header)

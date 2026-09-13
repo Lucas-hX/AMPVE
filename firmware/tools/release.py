@@ -10,6 +10,7 @@ from pathlib import Path
 from audit import partition_table, private_directory, image_metadata
 from profile_contract import CONTRACT, PROFILE, matches_layout, native_header
 from artifact_archive import archive_tree
+from reproducibility import compare as compare_builds
 from native_trust import generate as generate_native_trust
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -102,11 +103,7 @@ def package(work, idf, destination, comparison=None):
     proposed = [{**app, 'offset': slots[1]['offset']}]
     reproducibility={'verified': False, 'scope': 'Not compared with a second build'}
     if comparison is not None:
-        for item in planned:
-            other=comparison/'build'/item['file']
-            if not other.is_file() or sha(other)!=item['sha256']:
-                raise ValueError('Independent build artifact mismatch: '+item['file'])
-        reproducibility={'verified': True, 'scope': 'Two separately compiled project directories on this VPS; shared pinned IDF/toolchain and registry sources. Cross-machine reproduction not tested.'}
+        reproducibility=compare_builds(work, comparison, planned)
     destination = private_directory(destination)
     for item in planned:
         output = destination/item['file']; output.parent.mkdir(parents=True, exist_ok=True)
