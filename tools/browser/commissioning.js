@@ -16,8 +16,8 @@ export function runtimeStatus(line,nonce,expected){
 // One reader owns the application UART. ROM flashing and Improv run in separate phases.
 export async function checkRuntime(port,expected,onReport=()=>{},signal,timeout=90000,restart=false){
   ensure(/^[a-f0-9]{64}$/.test(expected.sha256),'Missing installed application identity.');
-  let reader,writer,timer,retry,opened=false,cancel,stopped=false,sendError;let expired=false;
-  let observedBytes=0,lastStatus=null;const observations=new Set();
+  let reader,writer,timer,retry,panicTimer,opened=false,cancel,stopped=false,sendError;let expired=false,panicCaptured=false;
+  let observedBytes=0,lastStatus=null;const observations=new Set(),details=new Set(),programCounters=new Set(),elfPrefixes=new Set();
   try{
     if(signal?.aborted)throw new DOMException('Cancelled','AbortError');
     if(restart){const info=port.getInfo?.();ensure(info?.usbVendorId===0x1a86 && info?.usbProductId===0x55d3,'Select the 7B USB TO UART port for automatic restart.');}
@@ -39,6 +39,7 @@ export async function checkRuntime(port,expected,onReport=()=>{},signal,timeout=
       if(signal?.aborted)throw new DOMException('Cancelled','AbortError');
       const {value,done}=await reader.read();
       if(signal?.aborted)throw new DOMException('Cancelled','AbortError');
+      ensure(!panicCaptured,'The device reported a startup panic. Download the startup result; do not repeat installation.');
       ensure(!done&&!expired&&!sendError,'AMPVE startup was not confirmed. Download the startup result or use original-backup recovery.');
       observedBytes+=value.length;ensure(observedBytes<=65536,'USB diagnostic output exceeded its bound.');
       buffer+=new TextDecoder().decode(value);
@@ -48,7 +49,15 @@ export async function checkRuntime(port,expected,onReport=()=>{},signal,timeout=
         if(line.startsWith('{"kind":"ampve-usb-status"')){
           const report=runtimeStatus(line,nonce,expected);lastStatus=report;onReport(report);
           if(report.core_confirmed)return report;
-        }else for(const observation of bootObservations(line))observations.add(observation);
+        }else {
+          for(const observation of bootObservations(line))observations.add(observation);
+          const evidence=bootFailureDetails(line);
+          for(const detail of evidence.details)details.add(detail);
+          for(const pc of evidence.program_counters)if(programCounters.size<8)programCounters.add(pc);
+          for(const prefix of evidence.elf_prefixes)if(elfPrefixes.size<4)elfPrefixes.add(prefix);
+          // Preserve a bounded tail for the panic PC/register line, then stop repeated boots.
+          if(observations.has('panic')&&!panicTimer)panicTimer=setTimeout(()=>{panicCaptured=true;cancel();},1000);
+        }
       }
     }
   }catch(error){
@@ -56,10 +65,12 @@ export async function checkRuntime(port,expected,onReport=()=>{},signal,timeout=
     error.startupSummary={schema:1,kind:'ampve-usb-startup-failure',expected_version:expected.version,
       expected_app_sha256:expected.sha256,serial_opened:opened,received_bytes:observedBytes,
       timed_out:expired,cancelled:signal?.aborted===true,observations:[...observations].sort(),
+      capture_stop:signal?.aborted?'cancelled':panicCaptured?'panic_captured':expired?'timeout':observedBytes>65536?'output_limit':'serial_or_validation_error',
+      failure_details:[...details].sort(),panic_program_counters:[...programCounters],observed_elf_sha256_prefixes:[...elfPrefixes],
       last_status:lastStatus,physical_startup_verified:false};
     throw error;
   }finally{
-    stopped=true;clearTimeout(timer);clearTimeout(retry);if(cancel)signal?.removeEventListener('abort',cancel);
+    stopped=true;clearTimeout(timer);clearTimeout(retry);clearTimeout(panicTimer);if(cancel)signal?.removeEventListener('abort',cancel);
     if(reader){await reader.cancel().catch(()=>{});reader.releaseLock();}
     if(writer)writer.releaseLock();
     if(opened)await port.close().catch(()=>{});
@@ -76,4 +87,39 @@ export function bootObservations(line){
     ['memory_initialization',/PSRAM ID read error|PSRAM init failed|Failed to allocate/i],
   ];
   return categories.filter(([,pattern])=>pattern.test(line)).map(([name])=>name);
+}
+
+// Exact fixed tokens and instruction addresses only: no raw line, paths, task names,
+// stack contents, arbitrary register values, Wi-Fi credentials or NVS data.
+export function bootFailureDetails(raw){
+  const result={details:[],program_counters:[],elf_prefixes:[]};if(raw.length>768)return result;
+  const line=raw.replace(/\x1b\[[0-9;]*m/g,'');
+  const patterns=[
+    ['psram_id_read_error',/PSRAM ID read error/i],
+    ['psram_init_failed',/PSRAM init failed|SPI RAM enabled but initialization failed/i],
+    ['psram_memory_test_failed',/SPI SRAM memory test fail|PSRAM memory test fail/i],
+    ['psram_memory_barrier_allocation',/Failed to allocate dummy cacheline for PSRAM memory barrier/i],
+    ['psram_interrupt_allocation',/Failed to allocate MSPI psram interrupt/i],
+    ['lvgl_psram_pool_allocation',/LvglPsramPool.*Failed to allocate [0-9]+ bytes in PSRAM/i],
+    ['allocation_failed',/Failed to allocate/i],
+    ['sha_aligned_input_allocation',/esp-sha.*Failed to allocate aligned SPIRAM memory/i],
+    ['sha_aligned_buffer_allocation',/esp-sha.*Failed to allocate aligned internal memory/i],
+    ['hosted_thread_allocation',/Failed to allocate thread handle/i],
+    ['hosted_serial_allocation',/Failed to allocate serial data/i],
+    ['error_check_failed',/ESP_ERROR_CHECK failed:/i],
+    ['assertion_failed',/assert failed:/i],
+    ['abort_called',/abort\(\) was called/i],
+    ['load_access_fault',/Guru Meditation Error.*Load access fault/i],
+    ['store_access_fault',/Guru Meditation Error.*Store access fault/i],
+    ['illegal_instruction',/Guru Meditation Error.*Illegal instruction/i],
+    ['stack_overflow',/stack overflow|Stack protection fault|Stack canary watchpoint triggered/i],
+  ];
+  result.details=patterns.filter(([,pattern])=>pattern.test(line)).map(([name])=>name);
+  const match=line.match(/(?:abort\(\) was called at PC |ESP_ERROR_CHECK failed:.*? at |\bMEPC\s*:\s*)(0x[0-9a-f]{8})\b/i);
+  if(match){const pc=Number.parseInt(match[1],16);
+    if((pc>=0x48000000&&pc<0x4c000000)||(pc>=0x4ff00000&&pc<0x4ffa0000)||(pc>=0x30100000&&pc<0x30102000))result.program_counters.push('0x'+pc.toString(16));
+  }
+  const elf=line.match(/\bELF file SHA256:\s*([a-f0-9]{8,64})(?:\.\.\.)?\s*$/i);
+  if(elf)result.elf_prefixes.push(elf[1].toLowerCase());
+  return result;
 }
