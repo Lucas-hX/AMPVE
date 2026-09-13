@@ -79,3 +79,9 @@ The native runner checks the dependency lock and compiles the actual policy/clie
 ## Earlier foundation evidence
 
 PR #44's `0.1.3-ota-verify-dev` app was 2,768,208 bytes, SHA-256 `4af935c10210ea1dac5aa21b2e2172117a5856773fc2945857d4ac37cd7fb85e`, with 61 policy, nine streaming-identity and 26 firmware-tool cases passing. Its private non-installable review package was traced to source `0046077`. That result did not include the integrated client. Neither that build nor this integration inherits the earlier candidate's two-build reproduction evidence.
+
+## Integrated client evidence — 2026-09-13
+
+The enabled **software fixture** compiled and linked for ESP32-P4 revision 1.x with the pinned toolchain and no compiler warnings. App: **2,842,096 bytes**, SHA-256 `e886c4118cad39a7c132998c278c3d25c7a5564cace53b42c707a15b1dea72ae`; IDF's capacity check passed with 31% remaining in the smallest app slot. The private package `firmware-ota-client-software-fixture` is traced to source `170ac1d`, explicitly `testing_only: true` and `installable: false`. It is not a candidate for physical installation or production signing. No private fixture signing key was retained. The public browser review selection was unchanged.
+
+Validation passed: **61 policy cases**, **nine streaming-identity cases**, **21 client scenarios**, **31 firmware-tool tests**, **67 Django tests** (five PostgreSQL-only cases skipped there) and **21 isolated PostgreSQL lifecycle/concurrency cases**. The backend status/boot-selection-failure support was restarted on the VPS; no database migration was needed, platform/audio/database remained active and public HTTPS health passed. The two existing HSTS subdomain/preload warnings remain. Adapter calls compiled against ESP-IDF, but actual device HTTP/flash faults and physical power interruption are still acceptance work. Build reproduction for this changed candidate is not yet demonstrated.

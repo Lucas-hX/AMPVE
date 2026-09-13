@@ -52,3 +52,7 @@ The real unsigned candidate was repackaged in `/home/ampve/.local/state/ampve/fi
 ## Persistent deployment backend
 
 See [FIRMWARE_DEPLOYMENTS.md](FIRMWARE_DEPLOYMENTS.md) for owner requests, release import, authenticated device reports, cancellation, expiry and restart reconciliation. This backend does not establish physical OTA support; the native client and board recovery tests remain pending.
+
+## Native client build inputs
+
+Newly promoted candidates must include the independently provisioned native publisher trust and a build sequence matching the signed review sequence. See [NATIVE_OTA.md](NATIVE_OTA.md) for `AMPVE_NATIVE_TRUST`, public-key rotation, archived input/header hashes and the explicit testing marker. Sequence-zero builds and enabled software fixtures cannot be promoted. Earlier unsigned review bundles without these inputs must be rebuilt before release approval. This does not replace reproduction, local stock/C6/recovery review or owner hardware-write authorization.
