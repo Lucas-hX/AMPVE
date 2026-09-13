@@ -76,6 +76,21 @@ class PublisherTests(unittest.TestCase):
         self.addCleanup(lambda: output.chmod(0o700) if output.exists() else None)
         return policy,output
 
+    def test_usb_commissioning_matches_build_and_cannot_be_an_ota_release(self):
+        self.review.update(commissioning='usb-assisted-v1',usb_review='Software fixture core-only startup and USB restoration review.')
+        with self.assertRaises(ValueError):self.run_publish()
+        sdk=b'CONFIG_AMPVE_USB_COMMISSIONING=y\n'
+        (self.candidate/'sdkconfig').write_bytes(sdk)
+        path=self.candidate/'review-manifest.json';manifest=json.loads(path.read_bytes())
+        manifest.update(sdkconfig_sha256=hashlib.sha256(sdk).hexdigest(),commissioning='usb-assisted-v1')
+        path.write_bytes(canonical(manifest));self.bind_build_sequence(self.review['sequence'])
+        policy,_=self.run_publish()
+        self.assertEqual(policy['commissioning'],'usb-assisted-v1')
+        for change in ({'usb_review':''},{'commissioning':'unknown'},{'purpose':'ota'}):
+            with self.assertRaises(ValueError):validate_policy({**policy,**change})
+        self.review['purpose']='ota'
+        with self.assertRaises(ValueError):self.run_publish('ota')
+
     def test_signed_identity_artifacts_and_immutable_output(self):
         policy,output=self.run_publish()
         envelope=strict_json((output/'approved-release.json').read_bytes())

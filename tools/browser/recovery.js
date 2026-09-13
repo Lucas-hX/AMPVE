@@ -60,7 +60,7 @@ export async function validateRecovery(reader,plan,progress=()=>{},signal){
     already_original:changed===0,physical_restore_verified:false};
 }
 
-// Not wired to a production button until the exact physical recovery trial is reviewed.
+// Browser restoration requires explicit consent and a fresh whole-flash comparison.
 export async function executeRecovery(reader,plan,review,consent,progress=()=>{},signal){
   ensure(consent?.restore_original===true && consent?.discard_ampve_settings===true && consent?.stable_usb_power===true,
     'Confirm return to original software and loss of new settings.');

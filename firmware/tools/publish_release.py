@@ -33,6 +33,7 @@ def publish(candidate, review_file, key_file, output, ledger_file):
         raise ValueError('Expected a non-installable candidate with the exact profile')
     fields={'bootloader_sha256','table_sha256','bootloader_review','c6_review','recovery_review',
             'expires_at','app_sha256','key_id','sequence','channel','purpose'}
+    if 'commissioning' in review or 'usb_review' in review:fields|={'commissioning','usb_review'}
     if review.get('purpose')=='ota':fields|={'ota_review','from_app_sha256'}
     if set(review)!=fields:
         raise ValueError('Supply the exact documented review fields for the release purpose')
@@ -45,6 +46,12 @@ def publish(candidate, review_file, key_file, output, ledger_file):
         raise ValueError('Release sequence must match the independently provisioned native build')
     if (candidate/'publisher_trust.h').read_text()!=trust_header or manifest.get('generated_inputs',{}).get('main/ampve/publisher_trust.h')!=sha256(trust_header.encode()):
         raise ValueError('Native publisher trust differs from the recorded build input')
+    sdk=(candidate/'sdkconfig').read_bytes()
+    if sha256(sdk)!=manifest['sdkconfig_sha256']:raise ValueError('Candidate SDK configuration changed')
+    usb_build='CONFIG_AMPVE_USB_COMMISSIONING=y' in sdk.decode().splitlines()
+    if usb_build != (review.get('commissioning')=='usb-assisted-v1') or (usb_build and review.get('purpose')!='initial-install'):
+        raise ValueError('USB commissioning must match the actual build and initial-install policy')
+    if usb_build and manifest.get('commissioning')!='usb-assisted-v1':raise ValueError('Missing commissioning build provenance')
     app=(candidate/'xiaozhi.bin').read_bytes()
     recorded=manifest['proposed_regions_not_approved_writes']
     if len(recorded)!=1 or recorded[0]['sha256']!=sha256(app) or review['app_sha256']!=sha256(app) or recorded[0]['offset']!=0xe00000 or not 24<=len(app)<=0x3f0000:

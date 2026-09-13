@@ -42,6 +42,10 @@ export async function verifyRelease(data, now=Date.now()) {
   const fields=['schema','key_id','sequence','channel','purpose','installable','profile','compatibility','chip_revision',
     'flash_bytes','expires_at','repository_commit','firmware_version','app','bootloader_sha256','table_sha256',
     'bootloader_review','c6_review','recovery_review','provenance'];
+  if(Object.hasOwn(policy,'commissioning')||Object.hasOwn(policy,'usb_review')){
+    ensure(policy.commissioning==='usb-assisted-v1' && typeof policy.usb_review==='string' && policy.usb_review.trim() && policy.usb_review.length<=1000 && !policy.usb_review.includes('REPLACE'),'USB commissioning review is missing.');
+    fields.push('commissioning','usb_review');
+  }
   ensure(Object.keys(policy).length===fields.length && fields.every(key=>Object.hasOwn(policy,key)) && policy.schema===2 &&
     policy.purpose==='initial-install' && policy.channel==='development','This is not an approved USB installation policy.');
   ensure(typeof policy.key_id==='string' && /^[a-z0-9][a-z0-9-]{0,63}$/.test(policy.key_id) &&
@@ -145,3 +149,6 @@ export async function executePlan(reader, plan, policy, consent, progress=()=>{}
   await reader.loader.after('hard_reset');
   return {written_and_read_back:true,physical_startup_verified:false};
 }
+
+// Only signed policy metadata can defer the pre-install C6 query.
+export function allowsUsbCommissioning(policy){return policy?.purpose==='initial-install' && policy.commissioning==='usb-assisted-v1';}

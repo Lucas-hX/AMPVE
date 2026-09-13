@@ -96,11 +96,17 @@ def prepare(work):
         replace(cmake,'set(PROJECT_VER "0.1.8-startup-guard-dev")',f'set(PROJECT_VER "{UPSTREAM["candidate_version"]}")')
     if 'set(PROJECT_VER "0.1.9-wifi-storage-dev")' in cmake.read_text():
         replace(cmake,'set(PROJECT_VER "0.1.9-wifi-storage-dev")',f'set(PROJECT_VER "{UPSTREAM["candidate_version"]}")')
+    if 'set(PROJECT_VER "0.1.10-improv-dev")' in cmake.read_text():
+        replace(cmake,'set(PROJECT_VER "0.1.10-improv-dev")',f'set(PROJECT_VER "{UPSTREAM["candidate_version"]}")')
     if f'set(PROJECT_VER "{UPSTREAM["candidate_version"]}")' not in cmake.read_text():
         raise RuntimeError('Prepared project version differs from the candidate version')
     component=work/'main/idf_component.yml'
     if 'espressif/libsodium:' not in component.read_text():
         replace(component,'dependencies:\n','dependencies:\n  espressif/libsodium: "==1.0.22~1"\n')
+    commissioning_kconfig=work/'main/Kconfig.projbuild'
+    if 'config AMPVE_USB_COMMISSIONING' not in commissioning_kconfig.read_text():
+        with commissioning_kconfig.open('a') as stream:
+            stream.write('\nconfig AMPVE_USB_COMMISSIONING\n    bool "AMPVE initial USB commissioning"\n    default n\n')
     component_cmake=work/'main/CMakeLists.txt'
     if '"ampve/ota_policy.cc"' not in component_cmake.read_text():
         replace(component_cmake,'set(SOURCES "ampve/runtime.cc"',

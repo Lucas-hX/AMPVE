@@ -20,6 +20,7 @@ public:
  explicit ImprovService(ImprovPort& port):port_(port){}
  void feed(uint8_t byte);
  void tick();
+ bool receiving()const{return size_!=0;}
 private:
  ImprovPort& port_;
  std::array<uint8_t,265> frame_{};

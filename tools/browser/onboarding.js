@@ -1,16 +1,17 @@
 import {openReader,readChunk,captureRead,compareBackups,parseTable,matchesStock,ensure,sha256,FLASH_BYTES} from './audit.js';
-import {verifyRelease,makePlan,makeReviewPlan,planReviewSummary,executePlan} from './install.js';
+import {verifyRelease,makePlan,makeReviewPlan,planReviewSummary,executePlan,allowsUsbCommissioning} from './install.js';
 import {openWifi,validCredentials} from './wifi.js';
 import {CONTRACT} from './profile.js';
 import {reviewSummary} from './review.js';
 import {recognizeBaseline} from './baselines.js';
+import {checkRuntime} from './commissioning.js';
 import {runProbe} from './c6-probe.js';
-import {prepareRecovery,validateRecovery} from './recovery.js';
+import {prepareRecovery,validateRecovery,executeRecovery} from './recovery.js';
 
 const root=document.querySelector('#firmware-setup');
 if(root) {
   const get=id=>document.getElementById(id),status=get('setup-status'),meter=get('setup-progress'),detail=get('setup-progress-detail');
-  let wifi,c6Observation;
+  let wifi,c6Observation,recoveryPlan,installedRuntime;
   const downloadUrls=new Map();
   function downloadLink(id,summary){
     const old=downloadUrls.get(id);if(old)URL.revokeObjectURL(old);
@@ -44,12 +45,13 @@ if(root) {
     get('export-plan-review').hidden=!plan||!downloadUrls.has('export-plan-review');
     get('export-review').setAttribute('aria-disabled',String(busy||!report));
     get('check-recovery').disabled=busy||!plan||!port;
+    get('restore-original').disabled=busy||!recoveryPlan||!port;
     get('check-c6').disabled=busy||!port||!get('board-confirm').checked;
     get('save-recovery').disabled=busy||!plan||!window.showDirectoryPicker;
     get('export-plan-review').setAttribute('aria-disabled',String(busy||!plan));
     get('approve-plan').disabled=busy||!policy||plan?.review_only===true;
     get('install-ampve').disabled=busy||!policy||plan?.review_only===true||!plan?.recovery_saved||!port||
-      !c6Observation?.version_matches||!c6Observation.unit_identity||c6Observation.unit_identity!==report?.hardware?.identity||
+      (!allowsUsbCommissioning(policy)&&(!c6Observation?.version_matches||!c6Observation.unit_identity||c6Observation.unit_identity!==report?.hardware?.identity))||
       !get('approve-plan').checked||!get('separate-copy').checked||!get('rom-recovery').checked;
     get('cancel-setup').disabled=!busy||writing||!controller;
     get('import-backups').disabled=busy;
@@ -108,7 +110,7 @@ if(root) {
     await close();
   }
   get('select-usb').onclick=()=>run(async signal=>{
-    await close();port=await navigator.serial.requestPort();plan=null;
+    await close();port=await navigator.serial.requestPort();plan=null;recoveryPlan=null;
     get('board-confirm').checked=false;get('device-confirmation').hidden=true;
     await inspect(signal);
   });
@@ -134,12 +136,15 @@ if(root) {
       diagnostic_sha256:manifest.sha256,status:result.status,version:result.version,version_matches:result.version_matches,error_code:result.error_code,
       wifi_function_verified:false,physical_recovery_verified:false,installable:false});
     get('c6-status').textContent=result.version_matches?'Wi-Fi hardware check passed: ESP32-C6, firmware '+result.version.join('.')+'. Network setup is checked after AMPVE starts.':
-      ({version_query_failed:'The Wi-Fi firmware version query failed.',connection_failed:'The Wi-Fi connection could not be initialized.',host_init_failed:'The temporary Wi-Fi checker could not initialize.',task_start_failed:'The temporary Wi-Fi checker has insufficient memory.',event_loop_failed:'The temporary Wi-Fi checker could not start.',timeout:'The Wi-Fi hardware did not respond in time.'}[result.status]||'Wi-Fi compatibility could not be confirmed.')+' Installation remains unavailable. The support result contains the diagnostic status.';
+      ({version_query_failed:'The Wi-Fi firmware version query failed.',connection_failed:'The Wi-Fi connection could not be initialized.',host_init_failed:'The temporary Wi-Fi checker could not initialize.',task_start_failed:'The temporary Wi-Fi checker has insufficient memory.',event_loop_failed:'The temporary Wi-Fi checker could not start.',timeout:'The Wi-Fi hardware did not respond in time.'}[result.status]||'Wi-Fi compatibility could not be confirmed.')+' This result does not confirm Wi-Fi operation. An approved USB setup release can check networking after installation.';
     detail.textContent='This check does not prove a working Wi-Fi session or successful recovery. The next step reconnects the board automatically.';
   }
   get('confirm-device').onclick=()=>run(async signal=>{
     ensure(get('board-confirm').checked,'Confirm the board name first.');
-    if(port)try{await checkC6(signal);}catch(error){
+    const available=await (await fetch(root.dataset.release,{cache:'no-store'})).json();
+    const defer=available.status==='development-review'?available.commissioning==='usb-assisted-v1':available.status==='reviewed-development-release'&&allowsUsbCommissioning(await verifyRelease(available));
+    if(defer)get('c6-status').textContent='Wi-Fi will be checked after AMPVE starts. Keep USB connected throughout setup.';
+    if(port&&!defer)try{await checkC6(signal);}catch(error){
       if(error.name==='AbortError')throw error;
       get('c6-status').textContent='The Wi-Fi check could not finish. You can still prepare your backups; installation remains unavailable.';
     }
@@ -149,8 +154,9 @@ if(root) {
   get('check-recovery').onclick=()=>run(checkRecovery);
   async function checkRecovery(signal){
     boardConsent();ensure(plan&&port,'Prepare the installation and connect this board first.');
-    const recovery=await prepareRecovery(backup,report,plan);await freshReader();
+    const recovery=await prepareRecovery(backup,report,plan);recoveryPlan=recovery;await freshReader();
     const result=await validateRecovery(reader,recovery,progress,signal);
+    show('restore-panel');
     get('recovery-status').textContent=result.already_original?'The connected flash matches your original backup. No restoration was needed or performed.':
       'Differences are limited to the expected installation/settings areas. No restoration was performed.';
     status.textContent='Recovery comparison complete. The device was not changed.';
@@ -158,7 +164,7 @@ if(root) {
   get('use-existing').onclick=()=>{show('existing-backups');get('import-backups').focus();};
   get('already-installed').onclick=()=>{show('wifi-step');continueTo('pairing-step');};
   get('capture-backup').onclick=()=>run(async signal=>{
-    boardConsent();report=null;plan=null;get('backup-result').textContent='No completed backup in this session.';
+    boardConsent();report=null;plan=null;recoveryPlan=null;get('backup-result').textContent='No completed backup in this session.';
     // Choose storage before any long operation, while the click grants user activation.
     const directory=await folder(),handles=[],hardware=[],hashes=[];
     for(let i=0;i<2;i++) {
@@ -181,7 +187,7 @@ if(root) {
     // Keep the second connection in ROM; no application boot between backup and installation.
   });
   get('import-backups').onchange=event=>run(async signal=>{
-    report=null;plan=null;
+    report=null;plan=null;recoveryPlan=null;
     const files=[...event.target.files],bins=files.filter(f=>f.name.endsWith('.bin')),records=files.filter(f=>f.name.endsWith('.json'));
     ensure(bins.length===2&&records.length===1&&records[0].size<100000,'Select two backups and their completed audit JSON.');
     ensure(bins[0]!==bins[1],'Select two backup files.');
@@ -224,6 +230,7 @@ if(root) {
     get('plan-panel').hidden=false;get('approve-plan').checked=false;
     downloadLink('export-plan-review',planReviewSummary(plan));
     if(port && get('read-consent').checked)await checkRecovery(controller?.signal);
+    get('installation-method').textContent=(approved?allowsUsbCommissioning(policy):data.commissioning==='usb-assisted-v1')?'Keep original software · install AMPVE, then finish setup over USB. Wi-Fi and peripherals are checked after installation.':'Keep original software · verify Wi-Fi compatibility before installation.';
     get('release-status').textContent=approved?'Ready to install after you save your return-to-original files.':'This board’s first AMPVE release is still being validated. Installation is not available yet. Your device has not been changed.';
     status.textContent=approved?'Installation prepared. Save your return-to-original files to continue.':'Candidate compared with your backups. The installation option is prepared for review.';
     detail.textContent=approved?'': 'You do not need to run commands or interpret technical details. The development review must finish before installation becomes available.';
@@ -249,17 +256,61 @@ if(root) {
     const current=await verifyRelease(await response.json());
     ensure(JSON.stringify(current)===JSON.stringify(policy),'Release changed; prepare a new plan.');
     if(!reader)await freshReader();
-    ensure(c6Observation?.version_matches && c6Observation.unit_identity &&
-      c6Observation.unit_identity===reader.hardware.identity,'Complete the Wi-Fi hardware check on this unit before installing.');
+    ensure(allowsUsbCommissioning(policy) || (c6Observation?.version_matches && c6Observation.unit_identity &&
+      c6Observation.unit_identity===reader.hardware.identity),'Complete the Wi-Fi hardware check on this unit before installing.');
+    recoveryPlan=await prepareRecovery(backup,report,plan);show('restore-panel');
     await executePlan(reader,plan,policy,consent,progress,signal,async()=>{
       const response=await fetch(root.dataset.release,{cache:'no-store'});ensure(response.ok,'Release unavailable.');
       const latest=await verifyRelease(await response.json());
       ensure(JSON.stringify(latest)===JSON.stringify(policy),'Release or publisher trust changed; prepare a new plan.');
-    });await close();plan=null;
+    });await close();
+    writing=false;get('cancel-setup').disabled=false;
+    const expectedVersion=policy.firmware_version;
+    const usbAssisted=allowsUsbCommissioning(policy);plan=null;
+    if(usbAssisted){
+      show('wifi-step');status.textContent='AMPVE written and verified. Checking its startup over USB…';
+      await new Promise(resolve=>setTimeout(resolve,3000));
+      installedRuntime={version:expectedVersion,sha256:policy.app.sha256};
+      const runtime=await checkRuntime(port,installedRuntime,report=>{
+        get('runtime-status').textContent='AMPVE is responding over USB. Checking its core before continuing…';
+      },signal);
+      downloadLink('export-runtime-review',runtime);
+      get('runtime-status').textContent=runtime.wifi_initialized?'AMPVE core confirmed over USB. Continue with Wi-Fi setup.':'AMPVE core confirmed over USB. Wi-Fi still needs configuration or compatibility work.';
+      status.textContent='AMPVE responds over USB. Continue setup while the device stays connected.';
+      detail.textContent='USB startup is confirmed. Wi-Fi, display and other features are checked separately during setup.';
+      show('wifi-step');show('pairing-step');return;
+    }
     status.textContent='AMPVE was installed and checked. Confirm that its home screen appears on your board, then connect Wi-Fi below.';
     detail.textContent='Open Wi-Fi on the board and use USB Wi-Fi setup below or its temporary protected network. Then enter the AMPVE pairing code. USB write success does not prove physical startup or pairing.';
     show('wifi-step');show('pairing-step');get('wifi-step').scrollIntoView({behavior:'smooth'});
   });
+  get('check-startup').onclick=()=>run(async signal=>{
+    if(!port)port=await navigator.serial.requestPort();
+    await close();
+    if(!installedRuntime){
+      const response=await fetch(root.dataset.release,{cache:'no-store'});ensure(response.ok,'Release unavailable.');
+      const expected=await verifyRelease(await response.json());
+      ensure(allowsUsbCommissioning(expected),'This release does not support USB startup checks.');
+      installedRuntime={version:expected.firmware_version,sha256:expected.app.sha256};
+    }
+    const result=await checkRuntime(port,installedRuntime,()=>{get('runtime-status').textContent='AMPVE responds. Waiting for its core check…';},signal);
+    downloadLink('export-runtime-review',result);
+    get('runtime-status').textContent=result.wifi_initialized?'AMPVE core confirmed. Wi-Fi initialization completed; check connection below.':'AMPVE core confirmed. Wi-Fi remains pending.';
+    status.textContent='USB startup checked. Network connection and dashboard pairing are separate steps.';
+  });
+  get('restore-original').onclick=()=>{
+    if(!window.confirm('Return to your original software? This restores your saved original settings and removes AMPVE settings from this installation. Keep USB power connected until finished.'))return;
+    run(async signal=>{
+      boardConsent();ensure(recoveryPlan&&port,'Select the original backup and prepare recovery first.');
+      await freshReader();
+      const review=await validateRecovery(reader,recoveryPlan,progress,signal);
+      // The full read is cancellable. Lock cancellation before any restore write.
+      writing=true;get('cancel-setup').disabled=true;
+      await executeRecovery(reader,recoveryPlan,review,{restore_original:true,discard_ampve_settings:true,stable_usb_power:true},progress);
+      await close();recoveryPlan=null;
+      status.textContent='Original flash restored and verified. Confirm that the original application starts on the board.';
+    });
+  };
   function wifiState(state){
     const labels={1:'Open Wi-Fi on the board to allow setup for five minutes.',2:'The board allows Wi-Fi setup. Enter your 2.4 GHz network.',3:'Checking and saving Wi-Fi. Keep the board connected.',4:'The board reports a Wi-Fi connection. Continue with its AMPVE pairing code.'};
     get('wifi-status').textContent=labels[state]||'USB Wi-Fi disconnected. Reconnect to check the board.';

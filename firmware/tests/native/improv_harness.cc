@@ -1,4 +1,5 @@
 #include "improv_service.h"
+#include "usb_status.h"
 #include <cassert>
 #include <iostream>
 struct Port:ampve::ImprovPort {
@@ -24,6 +25,22 @@ void frame(ampve::ImprovService& service,std::vector<uint8_t> data,bool bad=fals
 std::vector<uint8_t> settings(){std::vector<uint8_t> out={1,25,7};for(char c:std::string("Fixture"))out.push_back(c);out.push_back(16);for(char c:std::string("fixture-password"))out.push_back(c);return out;}
 int main(){
  int cases=0;
+ {ampve::UsbStatusRequest status;int replies=0;std::string nonce(32,'a');
+  auto reply=[&](const char* value){assert(value==nonce);++replies;};
+  auto send=[&](const std::string& input){for(char byte:input)status.feed(byte,reply);};
+  send("AMPVE_STATUS "+nonce+"\n");assert(replies==1);
+  for(const auto& input:std::vector<std::string>{"AMPVE_STATUS short\n","AMPVE_STATUS "+nonce+"a\n","AMPVE_STATUS "+std::string(32,'Z')+"\n",std::string(10000,'x')+"\n"})send(input);
+  assert(replies==1);send("AMPVE_STATUS "+nonce+"\n");assert(replies==2);++cases;
+ }
+ {Port port;ampve::ImprovService service(port);ampve::UsbStatusRequest status;int replies=0;
+  // Even a complete status request inside a received Improv payload is private payload.
+  std::string payload="AMPVE_STATUS "+std::string(32,'a')+"\n";
+  std::vector<uint8_t> bytes={'I','M','P','R','O','V',1,3,static_cast<uint8_t>(payload.size())};
+  bytes.insert(bytes.end(),payload.begin(),payload.end());uint8_t sum=0;for(auto b:bytes)sum+=b;bytes.push_back(sum);
+  for(auto byte:bytes){if(service.receiving())status.reset();else status.feed(byte,[&](const char*){++replies;});service.feed(byte);}
+  assert(replies==0);++cases;
+ }
+
  {Port port;ampve::ImprovService service(port);service.feed('I');frame(service,{3,0});assert(port.has(4,3));++cases;}
  {Port port;ampve::ImprovService service(port);frame(service,{2,0});assert(port.has(1,1));frame(service,{3,0});assert(port.has(4,3));frame(service,settings());assert(port.configured==0 && port.has(2,4));++cases;}
  {Port port;port.until=300000001;ampve::ImprovService service(port);frame(service,settings());assert(port.configured==1 && port.has(1,3) && !port.has(4,1));port.online="Fixture";service.tick();assert(port.has(1,4) && port.has(4,1));++cases;}

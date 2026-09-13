@@ -1,5 +1,9 @@
 # First Waveshare 7B installation handoff
 
+## USB-assisted commissioning update — 2026-09-13
+
+[ADR 0005](../decisions/0005-usb-assisted-commissioning.md) supersedes the mandatory pre-install C6 check **only for an explicitly signed USB-assisted initial-install release**. The platform prepares the same exact stock-preserving write/recovery plan, then checks the installed core over USB before network provisioning. A failed C6 version query remains a diagnostic finding, not proof of incompatibility or a mandatory gate for this mode. Core confirmation, Wi-Fi initialization, actual network operation, pairing and physical recovery are separate evidence. The browser now exposes explicit original-backup restoration with fresh full-flash comparison; it is not yet physically validated. Other releases retain their existing gates.
+
 Date: 2026-09-13. Target: the owner's Waveshare ESP32-P4-WIFI6-Touch-LCD-7B, P4 revision 1.3, 32 MiB flash. **Preparation is not installation approval.** The device and its backups are on the owner's PC, not this VPS.
 
 ## What is complete

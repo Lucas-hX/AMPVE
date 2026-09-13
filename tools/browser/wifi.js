@@ -16,6 +16,7 @@ export async function openWifi(port,onState=()=>{}){
     const info=await serial.initialize(15000);
     if(info?.firmware!=='AMPVE'||info.chipFamily!=='waveshare-p4-7b')throw new Error('Unsupported firmware');
     return {
+      info:Object.freeze({firmware:info.firmware,version:info.version,chipFamily:info.chipFamily}),
       get state(){return connected?serial.state:undefined;},
       async provision(ssid,password){
         if(!connected||serial.state!==2||!validCredentials(ssid,password))throw new Error('Setup unavailable');

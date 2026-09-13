@@ -1,5 +1,9 @@
 # Signed firmware publication and trust
 
+## USB-assisted commissioning update — 2026-09-13
+
+[ADR 0005](../decisions/0005-usb-assisted-commissioning.md) supersedes the mandatory pre-install C6 check **only for an explicitly signed USB-assisted initial-install release**. The platform prepares the same exact stock-preserving write/recovery plan, then checks the installed core over USB before network provisioning. A failed C6 version query remains a diagnostic finding, not proof of incompatibility or a mandatory gate for this mode. Core confirmation, Wi-Fi initialization, actual network operation, pairing and physical recovery are separate evidence. The browser now exposes explicit original-backup restoration with fresh full-flash comparison; it is not yet physically validated. Other releases retain their existing gates.
+
 The publisher supports schema-2 signed **initial-install** and **OTA** policies. There is no approved release or active trust registry. First-install preparation has now created a private real development signing key and public-only build trust; this does not sign or activate a release. See [FIRST_INSTALLATION.md](FIRST_INSTALLATION.md). Device deployment APIs and the native OTA client are implemented as development work; see [FIRMWARE_DEPLOYMENTS.md](FIRMWARE_DEPLOYMENTS.md) and [NATIVE_OTA.md](NATIVE_OTA.md). Physical OTA/rollback remains unvalidated, and preparing a policy does not authorize installation.
 
 ## Identity, ordering and evidence

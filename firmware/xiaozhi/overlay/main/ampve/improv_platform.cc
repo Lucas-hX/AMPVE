@@ -1,5 +1,6 @@
 #include "improv_platform.h"
 #include "improv_service.h"
+#include "usb_status.h"
 #include "runtime.h"
 #include "wifi_manager.h"
 #include "ssid_manager.h"
@@ -41,7 +42,8 @@ public:
   return authorization.load();
  }
  bool connected(const std::string& ssid) override{
-  auto& wifi=WifiManager::GetInstance();return ampve_wifi_initialized && wifi.IsConnected() && (ssid.empty() || wifi.GetSsid()==ssid);
+  if(!ampve_wifi_initialized)return false;
+  auto& wifi=WifiManager::GetInstance();return wifi.IsConnected() && (ssid.empty() || wifi.GetSsid()==ssid);
  }
  int configure(const std::string& ssid,const std::string& password,int64_t until) override{
   if(authorized_until()!=until || now()>=until)return -2;
@@ -55,10 +57,16 @@ public:
  }
 };
 void worker(void*){
- Port port;ampve::ImprovService service(port);uint8_t bytes[64]={};
+ Port port;ampve::ImprovService service(port);ampve::UsbStatusRequest status;uint8_t bytes[64]={};
  while(true){
   int count=uart_read_bytes(UART_NUM_0,bytes,sizeof(bytes),pdMS_TO_TICKS(100));
-  for(int i=0;i<count;++i){service.feed(bytes[i]);bytes[i]=0;}
+  for(int i=0;i<count;++i){
+   if(service.receiving())status.reset();
+   else status.feed(static_cast<char>(bytes[i]),[&](const char* nonce){
+    auto response=ampve_usb_status(nonce);port.send(reinterpret_cast<const uint8_t*>(response.data()),response.size());
+   });
+   service.feed(bytes[i]);bytes[i]=0;
+  }
   service.tick();
  }
 }

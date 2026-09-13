@@ -8,7 +8,7 @@ import {readFileSync} from 'node:fs';
 const profile=JSON.parse(readFileSync('../../firmware/profiles/waveshare-7b-stock-v1.json'));
 const contract={profile_id:profile.id,profile_version:profile.version,layout_id:profile.layout.id,firmware_lineage:profile.firmware_lineage};
 if(!globalThis.crypto)globalThis.crypto=webcrypto;
-await build({stdin:{contents:'export {Transport} from "esptool-js"; export * from "./audit.js"; export * from "./install.js"; export * from "./review.js"; export * from "./baselines.js"; export * from "./recovery.js"; export * from "./c6-probe.js";',resolveDir:process.cwd()},bundle:true,platform:'node',format:'esm',outfile:'build/test-api.mjs'});
+await build({stdin:{contents:'export {Transport} from "esptool-js"; export * from "./audit.js"; export * from "./install.js"; export * from "./review.js"; export * from "./baselines.js"; export * from "./recovery.js"; export * from "./c6-probe.js"; export * from "./commissioning.js";',resolveDir:process.cwd()},bundle:true,platform:'node',format:'esm',outfile:'build/test-api.mjs'});
 const api=await import('./build/test-api.mjs');
 const {parseTable,STOCK,matchesStock,decodeSecurity,readChunk,openReader,selectBoot,verifyRelease,executePlan,sha256,FLASH_BYTES}=api;
 function record(seq,state=2,index=0){const b=new Uint8Array(8192).fill(255),v=new DataView(b.buffer);v.setUint32(index*4096,seq,true);v.setUint32(index*4096+24,state,true);v.setUint32(index*4096+28,crc32(-1,b,4,index*4096)>>>0,true);return b;}
@@ -291,4 +291,40 @@ test('C6 failure stages retain bounded error codes and never establish compatibi
   const good={kind:'ampve-c6-probe',schema:1,nonce,status:'observed',version:[2,12,13],error_code:0};
   assert.equal(api.probeResult(JSON.stringify(good),nonce).version_matches,true);
   assert.throws(()=>api.probeResult(JSON.stringify({...good,error_code:-1}),nonce));
+});
+
+test('USB commissioning requires an explicit signed initial-install review',async()=>{
+  const usb={...policy,commissioning:'usb-assisted-v1',usb_review:'Software fixture: core-only startup with separate network acceptance.'};
+  assert.equal(api.allowsUsbCommissioning(await verifyRelease(await signed(usb))),true);
+  assert.equal(api.allowsUsbCommissioning(policy),false);
+  for(const change of [{usb_review:undefined},{commissioning:undefined},{commissioning:'anything'},{purpose:'ota'}])
+    await assert.rejects(verifyRelease(await signed({...usb,...change})));
+});
+const runtimeExpected={version:'fixture-0.1',sha256:'a'.repeat(64)};
+function runtimeFrame(nonce,extra={}){return JSON.stringify({kind:'ampve-usb-status',schema:1,nonce,phase:'network_unavailable',firmware_version:runtimeExpected.version,app_sha256:runtimeExpected.sha256,core_confirmed:true,wifi_initialized:false,display_ready:false,touch_ready:false,...extra});}
+test('USB status binds nonce and installed bytes without claiming network or peripheral success',()=>{
+  const nonce='b'.repeat(32),line=runtimeFrame(nonce),result=api.runtimeStatus(line,nonce,runtimeExpected);
+  assert.equal(result.core_confirmed,true);assert.equal(result.wifi_initialized,false);assert.equal(Object.hasOwn(result,'nonce'),false);
+  for(const extra of [{nonce:'c'.repeat(32)},{app_sha256:'d'.repeat(64)},{app_sha256:''},{firmware_version:'stock'},{core_confirmed:1},{secret:'never allowed'},{phase:'unknown'}])
+    assert.throws(()=>api.runtimeStatus(runtimeFrame(nonce,extra),nonce,runtimeExpected));
+  assert.throws(()=>api.runtimeStatus(line.replace('"schema":1','"schema":1,"schema":1'),nonce,runtimeExpected));
+});
+function runtimePort(reply){let controller;const port={closed:false,async open(){this.readable=new ReadableStream({start(c){controller=c;}});this.writable=new WritableStream({write(bytes){reply(new TextDecoder().decode(bytes),controller);}});},async close(){assert.equal(this.readable.locked,false);assert.equal(this.writable.locked,false);this.closed=true;}};return port;}
+test('USB commissioning uses one reader and closes it on success, wrong image and timeout',async()=>{
+  for(const mode of ['success','wrong','timeout']){
+    const port=runtimePort((request,c)=>{if(mode==='timeout')return;const nonce=request.trim().split(' ')[1];const bytes=new TextEncoder().encode('private log discarded\n'+runtimeFrame(nonce,mode==='wrong'?{app_sha256:'d'.repeat(64)}:{})+'\n');c.enqueue(bytes.slice(0,80));c.enqueue(bytes.slice(80));});
+    const check=api.checkRuntime(port,runtimeExpected,()=>{},undefined,50);
+    if(mode==='success')assert.equal((await check).core_confirmed,true);else await assert.rejects(check);
+    assert.equal(port.closed,true);
+  }
+});
+test('USB commissioning cancellation releases the port without sending Wi-Fi credentials',async()=>{
+  const abort=new AbortController();const port=runtimePort((request)=>{assert.match(request,/^AMPVE_STATUS [a-f0-9]{32}\n$/);queueMicrotask(()=>abort.abort());});
+  await assert.rejects(api.checkRuntime(port,runtimeExpected,()=>{},abort.signal,100),{name:'AbortError'});assert.equal(port.closed,true);
+});
+test('USB setup waits for core confirmation even when earlier status replies are valid',async()=>{
+  let requests=0,reports=0;
+  const port=runtimePort((request,c)=>{const nonce=request.trim().split(' ')[1];c.enqueue(new TextEncoder().encode(runtimeFrame(nonce,{core_confirmed:++requests>1})+'\n'));});
+  const result=await api.checkRuntime(port,runtimeExpected,()=>++reports,undefined,3000);
+  assert.equal(result.core_confirmed,true);assert.equal(reports,2);assert.equal(port.closed,true);
 });
