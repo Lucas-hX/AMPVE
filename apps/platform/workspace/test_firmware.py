@@ -2,6 +2,7 @@ import base64
 import hashlib
 import json
 import tempfile
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
@@ -49,7 +50,8 @@ class FirmwareDeliveryTests(TestCase):
         self.client.force_login(self.user);root=self.root/'release';root.mkdir()
         key=Ed25519PrivateKey.generate()
         (self.root/'public').write_text(key.public_key().public_bytes(Encoding.Raw,PublicFormat.Raw).hex())
-        payload=json.dumps({'profile':'waveshare-7b-stock-v1','installable':True}).encode()
+        payload=json.dumps({'profile':'waveshare-7b-stock-v1','installable':True,
+            'expires_at':(datetime.now(timezone.utc)+timedelta(days=1)).isoformat()}).encode()
         envelope={'payload':base64.b64encode(payload).decode(),'signature':base64.b64encode(key.sign(payload)).decode()}
         (root/'approved-release.json').write_text(json.dumps(envelope))
         self.assertEqual(self.client.get('/devices/firmware/release/').json()['status'],'reviewed-development-release')
@@ -57,6 +59,26 @@ class FirmwareDeliveryTests(TestCase):
         (root/'approved-release.json').write_text(json.dumps(envelope))
         data=self.client.get('/devices/firmware/release/').json()
         self.assertEqual(data['status'],'release-verification-failed');self.assertFalse(data['installable'])
+
+    def test_expired_or_invalid_approval_blocks_metadata_and_artifacts(self):
+        self.client.force_login(self.user)
+        root=self.root/'release';root.mkdir()
+        key=Ed25519PrivateKey.generate()
+        (self.root/'public').write_text(key.public_key().public_bytes(Encoding.Raw,PublicFormat.Raw).hex())
+        app=b'expiry fixture';digest=hashlib.sha256(app).hexdigest()
+        (root/'xiaozhi.bin').write_bytes(app)
+        for expiry in ['2000-01-01T00:00:00Z', '2099-01-01T00:00:00', 'invalid', None]:
+            with self.subTest(expiry=expiry):
+                policy={'profile':'waveshare-7b-stock-v1','installable':True,
+                    'app':{'sha256':digest,'size':len(app)},'expires_at':expiry}
+                payload=json.dumps(policy).encode()
+                (root/'approved-release.json').write_text(json.dumps({
+                    'payload':base64.b64encode(payload).decode(),
+                    'signature':base64.b64encode(key.sign(payload)).decode()}))
+                data=self.client.get('/devices/firmware/release/').json()
+                self.assertEqual(data['status'],'release-verification-failed')
+                self.assertFalse(data['installable'])
+                self.assertEqual(self.client.get('/devices/firmware/artifacts/'+digest+'.bin').status_code,404)
 
     def test_publisher_binds_exact_app_and_refuses_reuse_or_wrong_digest(self):
         import importlib.util

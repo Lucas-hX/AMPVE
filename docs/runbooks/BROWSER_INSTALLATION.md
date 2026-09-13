@@ -46,6 +46,8 @@ Use the platform `.venv` (cryptography) for `firmware/tools/publish_release.py`.
 - After reviewing the result, select the immutable directory with private platform configuration `firmware_release_root` and the separately trusted public key file with `firmware_publisher_public_key`, then use the platform's ordinary check/restart procedure. Do not embed a public key chosen by a release itself. No approved release is active by default.
 - Removing the active approved policy disables new installations; keep immutable artifacts for review. Revocation during an already started hardware write must not interrupt the write. OTA signing-key rotation/anti-downgrade and fleet deployment remain separate work.
 
+Expired or timezone-less approvals are rejected by the server for metadata and app downloads. The browser checks expiry again after the full flash comparison and plan hashing, immediately before the first write. Once writing starts, expiry does not interrupt app verification or boot-selection completion. Software tests cover expiry during preflight and after writing starts; physical timing/recovery validation remains pending.
+
 The generated `esp-web-tools-reference.json` is deliberately not served as a generic install button: it lacks dynamic per-device boot selection and recovery gates. Use the guarded AMPVE flow.
 
 ## Checks and evidence categories
@@ -61,7 +63,7 @@ Node tests use synthetic flash/serial/storage fixtures, including app-readback f
 
 ## Delivery evidence — 2026-09-13
 
-- Implementation source: `217229bb6624acc63d30c3705c6ebd24c59510a9`, draft [PR #39](https://github.com/Lucas-hX/AMPVE/pull/39), stacked on PR #5. The platform was updated with the browser flow; no database migration, audio restart, tunnel change or hardware write was needed.
+- Implementation source: `217229bb6624acc63d30c3705c6ebd24c59510a9`, [PR #39](https://github.com/Lucas-hX/AMPVE/pull/39), now merged after PR #5 under the owner's PR authorization. The platform was updated with the browser flow; no database migration, audio restart, tunnel change or hardware write was needed.
 - Actual `0.1.1-stock-dev` app: **2,652,944 bytes**, SHA-256 `89ad7c9947c4b81f28db3f0d02944992dde74854c8d36854b4e3945c8a068d19`. Both original OTA slots have `0x3F0000` bytes; this leaves **1,475,824 bytes** per slot. The installer proposes only `0xE00000` for the app.
 - Two separately compiled external source/build directories produced byte-identical app, bootloader, generated partition table and initial otadata artifacts using the shared pinned IDF/compiler/registry cache. Cross-machine reproduction was not tested.
 - Review ZIP: **1,696,059 bytes**, SHA-256 `53066b4a5af86606a8a9e29c1cf8f751f8d3ad74edd24657c0f3dde4a4701ec4`. Its authenticated public download and the app download were rehashed successfully; anonymous ZIP access was refused. The current release response remains `installable: false`.

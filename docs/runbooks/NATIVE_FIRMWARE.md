@@ -1,6 +1,6 @@
 # Native development firmware: audit, build and hardware acceptance
 
-Status: native source and build tooling implemented on `feat/native-device-shell`; hardware installation is **not approved**. PR #4 was merged into main on 2026-09-13 after Lucas's successful platform tests. See the delivery evidence at the end of this runbook for the actual build result.
+Status: native source and build tooling merged in PR #5, followed by the stock-preserving browser flow in PR #39. Hardware installation is **not approved**. See the delivery evidence at the end of this runbook for the actual build result.
 
 ## Stock-preserving successor
 

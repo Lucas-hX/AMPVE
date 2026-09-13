@@ -77,6 +77,7 @@ export async function executePlan(reader, plan, policy, consent, progress=()=>{}
   ensure(hash.digest('hex')===plan.backup_sha256,'The connected flash changed. Make new backups before installing.');
   for(const item of plan.writes) ensure(await sha256(item.bytes)===item.sha256,'Plan bytes changed.');
   if(signal?.aborted) throw new DOMException('Cancelled','AbortError');
+  ensure(Date.parse(policy.expires_at)>Date.now(),'Release approval expired during preflight. Prepare a new approved plan.');
   // After this point do not cancel/disconnect automatically. App first, readback,
   // then one boot-selection sector. No full erase, bootloader/table or C6 writes.
   for(const item of plan.writes) {
