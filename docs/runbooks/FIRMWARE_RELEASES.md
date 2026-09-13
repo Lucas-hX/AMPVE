@@ -1,6 +1,6 @@
 # Signed firmware publication and trust
 
-The publisher supports schema-2 signed **initial-install** and **OTA** policies. There is no approved release, production signing key or active trust registry created by this implementation. Device deployment APIs and the native OTA client are implemented as development work; see [FIRMWARE_DEPLOYMENTS.md](FIRMWARE_DEPLOYMENTS.md) and [NATIVE_OTA.md](NATIVE_OTA.md). Physical OTA/rollback remains unvalidated, and preparing a policy does not authorize installation.
+The publisher supports schema-2 signed **initial-install** and **OTA** policies. There is no approved release or active trust registry. First-install preparation has now created a private real development signing key and public-only build trust; this does not sign or activate a release. See [FIRST_INSTALLATION.md](FIRST_INSTALLATION.md). Device deployment APIs and the native OTA client are implemented as development work; see [FIRMWARE_DEPLOYMENTS.md](FIRMWARE_DEPLOYMENTS.md) and [NATIVE_OTA.md](NATIVE_OTA.md). Physical OTA/rollback remains unvalidated, and preparing a policy does not authorize installation.
 
 ## Identity, ordering and evidence
 

@@ -2,6 +2,8 @@
 
 Implementation: browser audit, local backup/import, signed-release gate, exact plan/recovery preparation, bounded app-first writer and pairing handoff. **Physical browser reads/writes are not yet tested. No release is approved for this unit.** See [ADR 0004](../decisions/0004-stock-preserving-browser-installation.md).
 
+Current preparation and remaining exact-unit evidence: [FIRST_INSTALLATION.md](FIRST_INSTALLATION.md).
+
 ## Owner test flow
 
 1. Sign in at `https://ampve.com/devices/add/` in desktop Chrome or Edge. Confirm the printed Waveshare 7B label, use its programming port and close other serial tools.
