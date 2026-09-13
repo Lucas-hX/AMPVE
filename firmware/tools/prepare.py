@@ -74,6 +74,10 @@ def prepare(work):
         marker.write_text(PIN+'\n')
     overlay=ROOT/'firmware/xiaozhi/overlay'
     cmake=work/'CMakeLists.txt'
+    if 'set(PROJECT_VER "0.1.12-startup-fix-dev")' in cmake.read_text():
+        replace(cmake,'set(PROJECT_VER "0.1.12-startup-fix-dev")',f'set(PROJECT_VER "{UPSTREAM["candidate_version"]}")')
+
+    cmake=work/'CMakeLists.txt'
     if 'set(PROJECT_VER "0.1.0-dev")' in cmake.read_text():
         replace(cmake,'set(PROJECT_VER "0.1.0-dev")','set(PROJECT_VER "0.1.1-stock-dev")')
     if 'set(PROJECT_VER "0.1.1-stock-dev")' in cmake.read_text():

@@ -200,3 +200,12 @@ See [NATIVE_WIFI.md](NATIVE_WIFI.md) for candidate `0.1.9-wifi-storage-dev`: che
 
 
 Improv development update (2026-09-13): candidate `0.1.10-improv-dev` adds the official pinned Improv Serial SDK, UART0 service, physical five-minute authorization and shared portal/USB provisioning transaction. The browser form waits for the board's saved-network reconnection response. Protocol/transport fixtures and the P4 build are software evidence; UART/C6 provisioning and hardware acceptance remain pending. See [NATIVE_WIFI.md](NATIVE_WIFI.md).
+
+
+## Early scheduler memory budget
+
+The owner reported `vApplicationGetIdleTaskMemory` at pinned IDF `port_common.c:53` with the exact 0.1.12 ELF prefix. That line asserts allocation of the idle task control block; `pvPortMalloc` requires internal, byte-accessible memory. This occurs before `app_main`. In the pinned P4 revision-1.x memory layout, a large startup-stack region remains unavailable until IDF's `main_task` reclaims it after both scheduler cores start. The report establishes allocation failure, not the exact remaining free heap or the allocation that exhausted it.
+
+Candidate 0.1.13 reduces `CONFIG_ESP_MAIN_TASK_STACK_SIZE` from 16 KiB to 4 KiB. `app_main` now launches the existing AMPVE runtime on a separate 16 KiB stack plus IDF’s `TASK_EXTRA_STACK_SIZE` allowance (512 bytes in this build), pinned to the same configured core at IDF’s `ESP_TASK_MAIN_PRIO`, after IDF has reclaimed startup-stack memory. Thus 12 KiB less stack is requested before idle-task creation; the runtime/display initialization retains its previous stack budget. No allocator override, early reclamation of active ROM stacks, assertion bypass, PSRAM-stack substitution or SDK source patch is used. Build preparation migrates existing generated configs; both compilation and packaging enforce the 4 KiB early stack.
+
+Two fixed numeric checkpoints report internal free bytes and largest free block before the scheduler and at `app_main`. Browser failure summaries retain at most one bounded record per phase; raw logs and device/user data are not exported. Runtime-task allocation failure returns without executing the runtime on the small bootstrap stack. The actual entry point is exercised with simulated task creation and ASan/UBSan by `python3 firmware/tests/native/scheduler_run.py`. These checks do not establish sufficient memory on the physical unit or successful peripheral/network startup.

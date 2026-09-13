@@ -402,13 +402,15 @@ test('initializer symbol labels require both the published app and observed matc
 
 test('startup symbol catalog distinguishes current and previous builds without cross-labeling',()=>{
   const builds=JSON.parse(readFileSync('startup-symbols.json'));
-  assert.equal(builds.length,2);
+  assert.ok(builds.length>=2);
+  assert.equal(new Set(builds.map(item=>item.app_sha256)).size,builds.length);
+  assert.equal(new Set(builds.map(item=>item.elf_sha256)).size,builds.length);
   for(const build of builds){
     const [address,name]=Object.entries(build.functions)[0];
     const failures=[{function_address:address,error_code:'0x101'}];
     assert.equal(api.resolveStartupInitializers({sha256:build.app_sha256},[build.elf_sha256.slice(0,9)],failures)[0].matched_build_function,name);
-    const other=builds.find(item=>item!==build);
-    assert.deepEqual(api.resolveStartupInitializers({sha256:build.app_sha256},[other.elf_sha256.slice(0,9)],failures),failures);
+    for(const other of builds.filter(item=>item!==build))
+      assert.deepEqual(api.resolveStartupInitializers({sha256:build.app_sha256},[other.elf_sha256.slice(0,9)],failures),failures);
   }
   assert.equal(Object.values(builds[1].functions).includes('sleep_clock_icg_startup_init'),false);
 });
@@ -542,4 +544,16 @@ test('assertion locations omit expressions and private paths and reject malforme
   assert.equal(JSON.stringify(location).includes('private'),false);
   assert.equal(JSON.stringify(location).includes('secret'),false);
   for(const line of ['password secret','assert failed: f x.c:0 (x)','assert failed: f x.c:10 (x) leaked','assert failed: f secret.txt:10 (x)','x'.repeat(769)])assert.equal(api.startupAssertion(line),null);
+});
+
+test('early heap checkpoints accept only bounded numeric internal-memory counts',()=>{
+  assert.deepEqual(api.startupHeap('AMPVE_BOOT_HEAP scheduler_pending 15000 12000'),{phase:'scheduler_pending',internal_free_bytes:15000,internal_largest_block_bytes:12000});
+  for(const line of ['AMPVE_BOOT_HEAP unknown 10 1','AMPVE_BOOT_HEAP runtime_pending 1 2','AMPVE_BOOT_HEAP scheduler_pending 1048577 0','AMPVE_BOOT_HEAP scheduler_pending 10 1 private','private'])assert.equal(api.startupHeap(line),null);
+});
+
+test('startup failure reports retain only the last bounded checkpoint per phase',async()=>{
+  const port=runtimePort((request,c)=>c.enqueue(new TextEncoder().encode('AMPVE_BOOT_HEAP scheduler_pending 20000 18000\nAMPVE_BOOT_HEAP scheduler_pending 19000 17000\nAMPVE_BOOT_HEAP runtime_pending 400000 390000\nAMPVE_BOOT_HEAP private 2 1\nassert failed: vApplicationGetIdleTaskMemory port_common.c:53 (private-expression)\n')));
+  let summary;try{await api.checkRuntime(port,runtimeExpected,()=>{},undefined,4000);}catch(error){summary=error.startupSummary;}
+  assert.deepEqual(summary.startup_heap,[{phase:'scheduler_pending',internal_free_bytes:19000,internal_largest_block_bytes:17000},{phase:'runtime_pending',internal_free_bytes:400000,internal_largest_block_bytes:390000}]);
+  assert.equal(JSON.stringify(summary).includes('private'),false);assert.equal(port.closed,true);
 });

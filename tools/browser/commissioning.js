@@ -18,7 +18,7 @@ export function runtimeStatus(line,nonce,expected){
 export async function checkRuntime(port,expected,onReport=()=>{},signal,timeout=90000,restart=false){
   ensure(/^[a-f0-9]{64}$/.test(expected.sha256),'Missing installed application identity.');
   let reader,writer,timer,retry,panicTimer,opened=false,cancel,stopped=false,sendError;let expired=false,panicCaptured=false;
-  let observedBytes=0,lastStatus=null;const observations=new Set(),details=new Set(),programCounters=new Set(),elfPrefixes=new Set(),initFailures=new Map(),assertions=new Map();
+  let observedBytes=0,lastStatus=null;const observations=new Set(),details=new Set(),programCounters=new Set(),elfPrefixes=new Set(),initFailures=new Map(),assertions=new Map(),heapReports=new Map();
   try{
     if(signal?.aborted)throw new DOMException('Cancelled','AbortError');
     if(restart){const info=port.getInfo?.();ensure(info?.usbVendorId===0x1a86 && info?.usbProductId===0x55d3,'Select the 7B USB TO UART port for automatic restart.');}
@@ -53,6 +53,8 @@ export async function checkRuntime(port,expected,onReport=()=>{},signal,timeout=
         }else {
           for(const observation of bootObservations(line))observations.add(observation);
           const evidence=bootFailureDetails(line);
+          const heap=startupHeap(line);
+          if(heap)heapReports.set(heap.phase,heap);
           const assertion=startupAssertion(line);
           if(assertion&&assertions.size<4)assertions.set(JSON.stringify(assertion),assertion);
           for(const detail of evidence.details)details.add(detail);
@@ -71,7 +73,7 @@ export async function checkRuntime(port,expected,onReport=()=>{},signal,timeout=
       timed_out:expired,cancelled:signal?.aborted===true,observations:[...observations].sort(),
       capture_stop:signal?.aborted?'cancelled':panicCaptured?'panic_captured':expired?'timeout':observedBytes>65536?'output_limit':'serial_or_validation_error',
       failure_details:[...details].sort(),panic_program_counters:[...programCounters],observed_elf_sha256_prefixes:[...elfPrefixes],startup_initializer_failures:resolveStartupInitializers(expected,[...elfPrefixes],[...initFailures.values()]),
-      assertion_locations:[...assertions.values()],last_status:lastStatus,physical_startup_verified:false};
+      assertion_locations:[...assertions.values()],startup_heap:[...heapReports.values()],last_status:lastStatus,physical_startup_verified:false};
     throw error;
   }finally{
     stopped=true;clearTimeout(timer);clearTimeout(retry);clearTimeout(panicTimer);if(cancel)signal?.removeEventListener('abort',cancel);
@@ -112,6 +114,7 @@ export function bootFailureDetails(raw){
     ['hosted_serial_allocation',/Failed to allocate serial data/i],
     ['error_check_failed',/ESP_ERROR_CHECK failed:/i],
     ['assertion_failed',/assert failed:/i],
+    ['runtime_task_allocation_failed',/^AMPVE runtime task allocation failed$/],
     ['abort_called',/abort\(\) was called/i],
     ['load_access_fault',/Guru Meditation Error.*Load access fault/i],
     ['store_access_fault',/Guru Meditation Error.*Store access fault/i],
@@ -151,4 +154,13 @@ export function startupAssertion(raw){
   const match=line.match(/^assert failed: ([A-Za-z_][A-Za-z0-9_:~]{0,127}) ((?:[A-Za-z0-9_.\/-]+\/)?([A-Za-z0-9_-]{1,96}\.(?:c|cc|cpp|h|hpp))):([0-9]{1,6}) \([^\r\n]*\)\s*$/);
   if(!match||Number(match[4])===0)return null;
   return {function:match[1],file:match[3],line:Number(match[4])};
+}
+
+// Firmware-owned checkpoints, bounded numeric counts; no serial text is exported.
+export function startupHeap(line){
+  const match=line.match(/^AMPVE_BOOT_HEAP (scheduler_pending|runtime_pending) ([0-9]{1,7}) ([0-9]{1,7})$/);
+  if(!match)return null;
+  const free=Number(match[2]),largest=Number(match[3]);
+  if(free>1048576||largest>free)return null;
+  return {phase:match[1],internal_free_bytes:free,internal_largest_block_bytes:largest};
 }

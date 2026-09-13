@@ -1,5 +1,17 @@
 # First Waveshare 7B installation handoff
 
+## Idle-task allocation failure — 2026-09-13
+
+The owner's expanded 0.1.12 report matches ELF `c441d686a` and identifies `vApplicationGetIdleTaskMemory`, `port_common.c:53`. The exact pinned SDK asserts a non-null idle task control block there; its allocator requires internal 8-bit memory. This is before `app_main`, so Wi-Fi, dashboard pairing and AMPVE peripheral initialization have not run. The report does not measure the remaining heap or prove which earlier allocation exhausted it.
+
+The 0.1.13 candidate reduces the early main-task stack by 12 KiB (16 to 4 KiB) and starts AMPVE on its original 16 KiB budget after the SDK normally reclaims startup RAM. It retains core affinity, main-task priority, allocator behavior and assertions. Two bounded numeric heap checkpoints support automatic diagnosis. See NATIVE_FIRMWARE.md and USB_COMMISSIONING_REVIEW.md for allocation order, source review and the known 0.1.12 replacement route. Software validation: actual entry-point host fixtures under ASan/UBSan, 44 firmware-tool tests, 69 browser tests and rendered Chromium onboarding. Physical startup and subsequent setup remain unverified.
+
+The final runtime allocation also retains IDF's `TASK_EXTRA_STACK_SIZE` allowance: the configured 16 KiB budget is 16,896 bytes in this pinned build, while the early main task requests 4,608 bytes. The reduction remains exactly 12 KiB before scheduler startup. Final disassembly confirms the 4,608-byte early allocation and 16,896-byte runtime allocation, with core 0 and priority 1 unchanged.
+
+Both independently compiled directories produced byte-identical app, bootloader, table and otadata artifacts with no compiler warnings. Source commit: `de1eb9e`. Final candidate: `0.1.13-scheduler-fix-dev`, 2,876,272 bytes, app SHA-256 `ca04872053e00abd412ef9f074ed71f43efa39477487d74e423dd20de964d1b9`; exact ELF SHA-256 `39deeabeb89d7f14996a53d295df56b2dcc98924822a21f405afb50be0228488`. The ELF is privately retained and its 27 initializer labels are bound to that app/ELF identity in the browser catalog. The new SECONDARY/core-0 checkpoint initializer is present; the previously disabled sleep-clock ICG initializer remains absent.
+
+Signed initial-install development release sequence 4: `a1375a82d8c247531d226e6907cb1754a496201a6d6203831d4c7c7501b490ca`. Private candidate `firmware-scheduler-fix-review-04`; signed package `firmware-usb-initial-release-04`. Sequence 3 was privately staged but never activated; final disassembly review required retaining IDF's extra-stack allowance, and its sequence was not reused. Selected previous reference: immutable signed `firmware-usb-initial-release-02` (0.1.12). Both app spans are `0x2BF000` at `0xE00000`; the existing one-sector boot-selection write remains last. The public vendor source and original bootloader/table fingerprints were reverified. Owner-local backup/device comparison and explicit install-button consent remain mandatory; signing does not establish physical success.
+
 ## Startup failure continuation — 2026-09-13
 
 The owner's 0.1.12 report identifies ELF prefix `c441d686a` and an assertion. Resolving PC `0x4ff0de92` against the retained exact ELF gives `panic_abort` in `panic.c:509`, which does not identify the assertion's caller. No firmware correction is justified by this address alone. The published firmware remains unchanged.

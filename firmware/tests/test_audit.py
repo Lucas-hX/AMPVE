@@ -70,8 +70,12 @@ class ReleaseGateTests(unittest.TestCase):
                 'CONFIG_ESP32P4_REV_MAX_FULL': '199', 'CONFIG_ESPTOOLPY_FLASHSIZE': '"32MB"',
                 'CONFIG_BOARD_TYPE_WAVESHARE_ESP32_P4_WIFI6_TOUCH_LCD_7B': 'y',
                 'CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE': 'y', 'CONFIG_FLASH_NONE_ASSETS': 'y',
-                'CONFIG_LANGUAGE_EN_US': 'y', 'CONFIG_APP_REPRODUCIBLE_BUILD': 'y'}
+                'CONFIG_LANGUAGE_EN_US': 'y', 'CONFIG_APP_REPRODUCIBLE_BUILD': 'y',
+                'CONFIG_ESP_MAIN_TASK_STACK_SIZE': '4096'}
         validate_config(good)
+        for size in ['16384', '2048', None]:
+            with self.subTest(size=size), self.assertRaises(ValueError):
+                validate_config({**good, 'CONFIG_ESP_MAIN_TASK_STACK_SIZE': size})
         for key in ['CONFIG_SECURE_BOOT', 'CONFIG_SECURE_FLASH_ENC_ENABLED',
                     'CONFIG_BOOTLOADER_APP_ANTI_ROLLBACK', 'CONFIG_APP_COMPILE_TIME_DATE',
                       'CONFIG_LIBSODIUM_USE_MBEDTLS_SHA', 'CONFIG_PM_SLEEP_CLK_ICG_ENABLE']:
