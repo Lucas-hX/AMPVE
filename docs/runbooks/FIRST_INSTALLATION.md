@@ -1,8 +1,21 @@
 # First Waveshare 7B installation handoff
 
-## Startup correction in preparation — 2026-09-13
+## Corrected USB-assisted release — 2026-09-13
 
-The latest owner summary identifies `sleep_clock_icg_startup_init` failing with `0x101` before `app_main` in 0.1.11. The exact ELF match makes further repetition of that diagnostic unnecessary. Version 0.1.12 disables the optional sleep-clock REGDMA initialization; see [the engineering review](USB_COMMISSIONING_REVIEW.md#startup-retention-correction--2026-09-13). Build/signing/deployment evidence will be recorded here after completion. Keep the old signed release available as the recovery reference for its exact `0x2C0000` app span. Physical restoration and corrected native startup remain pending.
+The owner summary identifies `sleep_clock_icg_startup_init` failing with `0x101` before `app_main` in 0.1.11, with its exact ELF prefix. No repeated diagnostic of that image is needed. Version **0.1.12-startup-fix-dev** disables the optional sleep-clock REGDMA initialization; see [the engineering review](USB_COMMISSIONING_REVIEW.md#startup-retention-correction--2026-09-13). The final ELF contains 26 system initializer functions and no failing `sleep_clock_icg_startup_init` symbol. This removes the observed failing path; physical startup and subsequent phases remain unvalidated.
+
+- Firmware source: `19a2166b9b0c5c6291fc4f4517cb166b096aa89d`, native build sequence 2.
+- Candidate: `/home/ampve/.local/state/ampve/firmware-usb-startup-fix-review-02`.
+- Signed initial-install release: `/home/ampve/.local/state/ampve/firmware-usb-initial-release-02`; ID `30fe152db1a099a4d5bc5e0fd586e25d41d292638272c289adc4c76cc61310e1`, expires `2026-09-27T17:38:33Z`. Signature/provenance verification passed against the existing public registry; this is not an OTA release.
+- Application: 2,875,904 bytes, SHA-256 `bc334f7d5c744d693f0de9034aaaea26de0694dfc94aed90fcf8087eba466406`; rounded span `0x2BF000` at `0xE00000`.
+- ELF SHA-256: `c441d686acd999fa8c8b5aa8a48acdb4ad451ece33ff3bf37ee673710e81c77a`; retained privately under `firmware-debug/<app-sha>/xiaozhi.elf`. Browser symbol catalogs retain both versions and require matching app/ELF identities.
+- Review archive: 1,883,817 bytes, SHA-256 `28526c0d416a12207a15b045bd95a18f4a07c561f4d81fe118a06e0a238522a6`.
+- Four packaged artifacts are byte-identical between two separately executed builds on the same VPS/toolchain/cache. Logs: `startup-fix-build-a.log` and `startup-fix-build-b.log` in the external firmware cache. Both generated configs disable the option; the pinned CMake excludes its source. This is not cross-machine reproduction.
+- Validation: 44 firmware-tool tests, 51 Node tests, 9 Django firmware/diagnostic tests and rendered Chromium onboarding fixtures at three widths. Recovery delivery tests cover a smaller current app, the previous full span, authentication, invalid selectors and missing/invalid release data.
+
+The private platform configuration should select this new release for installation and retain `firmware-usb-initial-release-01` as `firmware_recovery_root`. Recovery mode uses the prior signed release through `?recovery=1`, preserving its exact `0x2C0000` span instead of shrinking to the new binary. Publication does not change any device. Keep the existing trust floor at 1 while the prior recovery policy remains applicable; revocation and expiry still apply.
+
+Owner route: reload onboarding, choose **Recover a device that did not start**, confirm the board and select the original two `.bin` files plus capture record. Choose **Restore original software** and confirm the restore. The browser reconnects through USB TO UART, checks the complete flash, restores only the exact original regions and verifies the full original hash. After checking original startup, use the new **start AMPVE installation again** link. Normal setup selects 0.1.12 and checks current bytes before installation; a stock boot may change NVS and require fresh capture. Original startup after recovery, corrected AMPVE USB core startup, Wi-Fi, pairing and peripherals remain physical acceptance tasks.
 
 ## USB-assisted commissioning update — 2026-09-13
 
