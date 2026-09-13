@@ -12,7 +12,7 @@ import {prepareRecovery,validateRecovery,executeRecovery} from './recovery.js';
 const root=document.querySelector('#firmware-setup');
 if(root) {
   const get=id=>document.getElementById(id),status=get('setup-status'),meter=get('setup-progress'),detail=get('setup-progress-detail');
-  let reinstallReference;
+  let reinstallReference,failedRuntimeHash=null;
   let wifi,c6Observation,recoveryPlan,installedRuntime,recoveryMode=false,currentFlashChanged=false;
   const downloadUrls=new Map();
   function downloadLink(id,summary){
@@ -52,12 +52,12 @@ if(root) {
     get('save-recovery').disabled=busy||!plan||!window.showDirectoryPicker;
     get('export-plan-review').setAttribute('aria-disabled',String(busy||!plan));
     get('approve-plan').disabled=busy||!policy||plan?.review_only===true;
-    get('install-ampve').disabled=busy||((recoveryMode||currentFlashChanged)&&!reinstallReference)||!policy||plan?.review_only===true||!plan?.recovery_saved||!navigator.serial||
+    get('install-ampve').disabled=busy||policy?.app?.sha256===failedRuntimeHash||((recoveryMode||currentFlashChanged)&&!reinstallReference)||!policy||plan?.review_only===true||!plan?.recovery_saved||!navigator.serial||
       (!allowsUsbCommissioning(policy)&&(!c6Observation?.version_matches||!c6Observation.unit_identity||c6Observation.unit_identity!==report?.hardware?.identity))||
       !get('approve-plan').checked||!get('separate-copy').checked||!get('rom-recovery').checked;
     get('cancel-setup').disabled=!busy||writing||!controller;
     get('import-backups').disabled=busy;
-    get('connect-wifi').disabled=busy||!navigator.serial;
+    get('connect-wifi').disabled=busy||!!failedRuntimeHash||!navigator.serial;
     get('send-wifi').disabled=busy||wifi?.state!==2;
     get('close-wifi').disabled=busy||!wifi;
     get('wifi-password').disabled=busy;
@@ -70,7 +70,14 @@ if(root) {
       // Never display raw transport data or exception messages from serial libraries.
       status.textContent=error.name==='AbortError'?'Stopped. Incomplete reads are not valid backups.':
         error.userMessage||'Setup stopped. Check the cable, programming port and current operation. No installation is approved by a failed check.';
-      if(error.startupSummary){downloadLink('export-runtime-review',error.startupSummary);downloadLink('export-install-result',error.startupSummary);recoveryMode=true;installedRuntime=null;show('device-confirmation');show('backup-step');show('existing-backups');get('wifi-step').hidden=true;status.textContent='AMPVE did not start. Select your original backup files below to prepare installation of the latest version.';}
+      if(error.startupSummary){
+        downloadLink('export-runtime-review',error.startupSummary);downloadLink('export-install-result',error.startupSummary);
+        // A startup failure is not a failed flash. Preserve session evidence and the installed identity.
+        if(error.startupSummary.observations.includes('panic'))failedRuntimeHash=error.startupSummary.expected_app_sha256;
+        show('wifi-step');
+        get('runtime-status').textContent='Startup needs attention. Restart and check AMPVE over USB to collect the failure location; this does not reinstall firmware.';
+        status.textContent=failedRuntimeHash?'AMPVE stopped during startup. Reinstalling this same version is paused.':'AMPVE startup was not confirmed. Check it again over USB.';
+      }
       detail.textContent=writing?'A write may be incomplete. Keep your recovery files; use the reviewed USB recovery procedure.':
         'If AMPVE did not start, use Repair or reinstall AMPVE. Keep the original backups. Use the USB TO UART port; an accessible RESET button is not required for the first automatic reconnect attempt.';
       if(error.installationSummary){
@@ -83,7 +90,8 @@ if(root) {
           'Flash verification completed. The remaining step is USB startup checking.':
           `Installation result: ${error.installationSummary.phase.replaceAll('_',' ')}. Use Download installation result below; the backup summary describes only your saved files.`;
       }
-      await close();plan=null;
+      if(error.startupSummary)detail.textContent='Your verified backups and recovery preparation remain available in this tab. Check startup over USB, or use the original-software recovery option. Keep this tab open.';
+      await close();if(!error.startupSummary)plan=null;
     }finally{busy=false;writing=false;sync();}
   }
   function boardConsent(){ensure(get('board-confirm').checked&&get('read-consent').checked,'Confirm the board and temporary RAM reader first.');}
@@ -177,9 +185,9 @@ if(root) {
     status.textContent='Recovery comparison complete. The device was not changed.';
   }
   get('recover-device').onclick=()=>{
-    recoveryMode=true;installedRuntime=null;plan=null;show('device-confirmation');get('wifi-step').hidden=true;
+    recoveryMode=true;show('device-confirmation');show('wifi-step');
     get('model-evidence').textContent='Confirm the board name, then select your original backups. Setup will check whether AMPVE can be reinstalled directly over USB.';
-    status.textContent='Recovery mode. Use your backups from before AMPVE was installed.';
+    status.textContent=report?'Your checked backups remain available. Check startup over USB or prepare recovery.':'Check startup over USB without backups. To restore original software, select your original backups.';
     get('device-confirmation').scrollIntoView({behavior:'smooth'});sync();
   };
   get('use-existing').onclick=()=>{show('existing-backups');get('import-backups').focus();};
@@ -268,9 +276,10 @@ if(root) {
       show('wifi-step');return;
     }
     get('installation-method').textContent=(approved?allowsUsbCommissioning(policy):data.commissioning==='usb-assisted-v1')?'Keep original software · install AMPVE, then finish setup over USB. Wi-Fi and peripherals are checked after installation.':'Keep original software · verify Wi-Fi compatibility before installation.';
-    get('release-status').textContent=approved?'Ready to install after you save your return-to-original files.':'This board’s first AMPVE release is still being validated. Installation is not available yet. Your device has not been changed.';
+    get('release-status').textContent=policy?.app?.sha256===failedRuntimeHash?'This version already failed startup. Check startup over USB or restore your original software.':approved?'Ready to install after you save your return-to-original files.':'This board’s first AMPVE release is still being validated. Installation is not available yet. Your device has not been changed.';
     status.textContent=approved?'Installation prepared. Save your return-to-original files to continue.':'Candidate compared with your backups. The installation option is prepared for review.';
     if(reinstallReference){get('installation-method').textContent=`Install AMPVE ${policy.firmware_version} · automatically replace a recognized AMPVE installation if present. Original software and saved settings are kept. No successful startup or return to original software is required first.`;get('install-ampve').textContent='Install AMPVE';}
+    if(policy?.app?.sha256===failedRuntimeHash){status.textContent='This version already stopped during startup. Check startup over USB or restore your original software.';show('wifi-step');}
     detail.textContent=approved?'': 'You do not need to run commands or interpret technical details. The development review must finish before installation becomes available.';
   }
   get('save-recovery').onclick=()=>run(async()=>{
@@ -286,7 +295,7 @@ if(root) {
     plan.recovery_saved=true;downloadLink('export-plan-review',planReviewSummary(plan));status.textContent='Recovery files saved and checked on your computer.';
   });
   get('install-ampve').onclick=()=>run(async signal=>{
-    if(!port)port=await navigator.serial.requestPort();get('read-consent').checked=true;boardConsent();ensure(!(recoveryMode||currentFlashChanged)||reinstallReference,'Prepare the known installation reference first.');ensure(policy&&plan?.review_only!==true,'A reviewed signed release is required before installation.');ensure(plan?.recovery_saved&&port,'Save recovery files and select the same board first.');
+    if(!port)port=await navigator.serial.requestPort();get('read-consent').checked=true;boardConsent();ensure(!(recoveryMode||currentFlashChanged)||reinstallReference,'Prepare the known installation reference first.');ensure(policy?.app?.sha256!==failedRuntimeHash,'This version already failed startup. Check startup or prepare a corrected release.');ensure(policy&&plan?.review_only!==true,'A reviewed signed release is required before installation.');ensure(plan?.recovery_saved&&port,'Save recovery files and select the same board first.');
     const consent={exact_plan:get('approve-plan').checked,separate_copy:get('separate-copy').checked,rom_recovery:get('rom-recovery').checked};
     ensure(Object.values(consent).every(Boolean),'Confirm the exact write/recovery plan first.');
     // Revalidate approval/signature at click time, then hold the same transport through all writes.
@@ -305,7 +314,7 @@ if(root) {
     });downloadLink('export-install-result',installed.installation_summary);await close();
     writing=false;recoveryMode=false;currentFlashChanged=false;get('cancel-setup').disabled=false;
     const expectedVersion=policy.firmware_version;
-    const usbAssisted=allowsUsbCommissioning(policy);plan=null;
+    const usbAssisted=allowsUsbCommissioning(policy);
     if(usbAssisted){
       show('wifi-step');status.textContent='AMPVE written and verified. Checking its startup over USB…';
       await new Promise(resolve=>setTimeout(resolve,3000));
@@ -313,7 +322,7 @@ if(root) {
       const runtime=await checkRuntime(port,installedRuntime,report=>{
         get('runtime-status').textContent='AMPVE is responding over USB. Checking its core before continuing…';
       },signal);
-      downloadLink('export-runtime-review',runtime);
+      failedRuntimeHash=null;downloadLink('export-runtime-review',runtime);
       get('runtime-status').textContent=runtime.wifi_initialized?'AMPVE core confirmed over USB. Continue with Wi-Fi setup.':'AMPVE core confirmed over USB. Wi-Fi still needs configuration or compatibility work.';
       status.textContent='AMPVE responds over USB. Continue setup while the device stays connected.';
       detail.textContent='USB startup is confirmed. Wi-Fi, display and other features are checked separately during setup.';
@@ -328,13 +337,13 @@ if(root) {
     // Release the ROM reader; the startup checker pulses reset after opening its sole reader.
     await close();
     if(!installedRuntime){
-      const response=await fetch(root.dataset.release+(recoveryMode?'?recovery=1':''),{cache:'no-store'});ensure(response.ok,'Release unavailable.');
+      const response=await fetch(root.dataset.release,{cache:'no-store'});ensure(response.ok,'Release unavailable.');
       const expected=await verifyRelease(await response.json());
       ensure(allowsUsbCommissioning(expected),'This release does not support USB startup checks.');
       installedRuntime={version:expected.firmware_version,sha256:expected.app.sha256};
     }
     const result=await checkRuntime(port,installedRuntime,()=>{get('runtime-status').textContent='AMPVE responds. Waiting for its core check…';},signal,90000,true);
-    downloadLink('export-runtime-review',result);
+    failedRuntimeHash=null;downloadLink('export-runtime-review',result);
     get('runtime-status').textContent=result.wifi_initialized?'AMPVE core confirmed. Wi-Fi initialization completed; check connection below.':'AMPVE core confirmed. Wi-Fi remains pending.';
     status.textContent='USB startup checked. Network connection and dashboard pairing are separate steps.';
   });

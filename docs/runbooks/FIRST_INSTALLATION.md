@@ -1,5 +1,14 @@
 # First Waveshare 7B installation handoff
 
+## Startup failure continuation — 2026-09-13
+
+The owner's 0.1.12 report identifies ELF prefix `c441d686a` and an assertion. Resolving PC `0x4ff0de92` against the retained exact ELF gives `panic_abort` in `panic.c:509`, which does not identify the assertion's caller. No firmware correction is justified by this address alone. The published firmware remains unchanged.
+
+The browser now retains installed identity, checked backup files and prepared recovery in the current tab after a startup-check failure. It keeps the existing USB restart/check control visible, pauses installation of the candidate associated with a captured panic, and disables Wi-Fi connection until startup succeeds. A successful authenticated runtime status clears the pause; a different signed candidate can be prepared through the existing release check. The installation handler enforces the pause as well as the button. Opening repair no longer discards the session's evidence, and an unbound startup check uses the current release rather than assuming the old recovery release is installed.
+
+Startup summaries add at most four assertion source locations (function identifier, source basename and line number); absolute paths and assertion expressions are discarded. This enables one USB restart/check without a flash read, backup import or reinstall. The original recovery route retains all its existing checks and explicit consent. Session evidence is not persisted across reloads; private files remain local. Validation covers 67 Node tests and rendered Chromium fixtures, including repeated startup checks after a panic, visible result downloads, blocked same-candidate installation and redacted assertion locations. An existing diagnostic-wrapper regression found by the suite was corrected: validation failures no longer access the reader merely to collect transfer diagnostics. Neither this UI change nor an assertion report establishes successful physical startup, recovery, Wi-Fi or pairing.
+
+
 ## Buffered serial receiver — 2026-09-13
 
 The next owner attempt stopped with `flash_packet_incomplete` after 1,495,040 bytes; the failing 64 KiB read began at 1,441,792 and had accepted 53,248 bytes. No write was attempted. The report did not record the unexpected packet's actual length, so it cannot establish whether the cause was an empty SLIP frame, dropped bytes, corruption or another transport problem.

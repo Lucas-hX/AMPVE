@@ -535,3 +535,11 @@ test('persistent USB corruption reports the failed read block and never reaches 
   assert.equal(result.read_failure.offset,0x1380000);assert.equal(result.read_failure.attempt,3);
   assert.equal(result.read_retry_count,2);assert.deepEqual(writes,[]);
 });
+
+test('assertion locations omit expressions and private paths and reject malformed records',()=>{
+  const location=api.startupAssertion('assert failed: uart_driver_install /private/build/components/driver/uart.c:1720 (secret_expression == 1)');
+  assert.deepEqual(location,{function:'uart_driver_install',file:'uart.c',line:1720});
+  assert.equal(JSON.stringify(location).includes('private'),false);
+  assert.equal(JSON.stringify(location).includes('secret'),false);
+  for(const line of ['password secret','assert failed: f x.c:0 (x)','assert failed: f x.c:10 (x) leaked','assert failed: f secret.txt:10 (x)','x'.repeat(769)])assert.equal(api.startupAssertion(line),null);
+});

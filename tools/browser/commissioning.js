@@ -18,7 +18,7 @@ export function runtimeStatus(line,nonce,expected){
 export async function checkRuntime(port,expected,onReport=()=>{},signal,timeout=90000,restart=false){
   ensure(/^[a-f0-9]{64}$/.test(expected.sha256),'Missing installed application identity.');
   let reader,writer,timer,retry,panicTimer,opened=false,cancel,stopped=false,sendError;let expired=false,panicCaptured=false;
-  let observedBytes=0,lastStatus=null;const observations=new Set(),details=new Set(),programCounters=new Set(),elfPrefixes=new Set(),initFailures=new Map();
+  let observedBytes=0,lastStatus=null;const observations=new Set(),details=new Set(),programCounters=new Set(),elfPrefixes=new Set(),initFailures=new Map(),assertions=new Map();
   try{
     if(signal?.aborted)throw new DOMException('Cancelled','AbortError');
     if(restart){const info=port.getInfo?.();ensure(info?.usbVendorId===0x1a86 && info?.usbProductId===0x55d3,'Select the 7B USB TO UART port for automatic restart.');}
@@ -53,6 +53,8 @@ export async function checkRuntime(port,expected,onReport=()=>{},signal,timeout=
         }else {
           for(const observation of bootObservations(line))observations.add(observation);
           const evidence=bootFailureDetails(line);
+          const assertion=startupAssertion(line);
+          if(assertion&&assertions.size<4)assertions.set(JSON.stringify(assertion),assertion);
           for(const detail of evidence.details)details.add(detail);
           for(const pc of evidence.program_counters)if(programCounters.size<8)programCounters.add(pc);
           for(const prefix of evidence.elf_prefixes)if(elfPrefixes.size<4)elfPrefixes.add(prefix);
@@ -69,7 +71,7 @@ export async function checkRuntime(port,expected,onReport=()=>{},signal,timeout=
       timed_out:expired,cancelled:signal?.aborted===true,observations:[...observations].sort(),
       capture_stop:signal?.aborted?'cancelled':panicCaptured?'panic_captured':expired?'timeout':observedBytes>65536?'output_limit':'serial_or_validation_error',
       failure_details:[...details].sort(),panic_program_counters:[...programCounters],observed_elf_sha256_prefixes:[...elfPrefixes],startup_initializer_failures:resolveStartupInitializers(expected,[...elfPrefixes],[...initFailures.values()]),
-      last_status:lastStatus,physical_startup_verified:false};
+      assertion_locations:[...assertions.values()],last_status:lastStatus,physical_startup_verified:false};
     throw error;
   }finally{
     stopped=true;clearTimeout(timer);clearTimeout(retry);clearTimeout(panicTimer);if(cancel)signal?.removeEventListener('abort',cancel);
@@ -140,4 +142,13 @@ export function resolveStartupInitializers(expected,prefixes,failures){
     /^[a-f0-9]{8,64}$/.test(prefixes[0])&&symbols.elf_sha256.startsWith(prefixes[0]);
   return failures.map(failure=>({...failure,...(matches&&Object.hasOwn(symbols.functions,failure.function_address)?
     {matched_build_function:symbols.functions[failure.function_address]}:{})}));
+}
+
+// Retain source coordinates only, never the assertion expression or absolute build path.
+export function startupAssertion(raw){
+  if(raw.length>768)return null;
+  const line=raw.replace(/\x1b\[[0-9;]*m/g,'');
+  const match=line.match(/^assert failed: ([A-Za-z_][A-Za-z0-9_:~]{0,127}) ((?:[A-Za-z0-9_.\/-]+\/)?([A-Za-z0-9_-]{1,96}\.(?:c|cc|cpp|h|hpp))):([0-9]{1,6}) \([^\r\n]*\)\s*$/);
+  if(!match||Number(match[4])===0)return null;
+  return {function:match[1],file:match[3],line:Number(match[4])};
 }
