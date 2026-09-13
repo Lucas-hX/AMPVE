@@ -131,10 +131,10 @@ if(root) {
     const result=await runProbe(port,new Uint8Array(await artifact.arrayBuffer()),manifest,progress,signal);
     c6Observation=result;
     downloadLink('export-c6-review',{schema:1,kind:'ampve-c6-diagnostic-summary',profile:CONTRACT,
-      diagnostic_sha256:manifest.sha256,status:result.status,version:result.version,version_matches:result.version_matches,
+      diagnostic_sha256:manifest.sha256,status:result.status,version:result.version,version_matches:result.version_matches,error_code:result.error_code,
       wifi_function_verified:false,physical_recovery_verified:false,installable:false});
     get('c6-status').textContent=result.version_matches?'Wi-Fi hardware check passed: ESP32-C6, firmware '+result.version.join('.')+'. Network setup is checked after AMPVE starts.':
-      'Wi-Fi compatibility could not be confirmed. AMPVE installation remains unavailable.';
+      ({version_query_failed:'The Wi-Fi firmware version query failed.',connection_failed:'The Wi-Fi connection could not be initialized.',host_init_failed:'The temporary Wi-Fi checker could not initialize.',task_start_failed:'The temporary Wi-Fi checker has insufficient memory.',event_loop_failed:'The temporary Wi-Fi checker could not start.',timeout:'The Wi-Fi hardware did not respond in time.'}[result.status]||'Wi-Fi compatibility could not be confirmed.')+' Installation remains unavailable. The support result contains the diagnostic status.';
     detail.textContent='This check does not prove a working Wi-Fi session or successful recovery. The next step reconnects the board automatically.';
   }
   get('confirm-device').onclick=()=>run(async signal=>{

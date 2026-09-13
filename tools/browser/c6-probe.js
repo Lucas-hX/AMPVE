@@ -25,12 +25,13 @@ export async function ramSegments(bytes,manifest){
 
 export function probeResult(line,nonce){
   ensure(typeof line==='string' && line.length<=512 && /^[a-f0-9]{32}$/.test(nonce),'Invalid diagnostic response.');
-  ensure(/^\{"kind":"ampve-c6-probe","schema":1,"nonce":"[a-f0-9]{32}","status":"[a-z_]+","version":\[[0-9]+,[0-9]+,[0-9]+\]\}$/.test(line),'Malformed diagnostic frame.');
+  ensure(/^\{"kind":"ampve-c6-probe","schema":1,"nonce":"[a-f0-9]{32}","status":"[a-z_]+","version":\[[0-9]+,[0-9]+,[0-9]+\](?:,"error_code":-?[0-9]+)?\}$/.test(line),'Malformed diagnostic frame.');
   const data=JSON.parse(line);
-  ensure(Object.keys(data).sort().join(',')==='kind,nonce,schema,status,version' && data.kind==='ampve-c6-probe' &&
-    data.schema===1 && data.nonce===nonce && ['observed','unavailable','invalid_version','identity_unavailable','timeout'].includes(data.status) &&
+  ensure(Object.keys(data).sort().join(',')===('error_code' in data?'error_code,':'')+'kind,nonce,schema,status,version' && data.kind==='ampve-c6-probe' &&
+    data.schema===1 && data.nonce===nonce && ['observed','unavailable','invalid_version','identity_unavailable','timeout','host_init_failed','connection_failed','version_query_failed','event_loop_failed','task_start_failed'].includes(data.status) &&
     Array.isArray(data.version) && data.version.length===3 && data.version.every(x=>Number.isInteger(x)&&x>=0&&x<=255),'Diagnostic response does not match this check.');
-  return {status:data.status,version:data.version,
+  ensure(!('error_code' in data) || (Number.isInteger(data.error_code) && data.error_code>=-1 && data.error_code<=65535 && (data.status!=='observed' || data.error_code===0)),'Invalid diagnostic error code.');
+  return {status:data.status,version:data.version,error_code:data.error_code??null,
     version_matches:data.status==='observed' && data.version.join('.')==='2.12.13',
     wifi_function_verified:false,physical_recovery_verified:false};
 }
