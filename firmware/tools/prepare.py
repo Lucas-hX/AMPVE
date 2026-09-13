@@ -68,8 +68,12 @@ def prepare(work):
         wifi.write_text(s)
         marker.write_text(PIN+'\n')
     overlay=ROOT/'firmware/xiaozhi/overlay'
+    cmake=work/'CMakeLists.txt'
+    if 'set(PROJECT_VER "0.1.0-dev")' in cmake.read_text():
+        replace(cmake,'set(PROJECT_VER "0.1.0-dev")','set(PROJECT_VER "0.1.1-stock-dev")')
     shutil.copytree(overlay,work,dirs_exist_ok=True)
     shutil.copyfile(ROOT/'firmware/xiaozhi/sdkconfig.ampve',work/'sdkconfig.ampve')
+    shutil.copytree(ROOT/'firmware/xiaozhi/partitions',work/'partitions/ampve',dirs_exist_ok=True)
     lock=ROOT/'firmware/xiaozhi/dependencies.lock'
     if lock.exists() and not (work/'dependencies.lock').exists():shutil.copyfile(lock,work/'dependencies.lock')
     print('Prepared AMPVE sources. No device access or flash commands.')

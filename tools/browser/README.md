@@ -7,3 +7,10 @@ The pinned esptool-js 0.6.1 implementation performs ROM sync, chip magic/registe
 Chip-family detection is distinct from board-model confirmation, firmware compatibility, ownership and network connectivity. No serial data is uploaded or retained. The physical P4 path still requires Lucas's local test. ESP Web Tools remains the selected installer once verified artifacts and recovery details exist.
 
 References: [Web Serial](https://developer.chrome.com/docs/capabilities/serial), [esptool-js](https://github.com/espressif/esptool-js), [ESP Web Tools](https://esphome.github.io/esp-web-tools/).
+
+
+## Stock-preserving browser onboarding
+
+`onboarding.js`, `audit.js` and `install.js` build the new onboarding bundle. See [ADR 0004](../../docs/decisions/0004-stock-preserving-browser-installation.md) for the narrow ESP Web Tools integration and the reason its generic button is not exposed. The legacy inspection bundle above remains a separate utility; the new audit explicitly uses a temporary RAM stub after security gates. It performs no erase/write during audit/backup.
+
+Both bundles are local assets. `npm test` exercises the legacy inspector and the new fixture-only safety suite. `hash-wasm` (MIT), pako/zlib and esptool-js notices accompany the generated onboarding bundle. ESP Web Tools is pinned as the upstream manifest/writer reference; its generic dialog is not bundled. No raw backup, serial log, key or device identifier is uploaded.

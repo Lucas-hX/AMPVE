@@ -7,7 +7,7 @@ import sys
 import shutil
 import subprocess
 from pathlib import Path
-from audit import partition_table, private_directory
+from audit import partition_table, private_directory, image_metadata
 
 ROOT = Path(__file__).resolve().parents[2]
 IDF_PIN = 'fff9895c82d744c7237be8847347bdd1b07c6643'
@@ -41,6 +41,9 @@ def package(work, idf, destination, comparison=None):
         if subprocess.check_output(['git', '-C', str(checkout), 'rev-parse', 'HEAD']).decode().strip() != pin:
             raise ValueError('Unreviewed source revision')
     build = work/'build'
+    image=image_metadata((build/'xiaozhi.bin').read_bytes())
+    if image['min_revision']>103 or image['max_revision'] not in (0,65535) and image['max_revision']<103:
+        raise ValueError('App image does not support P4 revision 1.3')
     validate_config(config_values(work/'sdkconfig'))
     for source in (ROOT/'firmware/xiaozhi/overlay').rglob('*'):
         if source.is_file():
@@ -71,10 +74,13 @@ def package(work, idf, destination, comparison=None):
     partitions = partition_table(b'\xff'*table_offset+table_path.read_bytes(), table_offset, 32*1024*1024)
     app = next(item for item in planned if item['file'] == 'xiaozhi.bin')
     slots = [p for p in partitions if p['type'] == 0 and p['subtype'] in [16, 17]]
-    if len(slots) != 2 or app['offset'] != slots[0]['offset'] or any(app['size'] > p['size'] for p in slots):
+    if len(slots) != 2 or any(app['size'] > p['size'] for p in slots):
         raise ValueError('App does not fit both OTA slots')
-    if any(item['offset'] >= 0xA00000 for item in planned):
-        raise ValueError('Shared asset writes are not part of this shell')
+    expected = [(0xA10000, 0x3F0000), (0xE00000, 0x3F0000)]
+    if [(p['offset'],p['size']) for p in slots] != expected or table_offset != 0x8000:
+        raise ValueError('Expected the stock-preserving 7B development layout')
+    # IDF's general flash target may select factory. It is NEVER an AMPVE install plan.
+    proposed = [{**app, 'offset': slots[1]['offset']}]
     reproducibility={'verified': False, 'scope': 'Not compared with a second build'}
     if comparison is not None:
         for item in planned:
@@ -115,12 +121,20 @@ def package(work, idf, destination, comparison=None):
                 'repository_commit': subprocess.check_output(['git', '-C', str(ROOT), 'rev-parse', 'HEAD']).decode().strip(),
                 'repository_inputs': inputs, 'generated_inputs': overlay_inputs,
                 'sdkconfig_sha256': sha(work/'sdkconfig'), 'dependency_lock_sha256': sha(work/'dependencies.lock'),
-                'proposed_regions_not_approved_writes': planned, 'partitions': partitions,
+                'installation_profile': 'waveshare-7b-stock-v1',
+                'app_image': image,
+                'build_artifacts_not_installation_plan': planned,
+                'proposed_regions_not_approved_writes': proposed, 'partitions': partitions,
+                'boot_selection': 'Generate locally from verified stock otadata; not the IDF initial otadata file',
+                'preserve_at_install': ['bootloader', 'partition table', 'factory', 'ota_0', 'nvsfactory', 'nvs', 'phy_init', 'assets', 'storage'],
+                'runtime_data_changes': ['AMPVE boot counters/identity/settings and Wi-Fi state change shared NVS after boot', 'Bootloader/app startup can change otadata'],
                 'required_reviews': ['Exact local board/security audit and two matching private backup reads',
                     'Stock bootloader and C6 ESP-Hosted compatibility', 'Partition/data preservation and exact USB restore route',
                     'Explicit owner approval for the reviewed write plan', 'Physical startup/display/touch/Wi-Fi/audio/recovery tests'],
                 'bit_reproducibility': reproducibility}
     (destination/'review-manifest.json').write_text(json.dumps(manifest, indent=2)+'\n')
+    archive=shutil.make_archive(str(destination), 'zip', root_dir=destination)
+    Path(archive).chmod(0o600)
     print('Review bundle created; installable=false. No ESP Web Tools manifest or hardware writes.')
 
 

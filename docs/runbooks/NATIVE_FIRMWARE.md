@@ -2,6 +2,10 @@
 
 Status: native source and build tooling implemented on `feat/native-device-shell`; hardware installation is **not approved**. PR #4 was merged into main on 2026-09-13 after Lucas's successful platform tests. See the delivery evidence at the end of this runbook for the actual build result.
 
+## Stock-preserving successor
+
+The active build now uses `7b-stock-v1.csv` and `0.1.1-stock-dev`. See [browser installation](BROWSER_INSTALLATION.md) and [ADR 0004](../decisions/0004-stock-preserving-browser-installation.md). The original 2026-09-13 layout-migration build and hashes below are historical evidence, not the current write plan. The current installer proposes only the empty stock OTA slot plus locally generated boot selection; it never writes the generated bootloader/table/blank otadata. Lucas reports completed matching physical backups and confirms stock startup after audit; exact local candidate comparison, C6/bootloader review, separate-storage confirmation and write approval remain pending.
+
 ## What this milestone contains
 
 A small overlay on XiaoZhi commit `563a4f0a70d34eea5547977f2a39efa401c2ea35`, not a copied firmware repository. The selected build is the legacy Waveshare P4 7B profile. ESP-IDF is **v6.1**, commit `fff9895c82d744c7237be8847347bdd1b07c6643`; its installer pins the compiler and Python constraints. `firmware/xiaozhi/dependencies.lock` pins registry component versions/hashes. The protected local Wi-Fi component is derived from `78/esp-wifi-connect` **3.3.1**; its original MIT notice is preserved in the isolated build and review bundle.

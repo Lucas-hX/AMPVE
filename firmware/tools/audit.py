@@ -14,6 +14,20 @@ def digest(data):
     return hashlib.sha256(data).hexdigest()
 
 
+def image_metadata(data):
+    """Bounded offline image verification using the pinned maintained esptool parser."""
+    import io
+    import esptool
+    from esptool.bin_image import ESP32P4FirmwareImage
+    if esptool.__version__ != '5.4.0':raise ValueError('Use pinned esptool 5.4.0')
+    image=ESP32P4FirmwareImage(io.BytesIO(data))
+    if image.chip_id!=18 or not image.append_digest or image.stored_digest!=image.calc_digest or image.checksum!=image.calculate_checksum():
+        raise ValueError('Invalid P4 image checksum/digest/header')
+    return {'image_bytes':image.data_length+32,'chip_id':image.chip_id,'min_revision':image.min_rev_full,
+        'max_revision':image.max_rev_full,'flash_mode':image.flash_mode,'flash_size_frequency':image.flash_size_freq,
+        'internal_checksum_verified':True,'appended_sha256_verified':True}
+
+
 def private_directory(path):
     path = path.resolve()
     if any((parent/'.git').exists() for parent in [path, *path.parents]):

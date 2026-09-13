@@ -1,6 +1,6 @@
 # Working on AMPVE
 
-Current device milestone: browser USB/ROM inspection and the pairing/heartbeat/settings backend are implemented. The native XiaoZhi shell and read-only audit/build tools now exist as a development candidate. Physical installation, validation and board audio/OTA remain pending. See docs/runbooks/NATIVE_FIRMWARE.md. See [docs/runbooks/DEVICES.md](docs/runbooks/DEVICES.md).
+Current device milestone: the native stock-preserving candidate and browser audit/backup/gated installer are implemented. No release is approved for physical installation yet; exact stock bootloader/C6 review and local comparison remain pending. See docs/runbooks/BROWSER_INSTALLATION.md. Pairing/heartbeat/settings are implemented; board audio/OTA remain pending. See docs/runbooks/NATIVE_FIRMWARE.md. See [docs/runbooks/DEVICES.md](docs/runbooks/DEVICES.md).
 Task tracking: use [the ESP32 Project](https://github.com/users/Lucas-hX/projects/10), [tracking issue #6](https://github.com/Lucas-hX/AMPVE/issues/6) and [docs/PROJECT_TRACKING.md](docs/PROJECT_TRACKING.md) for scope, dependencies and evidence-based status updates. The active roadmap is ESP32-only; Raspberry Pi remains future work.
 
 ## Read this first
@@ -49,7 +49,7 @@ Work autonomously on authorized code, documentation, read-only investigation, an
 - First board observations: ESP32-P4 revision 1.3, 32 MiB flash/PSRAM, 1024 × 600 display, GT911 touch, ES7210 input, ES8311 output, ESP32-C6 connectivity via ESP-Hosted/SDIO. These came from a local audit; reconfirm the connected unit.
 - Do not assume a current XiaoZhi binary is compatible merely because the board name matches. Check chip revision, toolchain, peripherals, and partition layout.
 - A physical device is not automatically reachable from the VPS. Its private backup and original audit remain with the owner on the local development computer.
-- The initial firmware replaces the stock application. Management and Companion share firmware; arbitrary app replacement does not preserve a resident AMPVE agent.
+- The first 7B installation now targets an empty original OTA slot and preserves the stock bootloader/table/factory image when the exact local comparison passes (ADR 0004). Only the selected application runs. Management and Companion share firmware; arbitrary app replacement does not preserve a resident AMPVE agent.
 - Prepare the exact artifacts, write regions, and recovery route before asking for approval to flash the development board or change its bootloader/partition layout. Do not infer hardware-write authorization from a request to build the web platform.
 - Do not perform generic full-chip erase or change eFuses, Secure Boot, or flash encryption as part of the development MVP.
 - Razer Kiyo RZ19-0232 USB capture is unverified. A configured OV5647 MIPI camera is not proof of Kiyo compatibility. Keep voice/face completion separate from camera validation.
@@ -89,4 +89,4 @@ Never print, persist, or work around this with plaintext `GH_TOKEN`/`GITHUB_TOKE
 Validation update (2026-09-13): Lucas reports successful OpenAI API-key setup and a real browser voice conversation. Gemini and physical hardware remain unvalidated. The revised Companion instructions discourage prompt disclosure; this is behavioral guidance, not a security guarantee. Provider keys remain outside model context and the model has no device-management tools.
 
 
-Device-shell update (2026-09-13): Lucas reports a successful physical ROM inspection: ESP32-P4 v1.3 via USB 0x1a86:0x55d3. This validates chip inspection only. The runtime/UI/recovery design is recorded in [ADR 0003](docs/decisions/0003-device-runtime-and-recovery.md). A browser interface concept and bounded capability-report storage are implemented; native firmware and functional peripheral tests remain pending.
+Device-shell update (2026-09-13): Lucas reports a successful physical ROM inspection: ESP32-P4 v1.3 via USB 0x1a86:0x55d3. This validates chip inspection only. The runtime/UI/recovery design is recorded in [ADR 0003](docs/decisions/0003-device-runtime-and-recovery.md). A browser interface concept and bounded capability-report storage are implemented; native firmware now exists as a stock-preserving candidate; physical peripheral tests remain pending.

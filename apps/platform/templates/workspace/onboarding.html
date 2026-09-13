@@ -1,17 +1,34 @@
 {% extends 'workspace/base.html' %}{% load static %}
-{% block subtitle %}Connect locally. Make it yours. Stay connected.{% endblock %}
+{% block subtitle %}Connect locally. Keep a recovery copy. Make it yours.{% endblock %}
 {% block content %}
-<section class="app-detail"><div class="app-copy"><span class="pill">FIRST DEVICE</span><h2>Meet your Companion board.</h2><p class="lead">{{ hardware_name }}</p><p>USB helps with inspection and initial installation. After setup, the board connects to AMPVE over its own network connection.</p></div>{% include 'workspace/companion_visual.html' %}</section>
-<p><a class="button secondary" href="{% url 'interface_preview' %}">Explore the device interface concept →</a></p>
-<div class="settings-grid">
-<section class="form-card"><p class="eyebrow">01 · INSPECT USB</p><h2>Find your board.</h2><p>Use desktop Chrome or Edge and a data-capable USB cable connected to the board's programming port. Close other serial monitors first.</p>
-<button type="button" class="button secondary" id="select-usb">Select a USB serial port</button>
-<p id="usb-status" role="status">No port selected. USB identifiers alone do not identify the board model.</p>
-<form id="inspect-device"><label class="check-label"><input type="checkbox" required> Allow a chip inspection that may restart the selected board into download mode. No firmware will be written.</label><button type="submit" class="button" disabled id="inspect-chip">Inspect ESP chip</button></form>
-<p id="chip-status" role="status">Chip inspection is experimental until tested with your physical board.</p>
-<p class="helptext">Selecting a port does not add a device to your account. Inspection stays in this browser. Confirm the exact 7B model from the board label; an ESP32-P4 chip can belong to several boards.</p></section>
-<section class="form-card"><p class="eyebrow">02 · INSTALL AND CONNECT</p><h2>A verified release comes next.</h2><p>There is no verified AMPVE firmware release yet. Installation stays unavailable until its exact chip revision, flash layout and recovery procedure are ready.</p><p>AMPVE will adapt XiaoZhi for voice, display and a small management client in the same firmware. Wi-Fi setup will happen locally; provider keys stay on the server.</p><p class="helptext">USB power alone does not provide remote management. Raspberry Pi discovery and a permanent USB host bridge are future work.</p></section>
+<section class="app-detail"><div class="app-copy"><span class="pill">FIRST DEVICE</span><h2>A new home for your board.</h2><p class="lead">{{ hardware_name }}</p><p>Keep the original partition map and factory application. AMPVE's first installation targets an empty application slot; compatibility and recovery checks come first.</p></div>{% include 'workspace/companion_visual.html' %}</section>
+<div id="firmware-setup" data-release="{% url 'firmware_release' %}">
+<section class="form-card"><p class="eyebrow">01 · CONNECT AND CHECK</p><h2>Find your board.</h2><p>Use desktop Chrome or Edge, a data-capable USB cable and the programming port. Close serial monitors. Keep stable power throughout setup.</p>
+<label class="check-label"><input type="checkbox" id="board-confirm"> I checked the printed Waveshare ESP32-P4-WIFI6-Touch-LCD-7B label.</label>
+<label class="check-label"><input type="checkbox" id="read-consent"> Allow read-only checks and a temporary RAM reader. The board may restart into download mode; this step does not write flash.</label>
+<p><label for="read-baud">USB transfer speed</label> <select id="read-baud"><option value="460800">460800 baud</option><option value="115200">115200 baud — slower retry</option></select></p>
+<button type="button" class="button secondary" id="select-usb" data-action>Select a USB serial port</button>
+<button type="button" class="button" id="inspect-chip" data-action disabled>Audit connected board</button>
+<p id="usb-status">No port selected. USB identifiers do not confirm the board model.</p>
+<p class="helptext">Audits check chip revision, security, flash capacity and partition integrity. Screen, touch, audio, PSRAM and the Wi-Fi coprocessor need separate physical validation.</p></section>
+<section class="form-card"><p class="eyebrow">02 · KEEP YOUR ORIGINAL</p><h2>A private way back.</h2><p>Choose a private folder outside Git and shared folders. AMPVE reads the entire flash twice in separate connections, saves each complete file, then reopens both to verify their hashes. Flash data can contain passwords. It stays on your computer.</p>
+<button type="button" class="button" id="capture-backup" data-action disabled>Create two private backups</button>
+<p id="storage-support" class="helptext">Keep this tab open and the computer awake. At the owner's measured USB speed, two reads took about 28 minutes; your actual estimate appears during transfer. Cancelled or failed reads do not count as backups.</p>
+<details><summary>Continue with existing backups</summary><p>Select both full .bin files and their completed audit-private.json. Files are rehashed locally and never uploaded. A matching import still requires a live device comparison before installation.</p><label for="import-backups">Two backup files and one completed audit report</label><input type="file" id="import-backups" accept=".bin,.json" multiple></details>
+<p id="backup-result" class="helptext">No backups verified in this browser session. After a reload, select your saved files again.</p></section>
+<section class="form-card" aria-label="Setup progress"><p id="setup-status" role="status">Ready when you are.</p><progress id="setup-progress" hidden aria-label="Current operation progress"></progress><p id="setup-progress-detail" class="helptext"></p><button type="button" class="button secondary" id="cancel-setup" disabled>Cancel current read</button></section>
+<section class="form-card"><p class="eyebrow">03 · REVIEW AND INSTALL</p><h2>Give AMPVE its own space.</h2><p>The original bootloader, partition table, factory app and stock XiaoZhi slot are preserved during installation. AMPVE's runtime will update Wi-Fi and its own settings in shared NVS after boot.</p>
+<button type="button" class="button secondary" id="prepare-install" data-action disabled>Check release and prepare installation</button>
+<p id="candidate-info" class="helptext"></p><a id="candidate-download" hidden>Download candidate review bundle — not installation approval</a>
+<div id="plan-panel" hidden><h3>Exact write regions</h3><ul id="write-regions"></ul><p>AMPVE writes and reads back the app first, then changes one boot-selection sector. Automatic rollback on the original bootloader is not assumed. USB recovery remains essential.</p>
+<button type="button" class="button secondary" id="save-recovery" data-action>Save private recovery files</button>
+<label class="check-label"><input id="separate-copy" type="checkbox"> I have a verified backup copy on separate private storage.</label>
+<label class="check-label"><input id="rom-recovery" type="checkbox"> I can use the board's documented BOOT/RESET recovery procedure and have reviewed the saved recovery files.</label>
+<label class="check-label"><input id="approve-plan" type="checkbox"> I approve these exact writes to this board. I will keep stable power and leave the cable connected until verification finishes.</label>
+<button type="button" class="button" id="install-ampve" data-action disabled>Install AMPVE on this board</button></div>
+<p class="helptext">Installation requires a publisher-signed release reviewed for your exact stock bootloader and partition table. A backup or a compiled candidate alone cannot enable it. No full-chip erase, eFuse changes, bootloader replacement or C6 flashing is included.</p></section>
 </div>
-<section class="form-card pairing-card"><p class="eyebrow">03 · CLAIM YOUR DEVICE</p><h2>Already running AMPVE firmware?</h2><p>Enter the temporary code displayed by your device after it connects to AMPVE. Stock firmware and upstream XiaoZhi codes do not work here. This pairing backend is ready for firmware integration; no AMPVE image is available yet.</p><form method="post" autocomplete="off">{% csrf_token %}{{ form.as_p }}<button class="button" type="submit">Add my device</button></form></section>
-<script type="module" src="{% static 'workspace/inspect.bundle.js' %}"></script>
+<section class="form-card pairing-card" id="pairing-step"><p class="eyebrow">04 · CONNECT AND MAKE IT YOURS</p><h2>Bring your board into AMPVE.</h2><p>After a successful startup, open <strong>Wi-Fi</strong> on the board. Join its temporary protected AMPVE network using the password shown on its screen and supply your Wi-Fi locally. Then tap <strong>Pair with my AMPVE account</strong> and enter its temporary code here.</p><p class="helptext">Stock firmware and upstream XiaoZhi codes do not work here. Pairing is separate from USB installation. The device appears online only after an authenticated heartbeat; board voice and Wi-Fi firmware updates remain separate milestones.</p><form method="post" autocomplete="off">{% csrf_token %}{{ form.as_p }}<button class="button" type="submit">Add my device</button></form></section>
+<p><a href="{% url 'interface_preview' %}">Explore the device interface concept →</a></p>
+<script type="module" src="{% static 'workspace/onboarding.bundle.js' %}"></script>
 {% endblock %}

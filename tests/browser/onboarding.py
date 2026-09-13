@@ -1,0 +1,81 @@
+"""Local rendered-template browser fixtures. No server writes, USB or provider calls."""
+import hashlib
+import json
+import mimetypes
+import os
+import struct
+import sys
+import tempfile
+from pathlib import Path
+from types import SimpleNamespace
+from urllib.parse import urlparse
+ROOT=Path(__file__).resolve().parents[2]
+sys.path.insert(0,str(ROOT/'apps/platform'))
+os.environ['AMPVE_TESTING']='1'
+os.environ.setdefault('DJANGO_SETTINGS_MODULE','config.settings')
+import django
+django.setup()
+from django.contrib.staticfiles import finders
+from django.template.loader import render_to_string
+from django.test import RequestFactory
+from workspace.forms import ClaimDeviceForm
+from playwright.sync_api import sync_playwright
+
+
+def image():
+    data=bytearray(80)
+    data[0]=0xe9;data[1]=1;data[23]=1
+    struct.pack_into('<H',data,12,18)
+    struct.pack_into('<HH',data,15,100,199)
+    struct.pack_into('<II',data,24,0x4ff00000,32)
+    data[79]=0xef
+    return data+hashlib.sha256(data).digest()
+
+
+def backup():
+    entries=[('nvsfactory',1,2,0x9000,0x32000),('nvs',1,2,0x3b000,0xd2000),('otadata',1,0,0x10d000,0x2000),('phy_init',1,1,0x10f000,0x1000),('factory',0,0,0x110000,0x900000),('ota_0',0,16,0xa10000,0x3f0000),('ota_1',0,17,0xe00000,0x3f0000),('assets',1,130,0x11f0000,0x900000),('storage',1,130,0x1af0000,0x500000)]
+    raw=b''.join(struct.pack('<HBBII16sI',0x50aa,t,s,o,z,n.encode(),0) for n,t,s,o,z in entries)
+    table=raw+b'\xeb\xeb'+b'\xff'*14+hashlib.md5(raw).digest()
+    data=bytearray(b'\xff'*(32*1024*1024));data[0x8000:0x8000+len(table)]=table
+    for offset in [0x2000,0x110000,0xa10000]:data[offset:offset+len(image())]=image()
+    return data
+
+request=RequestFactory().get('/devices/add/',secure=True)
+request.user=SimpleNamespace(first_name='Fixture',email='fixture@example.test',is_staff=False)
+html=render_to_string('workspace/onboarding.html',{'title':'Bring your device.','section':'devices','hardware_name':'Waveshare ESP32-P4-WIFI6-Touch-LCD-7B','form':ClaimDeviceForm()},request=request)
+with tempfile.TemporaryDirectory(prefix='ampve-browser-fixture-') as directory,sync_playwright() as p:
+    root=Path(directory);data=backup();digest=hashlib.sha256(data).hexdigest()
+    for name in ['backup-a.bin','backup-b.bin']:(root/name).write_bytes(data)
+    (root/'audit-private.json').write_text(json.dumps({'independent_reads_match':True,'sha256':digest,'hardware':{'chip':'ESP32-P4','revision':103}}))
+    browser=p.chromium.launch();page=browser.new_page();errors=[];requests=[]
+    page.on('pageerror',lambda e:errors.append(str(e)))
+    def route(r):
+        req=r.request;requests.append((req.method,req.url))
+        path=urlparse(req.url).path
+        if path=='/devices/add/':r.fulfill(status=200,content_type='text/html',body=html)
+        elif path=='/devices/firmware/release/':r.fulfill(status=200,content_type='application/json',body=json.dumps({'status':'no-reviewed-release','installable':False}))
+        elif path.startswith('/static/'):
+            file=finders.find(path[len('/static/'):])
+            if file:r.fulfill(status=200,content_type=mimetypes.guess_type(file)[0] or 'application/octet-stream',body=Path(file).read_bytes())
+            else:r.fulfill(status=404,body='')
+        else:r.fulfill(status=404,body='')
+    page.route('https://ampve.test/**',route)
+    page.goto('https://ampve.test/devices/add/')
+    page.locator('details summary').click()
+    page.locator('#import-backups').set_input_files([str(root/name) for name in ['backup-a.bin','backup-b.bin','audit-private.json']])
+    page.wait_for_function('document.querySelector("#backup-result").textContent.includes("Two matching")',timeout=30000)
+    assert digest in page.locator('#backup-result').inner_text()
+    page.locator('#prepare-install').click()
+    page.wait_for_function('document.querySelector("#setup-status").textContent.includes("waiting for a reviewed release")')
+    assert page.locator('#install-ampve').is_disabled()
+    assert page.locator('#plan-panel').is_hidden()
+    assert not any(method!='GET' for method,_ in requests),requests
+    Path('.browser-tests').mkdir(exist_ok=True)
+    for width in [390,768,1440]:
+        page.set_viewport_size({'width':width,'height':950})
+        page.wait_for_timeout(400)
+        assert page.evaluate('document.documentElement.scrollWidth<=innerWidth'),width
+        page.screenshot(path=f'.browser-tests/stock-onboarding-{width}.png',full_page=True)
+    assert not errors,errors
+    browser.close()
+print('Rendered browser fixtures passed: local backup import/integrity, release gate, no uploads and three viewport widths. No physical hardware tested.')
