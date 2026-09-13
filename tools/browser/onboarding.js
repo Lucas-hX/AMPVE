@@ -133,7 +133,7 @@ if(root) {
     downloadLink('export-c6-review',{schema:1,kind:'ampve-c6-diagnostic-summary',profile:CONTRACT,
       diagnostic_sha256:manifest.sha256,status:result.status,version:result.version,version_matches:result.version_matches,
       wifi_function_verified:false,physical_recovery_verified:false,installable:false});
-    get('c6-status').textContent=result.version_matches?'The Wi-Fi chip responded with the expected firmware version. Network setup is checked after AMPVE starts.':
+    get('c6-status').textContent=result.version_matches?'Wi-Fi hardware check passed: ESP32-C6, firmware '+result.version.join('.')+'. Network setup is checked after AMPVE starts.':
       'Wi-Fi compatibility could not be confirmed. AMPVE installation remains unavailable.';
     detail.textContent='This check does not prove a working Wi-Fi session or successful recovery. The next step reconnects the board automatically.';
   }

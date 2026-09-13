@@ -40,7 +40,7 @@ export async function runProbe(port,bytes,manifest,progress=()=>{},signal,connec
   const image=await ramSegments(bytes,manifest);
   const connection=await connect(port,{baud:115200,stub:false});
   const nonce=Array.from(crypto.getRandomValues(new Uint8Array(16)),x=>x.toString(16).padStart(2,'0')).join('');
-  let closed=false,timer,onAbort;
+  let closed=false,timer,poll,onAbort;
   try{
     for(const segment of image.segments){
       const block=1024;
@@ -52,14 +52,19 @@ export async function runProbe(port,bytes,manifest,progress=()=>{},signal,connec
       }
     }
     await connection.loader.memFinish(image.entry);
-    connection.transport.slipReaderEnabled=false;
     let buffer='',total=0;
     const result=new Promise((resolve,reject)=>{
       onAbort=()=>{closed=true;reject(new DOMException('Cancelled','AbortError'));};
       signal?.addEventListener('abort',onAbort,{once:true});
       if(signal?.aborted){onAbort();return;}
       timer=setTimeout(()=>{closed=true;reject(new Error('Wi-Fi diagnostic timed out'));},30000);
-      connection.transport.rawRead(chunk=>{
+      // ESPLoader.connect() already owns the stream through Transport.readLoop().
+      // Consume its raw byte buffer; opening rawRead() would acquire a second reader.
+      poll=setInterval(()=>{
+        if(closed)return;
+        const chunk=connection.transport.buffer;
+        if(!chunk?.length)return;
+        connection.transport.buffer=new Uint8Array(0);
         total+=chunk.length;
         if(total>16384){closed=true;reject(new Error('Diagnostic output exceeded its bound'));return;}
         buffer+=new TextDecoder().decode(chunk);
@@ -69,7 +74,7 @@ export async function runProbe(port,bytes,manifest,progress=()=>{},signal,connec
           try{const parsed=probeResult(line.trim(),nonce);closed=true;resolve(parsed);}catch(error){closed=true;reject(error);}
         }
         if(signal?.aborted){closed=true;reject(new DOMException('Cancelled','AbortError'));}
-      },()=>closed).catch(reject);
+      },20);
     });
     result.catch(()=>{}); // Preserve the error for await without an early unhandled rejection.
     // The ROM transfer ended. Allow app_main to install its bounded UART receiver.
@@ -77,9 +82,9 @@ export async function runProbe(port,bytes,manifest,progress=()=>{},signal,connec
     if(signal?.aborted)throw new DOMException('Cancelled','AbortError');
     const writer=port.writable.getWriter();
     try{await writer.write(new TextEncoder().encode(nonce+'\n'));}finally{writer.releaseLock();}
-    try{return {...await result,unit_identity:connection.hardware?.identity};}finally{closed=true;clearTimeout(timer);}
+    try{return {...await result,unit_identity:connection.hardware?.identity};}finally{closed=true;clearTimeout(timer);clearInterval(poll);}
   }finally{
-    closed=true;clearTimeout(timer);
+    closed=true;clearTimeout(timer);clearInterval(poll);
     if(onAbort)signal?.removeEventListener('abort',onAbort);
     // Leave no serial reader/task owned by the browser. The next audit resets to ROM.
     await connection.transport.disconnect().catch(()=>{});
