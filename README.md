@@ -6,7 +6,7 @@ AMPVE gives the devices you already own new ways to help, create, and connect. S
 
 Our first experience is **AMPVE Companion**: an expressive AI companion that listens, speaks, and lives on a small screen. It is the first application in a broader vision of bringing useful software and AI to everyday hardware.
 
-**Current status:** Django platform foundation with an English frontend, private accounts, profile/password settings, administration, and a Companion preview catalog. Provider sessions, device installation, and firmware remain unimplemented. See the [platform runbook](docs/runbooks/PLATFORM.md) for commands and delivery limits.
+**Current status:** Django platform foundation with an English frontend, private accounts, profile/password settings, administration, and a Companion preview catalog. Encrypted provider connections and an experimental FastAPI/Pipecat browser voice preview are implemented; real provider conversations still need account validation. Device installation, the XiaoZhi adapter, and firmware remain unimplemented. See the [platform runbook](docs/runbooks/PLATFORM.md) for commands and delivery limits.
 
 ## The first experience
 

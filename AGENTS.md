@@ -2,7 +2,7 @@
 
 ## Read this first
 
-This repository starts as a product/implementation handoff with graphic assets. The Django platform foundation is implemented; consult docs/runbooks/PLATFORM.md for verified delivery status. Provider sessions, the device adapter and firmware remain future work. Inspect the current checkout before making claims; later sessions may have added implementation.
+This repository starts as a product/implementation handoff with graphic assets. The Django platform foundation is implemented; consult docs/runbooks/PLATFORM.md for verified delivery status. Encrypted provider connections and an experimental FastAPI/Pipecat browser preview are implemented; live provider validation, the XiaoZhi device adapter and firmware remain future work. Inspect the current checkout before making claims; later sessions may have added implementation.
 
 Read in this order, then load more detail only as needed:
 

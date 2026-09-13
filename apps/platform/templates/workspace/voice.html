@@ -1,0 +1,16 @@
+{% extends 'workspace/base.html' %}{% load static %}
+{% block subtitle %}A voice preview in your browser. Your board comes next.{% endblock %}
+{% block content %}
+<section class="voice-preview form-card" data-ticket-url="{% url 'audio_ticket' connection.pk %}" data-worklet-url="{% static 'workspace/capture-worklet.js' %}">
+  <span class="pill">EXPERIMENTAL · BROWSER AUDIO</span><h2>{{ connection.label }}</h2>
+  <p>{{ connection.get_provider_display }} · {{ preset.model }} · {{ preset.voice }}</p>
+  <div class="preview-face" aria-hidden="true"><span class="eye"></span><span class="eye"></span></div>
+  <p class="voice-status" role="status" aria-live="polite">Microphone off. Ready when you are.</p>
+  <form class="voice-start">{% csrf_token %}<label class="check-label"><input type="checkbox" required> I agree to send microphone audio to my selected provider and use API quota.</label><button class="button" type="submit">Start voice preview</button></form>
+  <div class="voice-controls"><button class="button secondary voice-mute" type="button" disabled aria-pressed="false">Mute microphone</button><button class="button secondary voice-stop" type="button" disabled>Stop session</button></div>
+  <p class="helptext">Use headphones to reduce echo. Start in desktop Chrome or Edge. No audio, video, or transcripts are saved by AMPVE. Closing this page stops your microphone and session. Provider data policies still apply.</p>
+</section>
+<aside class="notice"><strong>What this tests</strong><p>Your browser microphone → AMPVE → Pipecat → your AI provider → browser speaker. Device enrollment, the XiaoZhi Opus adapter, and physical board audio are not part of this test.</p></aside>
+<p class="back-link"><a href="{% url 'connections' %}">← Back to connections</a></p>
+<script src="{% static 'workspace/audio.js' %}" defer></script>
+{% endblock %}

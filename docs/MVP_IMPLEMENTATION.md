@@ -1,5 +1,7 @@
 # AMPVE — MVP Implementation Brief
 
+Current delivery: see [the platform runbook](runbooks/PLATFORM.md) and [ADR 0002](decisions/0002-provider-audio-and-xiaozhi.md). Browser audio is experimental pending live provider validation; XiaoZhi remains the sole selected firmware foundation.
+
 Date: 2026-09-12
 
 Status: Django platform foundation delivered; provider integration and hardware validation pending
