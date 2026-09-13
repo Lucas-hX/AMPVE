@@ -14,11 +14,11 @@ Current browser/native delivery: the stock-preserving native candidate, local br
 
 Debian 13.6 x86_64; Python 3.13.5; PostgreSQL 17.11 shared server. Exact Python packages are pinned in `requirements.txt`: Django 5.2.17, Gunicorn 23.0.0, WhiteNoise 6.12.0, psycopg 3.3.5 and django-axes 8.3.1 plus transitive dependencies. Browser tooling is separate in `requirements-dev.txt`.
 
-Service: `ampve-platform.service`, running as `ampve`, two Gunicorn workers on `127.0.0.1:3000`. Static assets use WhiteNoise. Existing Cloudflare Tunnel supplies HTTPS for `ampve.com`. The origin trusts the secure-proxy header only because it is loopback-only; do not expose it publicly. Axes accepts Cloudflare's overwritten client-IP header only from a loopback peer. Local system users are part of the trusted VPS boundary.
+PM2 7.0.4 (Node.js 20.19.2) supervises `ampve-platform`, running as `ampve`, with two Gunicorn workers on `127.0.0.1:3000`. Static assets use WhiteNoise. Existing Cloudflare Tunnel supplies HTTPS for `ampve.com`. The origin trusts the secure-proxy header only because it is loopback-only; do not expose it publicly. Axes accepts Cloudflare's overwritten client-IP header only from a loopback peer. Local system users are part of the trusted VPS boundary.
 
 PostgreSQL uses `/run/postgresql-neurosis`, port 5433. AMPVE has its own `ampve` database owned by login role `ampve` (no superuser/create-role/create-database privileges). A narrow `local ampve ampve peer` rule was added before the existing reject rule in `/etc/neurosis/pg_hba.conf` and reloaded without restarting PostgreSQL. Previous configuration: `/etc/neurosis/pg_hba.conf.pre-ampve`. NEUROSIS databases, credentials, and services remain separate.
 
-The initial tunnel configuration contained the literal `${AMPVE_HOSTNAME}`. It was replaced with `ampve.com`; the prior file is `/home/ampve/.cloudflared/config.pre-platform.yml`. The existing AMPVE tunnel is now supervised by enabled `ampve-tunnel.service` so it starts on reboot. Its former PM2 entry is retained stopped; do not start both supervisors. The same tunnel ID, credential file and ingress configuration are reused. NEUROSIS tunnel supervision was not changed. The apex DNS A record still pointed to the registrar (192.64.119.39); it was changed to the AMPVE tunnel CNAME. Existing MX/TXT records were preserved, and the previous records were saved privately at `/home/ampve/.config/ampve/dns-before-platform.json`. Docker is not installed: this first deployment uses the existing systemd/Unix-socket environment, with Compose deferred as documented in the ADR.
+The initial tunnel configuration contained the literal `${AMPVE_HOSTNAME}`. It was replaced with `ampve.com`; the prior file is `/home/ampve/.cloudflared/config.pre-platform.yml`. At the owner's request, PM2 now supervises `ampve-tunnel` alongside `ampve-platform` and `ampve-audio`. The enabled `pm2-ampve.service` restores the saved process list on boot after PostgreSQL. The former individual systemd application/tunnel units are disabled and stopped; do not start both supervisors. The same tunnel ID, credential file and ingress configuration are reused. NEUROSIS tunnel supervision was not changed. The apex DNS A record still pointed to the registrar (192.64.119.39); it was changed to the AMPVE tunnel CNAME. Existing MX/TXT records were preserved, and the previous records were saved privately at `/home/ampve/.config/ampve/dns-before-platform.json`. Docker is not installed: this deployment uses PM2 with a systemd boot unit and the existing Unix-socket database, with Compose deferred as documented in the ADR.
 
 ## Private configuration and accounts
 
@@ -46,7 +46,13 @@ AMPVE_TESTING=1 .venv/bin/python apps/platform/manage.py test workspace --noinpu
 
 Automated tests use an isolated in-memory SQLite database; PostgreSQL migrations and a live authenticated smoke test must also pass on deployment. Never set `AMPVE_TESTING=1` in a public service.
 
-Install the reviewed service file with `sudo install -m 644 infra/ampve-platform.service /etc/systemd/system/ampve-platform.service`, then `sudo systemctl daemon-reload` and `sudo systemctl enable --now ampve-platform`. Paths in this unit are specific to this VPS. After code updates, run migrations/checks/collectstatic, then `sudo systemctl restart ampve-platform`.
+The VPS process definitions are in `infra/ecosystem.config.cjs`; private JSON configuration remains outside Git. Django serves both the frontend and management API; `ampve-audio` is the separate voice backend. There is no separate frontend development server. After code updates, run migrations/checks/collectstatic, then `pm2 restart ampve-platform` (and `pm2 restart ampve-audio` when shared/audio code changes). Run PM2 as `ampve`, never with sudo.
+
+For initial setup, stop/disable the three former individual systemd units, then run `pm2 start infra/ecosystem.config.cjs` and `pm2 save`. Install `infra/pm2-ampve.service` into `/etc/systemd/system/`, reload systemd, stop the standalone daemon with `pm2 kill`, then enable/start `pm2-ampve.service`. This daemon must contain only AMPVE processes because its stop action stops the entire list. Keep `~/.pm2` private (0700) and saved process dumps private (0600); never pass secret values through PM2 arguments or ecosystem environment settings. Use `pm2 ls` for status and `pm2 logs <name> --lines 50` locally for diagnosis; do not share unreviewed logs or dumps.
+
+PM2 preserves loopback binds, worker counts and graceful shutdown settings. Its audio memory restart threshold is 1500 MB, polled rather than enforced as a hard cgroup limit. The former per-service filesystem sandbox and task limits are not provided by this PM2 configuration. Processes still run as the unprivileged `ampve` user with a private umask. Existing backup/maintenance timers and unrelated NEUROSIS services remain under systemd.
+
+To restore the former supervisor, stop/disable `pm2-ampve`, then enable/start `ampve-platform`, `ampve-audio` and `ampve-tunnel`. Never run both sets simultaneously.
 
 `/health/` checks HTTP process liveness only, not database readiness or AI availability. Use authenticated page checks for database-dependent behavior. Existing services can be checked with `systemctl is-active neurosis-api neurosis-postgresql neurosis-cloudflared`.
 
@@ -58,7 +64,7 @@ Axes locks an account or source IP after five failed sign-ins for 15 minutes usi
 
 Existing NEUROSIS backup jobs must not be assumed to include AMPVE. Back up the dedicated database with `pg_dump -h /run/postgresql-neurosis -p 5433 -U ampve -Fc ampve` to private storage and separately protect `platform.json`. Database dumps contain account hashes/session data and must not enter Git or static storage. A daily `ampve-backup.timer` now runs at 04:20 UTC plus up to five minutes jitter, retaining seven days in `/home/ampve/.local/state/ampve/backups` with private permissions. The initial dump was successfully restored into a separate temporary database and verified to contain two accounts and the Companion catalog entry; that temporary database was then removed. Off-VPS backup and separate secret-key backup scheduling remain operational follow-ups.
 
-To stop only this application: `sudo systemctl stop ampve-platform`. Preserve the database and private configuration when reverting application code. Do not roll back migrations blindly; review schema changes first. Restore tests must use a separate database. Never drop or restore over NEUROSIS as part of AMPVE recovery.
+To stop only this application: `pm2 stop ampve-platform`. Preserve the database and private configuration when reverting application code. Do not roll back migrations blindly; review schema changes first. Restore tests must use a separate database. Never drop or restore over NEUROSIS as part of AMPVE recovery.
 
 Expired Django sessions can be removed with `manage.py clearsessions`. Authentication metadata retention should be periodically pruned with the Axes cleanup commands; `ampve-maintenance.timer` runs daily at 04:40 UTC plus up to five minutes jitter, clearing expired sessions and Axes success/failure logs older than 30 days.
 
@@ -69,7 +75,7 @@ Expired Django sessions can be removed with `manage.py clearsessions`. Authentic
 - Local HTTP origin and public HTTPS return 200; existing NEUROSIS services remain active.
 - Production deployment checks report only the two intentionally deferred HSTS policy warnings described above.
 - Database backup restoration succeeded in an isolated temporary database.
-- Application, tunnel, backup and maintenance units are enabled for boot; systemd unit verification passed. No VPS reboot was performed.
+- PM2 restores the application/audio/tunnel process list through enabled `pm2-ampve.service`; backup and maintenance timers remain enabled. Unit verification passed. No VPS reboot was performed.
 - Dependency consistency and Git whitespace checks passed; private password/secret values were checked against every Git candidate file with no matches. Credential JSON permissions are 0600.
 - Public HTTPS Chromium smoke tests passed: actual demo login, all workspace pages, profile save, logout, mobile menu with Escape, no horizontal overflow at 390/768/1440 px, and no JavaScript errors. Desktop and mobile screenshots were visually reviewed.
 - Core text/action palette contrast was calculated against actual surface colors; keyboard focus and mobile drawer behavior were checked. This is not a full accessibility certification.
@@ -99,7 +105,7 @@ This foundation alone does not satisfy the full provider-path or hardware MVP ac
 
 The audio environment is separate: `.venv-audio`, locked by `apps/audio/requirements.txt` (Pipecat 1.10.0, FastAPI 0.141.1, Uvicorn 0.52.4). It includes the Django dependencies because the gateway imports the same ORM/authorization code. Platform encryption uses cryptography 46.0.7. Keep shared dependency versions aligned when updating either lock.
 
-`ampve-audio.service` runs one Uvicorn worker on `127.0.0.1:3001`, capped at 1500 MB by systemd. The existing tunnel routes `/audio/.*` for `ampve.com` to that port before the Django catch-all on port 3000. The prior tunnel configuration is saved privately at `/home/ampve/.cloudflared/config.pre-audio.yml`. The audio gateway refuses unapproved origins and unauthenticated tickets. Do not expose either origin port directly or add multiple workers: the concurrency cap is process-local.
+`ampve-audio` runs one Uvicorn worker on `127.0.0.1:3001`, with a PM2 memory restart threshold of 1500 MB. The existing tunnel routes `/audio/.*` for `ampve.com` to that port before the Django catch-all on port 3000. The prior tunnel configuration is saved privately at `/home/ampve/.cloudflared/config.pre-audio.yml`. The audio gateway refuses unapproved origins and unauthenticated tickets. Do not expose either origin port directly or add multiple workers: the concurrency cap is process-local.
 
 Encryption configuration: `/home/ampve/.config/ampve/provider-encryption.json`, mode 0600, contains `{"keys": ["FERNET_KEY_PLACEHOLDER"]}` with an actual generated random Fernet key on the VPS. It is deliberately outside the repository and database. Protect an independent copy: database backups alone cannot recover provider keys. The existing database backup timer does not back up this secret. `platform.json` may override `provider_key_file`, `gemini_live_model`, or `openai_realtime_model`; never put provider API keys there.
 
@@ -115,14 +121,13 @@ python3 -m venv .venv-audio
 AMPVE_TESTING=1 .venv/bin/python apps/platform/manage.py test workspace --noinput
 AMPVE_TESTING=1 .venv-audio/bin/python -m unittest discover -s apps/audio -p 'test_*.py' -v
 mkdir -p /home/ampve/.cache/ampve-audio
-sudo install -m 644 infra/ampve-audio.service /etc/systemd/system/ampve-audio.service
 sudo install -m 644 infra/ampve-maintenance.service /etc/systemd/system/ampve-maintenance.service
 sudo systemctl daemon-reload
-sudo systemctl enable --now ampve-audio
-sudo systemctl restart ampve-platform
+pm2 startOrRestart infra/ecosystem.config.cjs --only ampve-platform,ampve-audio
+pm2 save
 # Review/adapt infra/cloudflared.example.yml in the existing tunnel config.
 cloudflared tunnel ingress validate
-sudo systemctl restart ampve-tunnel
+pm2 restart ampve-tunnel
 ```
 
 Ten fixture-only audio tests verify grant rejection/origins, readiness, connection limits, revocation, disconnect cleanup, actual Pipecat transport PCM flow, frame validation/rate limits, both provider constructors and sanitized errors. They replace external provider calls and persistence; Django tests separately exercise persistence/ownership. They are not evidence of upstream service access or physical-device compatibility.

@@ -1,0 +1,21 @@
+[Unit]
+Description=AMPVE PM2 process supervisor
+Wants=network-online.target
+After=network-online.target neurosis-postgresql.service
+Requires=neurosis-postgresql.service
+
+[Service]
+Type=forking
+User=ampve
+Group=ampve
+Environment=PATH=/usr/local/bin:/usr/bin:/bin
+Environment=PM2_HOME=/home/ampve/.pm2
+PIDFile=/home/ampve/.pm2/pm2.pid
+ExecStart=/usr/local/bin/pm2 resurrect
+ExecReload=/usr/local/bin/pm2 reload all
+ExecStop=/usr/local/bin/pm2 kill
+Restart=on-failure
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target
