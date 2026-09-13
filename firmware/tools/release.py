@@ -35,7 +35,7 @@ def validate_config(values):
         raise ValueError('Build configuration does not match the reviewed profile')
     for forbidden in ['CONFIG_SECURE_BOOT', 'CONFIG_SECURE_FLASH_ENC_ENABLED',
                       'CONFIG_BOOTLOADER_APP_ANTI_ROLLBACK', 'CONFIG_APP_COMPILE_TIME_DATE',
-                      'CONFIG_LIBSODIUM_USE_MBEDTLS_SHA']:
+                      'CONFIG_LIBSODIUM_USE_MBEDTLS_SHA', 'CONFIG_PM_SLEEP_CLK_ICG_ENABLE']:
         if values.get(forbidden) == 'y':
             raise ValueError('Unexpected security, reproducibility or crypto build option: '+forbidden)
 

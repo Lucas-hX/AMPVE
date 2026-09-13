@@ -1,5 +1,9 @@
 # Browser installation and stock-preserving review
 
+## Startup correction and previous-install recovery — 2026-09-13
+
+The owner captured an exact 0.1.11 pre-app system initializer failure. Version 0.1.12 removes the optional sleep-clock REGDMA initializer; reproducible artifact and signature evidence is in [FIRST_INSTALLATION.md](FIRST_INSTALLATION.md). A separate fixed `firmware_recovery_root` keeps the previous signed app's full restore span available when the current app is smaller. **Recover a device that did not start** uses that reference, original local backups and fresh whole-flash verification. After restoration the page links back to normal installation. This is software validation and release preparation; physical restored startup and corrected AMPVE startup remain pending.
+
 ## USB-assisted commissioning update — 2026-09-13
 
 [ADR 0005](../decisions/0005-usb-assisted-commissioning.md) supersedes the mandatory pre-install C6 check **only for an explicitly signed USB-assisted initial-install release**. The platform prepares the same exact stock-preserving write/recovery plan, then checks the installed core over USB before network provisioning. A failed C6 version query remains a diagnostic finding, not proof of incompatibility or a mandatory gate for this mode. Core confirmation, Wi-Fi initialization, actual network operation, pairing and physical recovery are separate evidence. The browser now exposes explicit original-backup restoration with fresh full-flash comparison; it is not yet physically validated. Other releases retain their existing gates.

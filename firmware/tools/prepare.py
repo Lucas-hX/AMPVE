@@ -98,6 +98,8 @@ def prepare(work):
         replace(cmake,'set(PROJECT_VER "0.1.9-wifi-storage-dev")',f'set(PROJECT_VER "{UPSTREAM["candidate_version"]}")')
     if 'set(PROJECT_VER "0.1.10-improv-dev")' in cmake.read_text():
         replace(cmake,'set(PROJECT_VER "0.1.10-improv-dev")',f'set(PROJECT_VER "{UPSTREAM["candidate_version"]}")')
+    if 'set(PROJECT_VER "0.1.11-usb-setup-dev")' in cmake.read_text():
+        replace(cmake,'set(PROJECT_VER "0.1.11-usb-setup-dev")',f'set(PROJECT_VER "{UPSTREAM["candidate_version"]}")')
     if f'set(PROJECT_VER "{UPSTREAM["candidate_version"]}")' not in cmake.read_text():
         raise RuntimeError('Prepared project version differs from the candidate version')
     component=work/'main/idf_component.yml'

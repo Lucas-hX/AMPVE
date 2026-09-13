@@ -46,3 +46,5 @@ Reuse XiaoZhi, ESP-IDF, ESP Web Tools/Improv and Pipecat. Keep Django/PostgreSQL
 - Optimize against measured boot/UI latency, internal heap/PSRAM, stack headroom, CPU, traffic, NVS writes and app size. Retain recovery and security; measure electrical power only with appropriate hardware.
 
 USB commissioning: ADR 0005 assigns preflight, post-write USB core checks and exact original-backup restoration to onboarding. Keep #10/#12/#17 open for release/physical acceptance as applicable; a passing software fixture does not close Wi-Fi, native startup or recovery acceptance.
+
+Startup correction: the owner identified `sleep_clock_icg_startup_init` returning `ESP_ERR_NO_MEM` before AMPVE in 0.1.11. Version 0.1.12 disables the optional initializer using pinned IDF configuration; two builds reproduce and previous-install recovery remains available independently of the new app size. Software correction/release evidence belongs to #10/#17; #12 remains In Progress / Hardware required until actual recovery and corrected startup are observed. See FIRST_INSTALLATION.md for exact identities.
