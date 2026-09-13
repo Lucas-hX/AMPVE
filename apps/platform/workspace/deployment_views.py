@@ -17,6 +17,17 @@ from .models import Device, DeviceFirmware, FirmwareRelease, FirmwareDeployment
 from .release_contract import digest, read_bounded, sha256
 
 
+UPDATE_ERRORS={
+    'network':'The network connection was interrupted.',
+    'hash_mismatch':'The image did not match the approved release hash.',
+    'image_rejected':'The device rejected the application image.',
+    'storage':'The device could not confirm an update storage operation.',
+    'approval_unavailable':'Release approval is no longer available.',
+    'boot_failed':'Startup or boot selection was not confirmed.',
+    'local_cancelled':'The update was cancelled using the board control.',
+}
+
+
 def firmware_api(view):
     @device_api
     @wraps(view)
@@ -113,11 +124,30 @@ def updates(request,pk):
             else:
                 messages.success(request,'Update request recorded. Completion requires a confirmed report from the device.')
             return redirect('device_updates',pk=pk)
+    confirmed=DeviceFirmware.objects.filter(device=device).select_related('release').first()
+    pending=device.firmware_deployments.filter(state__in=FirmwareDeployment.ACTIVE).exists()
+    releases=service.eligible_releases(device)
+    if device.revoked_at:
+        availability='This device has been revoked. Use the reviewed local pairing and recovery process to reconnect it.'
+    elif not device.credential_hash:
+        availability='This device has no active pairing credential. Complete local pairing before requesting updates.'
+    elif not service.compatible(device):
+        availability='The reported hardware or Wi-Fi connection does not match this update profile. Check the device compatibility details before proceeding.'
+    elif not confirmed:
+        availability='Wait for the board to identify a trusted AMPVE image and confirm startup. A reported version name alone cannot enable updates.'
+    elif pending:
+        availability='An update is already pending. Follow its progress below before requesting another.'
+    elif not releases:
+        availability='No newer verified release is eligible for this confirmed image. Releases can expire, be withdrawn or require a different starting version.'
+    else:
+        availability='Choose a verified release and review its size and recovery requirements before queuing the update.'
+    deployments=list(device.firmware_deployments.select_related('release').all()[:20])
+    for job in deployments:
+        job.failure_message=UPDATE_ERRORS.get(job.error_code,'The device reported an update error. Inspect it locally.') if job.error_code else ''
     return render(request,'workspace/device_updates.html',context(title='Firmware updates',device=device,
-        releases=service.eligible_releases(device),request_key=uuid.uuid4(),
-        pending=device.firmware_deployments.filter(state__in=FirmwareDeployment.ACTIVE).exists(),
-        confirmed=DeviceFirmware.objects.filter(device=device).first(),
-        deployments=device.firmware_deployments.select_related('release').all()[:20]))
+        releases=releases,request_key=uuid.uuid4(),availability=availability,
+        pending=pending,confirmed=confirmed,
+        deployments=deployments))
 
 
 @never_cache

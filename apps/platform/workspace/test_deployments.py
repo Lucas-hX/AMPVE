@@ -93,6 +93,60 @@ class DeploymentTests(TestCase):
         with self.assertRaises(service.DeploymentError):self.queue()
         self.assertEqual(FirmwareDeployment.objects.count(),0)
 
+    def test_update_page_shows_verified_release_details(self):
+        response=self.client.get(reverse('device_updates',args=[self.device.pk]))
+        self.assertContains(response,'Queue firmware update')
+        self.assertContains(response,'128.0\u00a0KB')
+        self.assertContains(response,self.target.pk)
+        self.assertContains(response,self.target.policy['app']['sha256'])
+        self.assertContains(response,'Software fixture only')
+        self.assertContains(response,self.target.policy['expires_at'])
+
+    def test_update_page_distinguishes_missing_identity_and_incompatible_reports(self):
+        DeviceFirmware.objects.filter(device=self.device).delete()
+        url=reverse('device_updates',args=[self.device.pk])
+        response=self.client.get(url)
+        self.assertContains(response,'version name alone cannot enable updates')
+        self.assertNotContains(response,'Queue firmware update')
+        self.device.transport='serial';self.device.save(update_fields=['transport'])
+        response=self.client.get(url)
+        self.assertContains(response,'does not match this update profile')
+        self.assertNotContains(response,'Queue firmware update')
+
+    def test_update_page_distinguishes_revocation_and_unavailable_upgrade(self):
+        url=reverse('device_updates',args=[self.device.pk])
+        self.target.revoked_at=timezone.now();self.target.save(update_fields=['revoked_at'])
+        response=self.client.get(url)
+        self.assertContains(response,'No newer verified release is eligible')
+        self.assertNotContains(response,'Queue firmware update')
+        self.device.revoked_at=timezone.now();self.device.save(update_fields=['revoked_at'])
+        response=self.client.get(url)
+        self.assertContains(response,'This device has been revoked')
+        self.assertNotContains(response,'Queue firmware update')
+        self.device.revoked_at=None;self.device.credential_hash='';self.device.save(update_fields=['revoked_at','credential_hash'])
+        response=self.client.get(url)
+        self.assertContains(response,'no active pairing credential')
+        self.assertNotContains(response,'Queue firmware update')
+
+    def test_update_history_does_not_turn_pending_or_failed_states_into_success(self):
+        # Rendering fixtures only. Device/API state-transition tests below remain authoritative.
+        job=self.queue();url=reverse('device_updates',args=[self.device.pk])
+        cases={'queued':'Waiting for the device to claim',
+               'downloading':'An update is already pending',
+               'verifying':'An update is already pending',
+               'rebooting':'Waiting for a confirmed startup',
+               'confirmed':'expected image and a confirmed startup',
+               'rolled_back':'confirmed return to its previous image',
+               'failed':'Check the board locally before requesting',
+               'cancelled':'cancelled before download'}
+        for state,message in cases.items():
+            job.state=state;job.error_code='network' if state=='failed' else '';job.save()
+            response=self.client.get(url)
+            self.assertContains(response,message)
+            if state!='confirmed':self.assertNotContains(response,'expected image and a confirmed startup')
+            if state in FirmwareDeployment.ACTIVE:self.assertNotContains(response,'Queue firmware update')
+            if state=='failed':self.assertContains(response,'The network connection was interrupted.')
+
     def test_queue_is_idempotent_offline_and_rejects_conflicts(self):
         key=uuid.uuid4();job=self.queue(key)
         self.assertEqual(self.queue(key).pk,job.pk)

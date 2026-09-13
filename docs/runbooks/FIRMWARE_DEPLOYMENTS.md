@@ -59,3 +59,13 @@ VPS validation (2026-09-13): migration 0006 applied after the private database b
 ## Native verification foundation
 
 See [NATIVE_OTA.md](NATIVE_OTA.md) for the `0.1.3-ota-verify-dev` candidate: native signed-policy verification, complete-image hashing and checked startup identity reports. The integrated download/write client follows in `0.1.4-ota-client-dev`; physical OTA/rollback remain pending.
+
+## Owner update eligibility and release details
+
+The update page distinguishes missing/revoked device authentication, incompatible hardware/network reports, missing confirmed image identity, an active deployment, and absence of a newer verified eligible release. The last case does not assert that every published release is compatible or that the device is universally up to date: expiry, withdrawal, trust and predecessor restrictions also affect eligibility.
+
+Eligible releases show the app download size, immutable release ID, app SHA-256, signed recovery review and approval expiry. The recovery review is not presented as feature release notes. Offline queueing remains conditional on valid approval. History keeps queued/download/verification/reboot states separate from confirmed startup and rollback, shows timestamps and bounded human-readable failure reasons, and offers cancellation only before download. A failed outcome advises local inspection before another request; no automatic retry or success inference is added.
+
+Software checks: `AMPVE_TESTING=1 .venv/bin/python apps/platform/manage.py test workspace --noinput` covers signed eligibility fixtures, missing identity, incompatible reports, revocation, pending/terminal history and existing cross-owner/idempotency rules. `.venv/bin/python tests/browser/updates.py` renders all eight lifecycle states at 390, 768 and 1440 pixels without touching the live database or a board. Physical update/rollback acceptance remains open in #28/#37.
+
+Dashboard detail evidence (2026-09-13): the 76-test Django suite passed with five existing PostgreSQL-only skips; the final focused 20-test deployment suite passed after the status-copy refinement. Chromium passed all eight history states at three widths, including expanded release details, long hashes, pending-action suppression and literal/escaped review text. No signed production release, deployment, device record or hardware operation was created by these checks.
