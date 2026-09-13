@@ -1,0 +1,38 @@
+# Secrets and private local configuration
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+credentials*.json
+secrets/
+
+# Dependencies and generated application output
+node_modules/
+.next/
+out/
+dist/
+build/
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+coverage/
+
+# Local state, logs, and hardware backups
+*.log
+*.sqlite
+*.sqlite3
+*.db
+*.bin
+*.elf
+*.map
+sdkconfig.old
+backups/
+private/
+tmp/
+.DS_Store
+Thumbs.db
