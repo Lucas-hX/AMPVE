@@ -18,7 +18,7 @@ struct Port:ampve::OtaPort {
     const std::string device="11111111-1111-1111-1111-111111111111",job="22222222-2222-2222-2222-222222222222";
     bool context(ampve::OtaContext& out)override{out=ctx;return true;}
     bool load(std::string& out)override{out=journal;return true;}
-    bool save(const std::string& value)override{++saves;if(scenario=="save_fail" || (scenario=="save_ack_fail"&&saves==3))return false;journal=value;return true;}
+    bool save(const std::string& value)override{++saves;if((selected && (scenario=="selection_save_fail_target"||scenario=="selection_save_fail_rollback")) || scenario=="save_fail" || (scenario=="save_ack_fail"&&saves==3))return false;journal=value;return true;}
     bool advance_sequence(uint32_t value)override{assert(value>=floor);floor=value;return true;}
     int post(const std::string& path,const std::string& body,std::string& reply)override{
         auto out=cJSON_CreateObject();
@@ -33,7 +33,7 @@ struct Port:ampve::OtaPort {
         }else{
             assert(path==device+"/updates/"+job+"/report/");auto payload=cJSON_Parse(body.c_str());assert(payload);
             auto state=str(payload,"state");
-            if((scenario=="reauthorization_denied"&&state=="rebooting") || (scenario=="revoked_after_lost_ack"&&state=="rebooting"&&lost)){
+            if(((scenario=="reauthorization_denied"||scenario=="denied_stale_slot")&&state=="rebooting") || (scenario=="revoked_after_lost_ack"&&state=="rebooting"&&lost)){
                 cJSON_Delete(payload);cJSON_Delete(out);return 409;
             }
             if(scenario=="owner_cancel_race"&&state=="downloading"){
@@ -53,6 +53,7 @@ struct Port:ampve::OtaPort {
             cJSON_Delete(payload);
             cJSON_AddStringToObject(out,"deployment_id",job.c_str());cJSON_AddStringToObject(out,"release_id",identity.c_str());
             cJSON_AddStringToObject(out,"state",server_state.c_str());cJSON_AddNumberToObject(out,"sequence",server_sequence);
+            if(scenario=="legacy_pending"&&server_sequence==1){cJSON_Delete(out);throw std::runtime_error("simulated legacy process loss");}
             bool lose=(scenario=="claim_ack_lost"&&server_sequence==1)||(scenario=="progress_ack_lost"&&server_sequence==2)||
                 (scenario=="verify_ack_lost"&&state=="verifying")||(scenario=="reboot_ack_lost"&&state=="rebooting")||
                 (scenario=="outcome_ack_lost"&&state=="confirmed")||(scenario=="revoked_after_lost_ack"&&state=="rebooting");
@@ -70,8 +71,13 @@ struct Port:ampve::OtaPort {
     }
     const char* failure()override{return scenario=="cancel"?"local_cancelled":scenario=="select"?"image_rejected":"network";}
     bool verify_target(uint32_t slot,const std::string& hash,size_t bytes)override{assert(slot==inactive_slot()&&hash==target&&bytes==size);return scenario!="hash";}
-    int select(uint32_t slot,int64_t expires_at)override{assert(slot==inactive_slot()&&expires_at>ctx.now_utc);if(scenario=="power_before_select")throw std::runtime_error("simulated power loss");if(scenario=="select_uncertain")return -1;if(scenario=="select")return 0;selected=true;return 1;}
-    bool target_failed(uint32_t slot)override{assert(slot==inactive_slot());return scenario=="rollback";}
+    int select(uint32_t slot,int64_t expires_at)override{assert(slot==inactive_slot()&&expires_at>ctx.now_utc);if(scenario=="power_before_select"||scenario=="stale_failed_slot")throw std::runtime_error("simulated power loss");if(scenario=="select_uncertain")return -1;if(scenario=="select")return 0;selected=true;return 1;}
+    ampve::OtaRecovery recovery(uint32_t slot)override{
+        assert(slot==inactive_slot());
+        if(scenario=="recovery_unreadable")return ampve::OtaRecovery::Unknown;
+        if(scenario=="rollback"||scenario=="stale_failed_slot"||scenario=="legacy_predecessor"||scenario=="denied_stale_slot")return ampve::OtaRecovery::TargetFailed;
+        return ampve::OtaRecovery::PreviousSelected;
+    }
     void restart()override{restarted=true;}
     void status(const char*)override{}
 };
@@ -92,7 +98,31 @@ int main(int argc,char** argv){
     for(int i=0;i<8&&!port.restarted&&port.server_state!="failed";++i){
         try{engine.tick(port.device);}catch(const std::runtime_error&){break;}
     }
-    if(port.scenario=="corrupt_journal"||port.scenario=="deep_journal"){assert(!port.downloads&&!port.selected&&port.server_state=="queued"&&!port.journal.empty());}
+    if(port.scenario=="legacy_target"||port.scenario=="legacy_predecessor"||port.scenario=="legacy_pending"){
+        auto legacy=cJSON_Parse(port.journal.c_str());assert(legacy);
+        cJSON_DeleteItemFromObject(legacy,"selection_committed");
+        cJSON_ReplaceItemInObject(legacy,"schema",cJSON_CreateNumber(1));
+        port.journal=encode(legacy);cJSON_Delete(legacy);
+    }
+    if(port.scenario=="stale_failed_slot"||port.scenario=="recovery_unreadable"||port.scenario=="legacy_predecessor"||port.scenario=="selection_save_fail_rollback"){
+        if(port.scenario=="selection_save_fail_rollback")port.scenario="rollback";
+        ampve::OtaClient rebooted(port);port.engine=&rebooted;
+        for(int i=0;i<3;++i)rebooted.tick(port.device);
+        assert(port.server_state=="rebooting"&&!port.journal.empty()&&port.floor==1);
+    }
+    else if(port.scenario=="selection_save_fail_target"){
+        assert(port.selected&&!port.restarted&&port.server_state=="rebooting");
+        port.scenario="recovered";ctx.running_app_sha256=port.target;
+        ampve::OtaClient rebooted(port);port.engine=&rebooted;
+        for(int i=0;i<3;++i)rebooted.tick(port.device);
+        assert(port.server_state=="confirmed"&&port.floor==2);
+    }
+    else if(port.scenario=="legacy_pending"){
+        port.scenario="recovered";ampve::OtaClient rebooted(port);port.engine=&rebooted;
+        for(int i=0;i<3;++i)rebooted.tick(port.device);
+        assert(port.server_state=="failed"&&!port.downloads&&!port.selected);
+    }
+    else if(port.scenario=="corrupt_journal"||port.scenario=="deep_journal"){assert(!port.downloads&&!port.selected&&port.server_state=="queued"&&!port.journal.empty());}
     else if(port.scenario=="select_uncertain"){assert(!port.selected&&port.server_state=="rebooting"&&!port.journal.empty());}
     else if(port.scenario=="owner_cancel_race"){assert(!port.downloads&&!port.selected&&port.server_state=="cancelled"&&port.journal.empty());}
     else if(port.scenario=="save_fail"){assert(!port.downloads&&!port.selected&&port.server_state=="queued");}
@@ -101,7 +131,7 @@ int main(int argc,char** argv){
         ampve::OtaClient rebooted(port);port.engine=&rebooted;
         for(int i=0;i<3;++i)rebooted.tick(port.device);
         assert(port.server_state=="failed"&&port.downloads==downloads&&!port.selected);
-    }else if(port.scenario=="network"||port.scenario=="cancel"||port.scenario=="hash"||port.scenario=="select"||port.scenario=="progress_ack_lost"||port.scenario=="reauthorization_denied"||port.scenario=="revoked_after_lost_ack"){
+    }else if(port.scenario=="network"||port.scenario=="cancel"||port.scenario=="hash"||port.scenario=="select"||port.scenario=="progress_ack_lost"||port.scenario=="reauthorization_denied"||port.scenario=="revoked_after_lost_ack"||port.scenario=="denied_stale_slot"){
         assert(port.server_state=="failed"&&!port.selected);
     }else{
         assert(port.restarted&&port.selected&&port.server_state=="rebooting");

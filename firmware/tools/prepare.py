@@ -83,6 +83,8 @@ def prepare(work):
         replace(cmake,'set(PROJECT_VER "0.1.2-profile-dev")',f'set(PROJECT_VER "{UPSTREAM["candidate_version"]}")')
     if 'set(PROJECT_VER "0.1.3-ota-verify-dev")' in cmake.read_text():
         replace(cmake,'set(PROJECT_VER "0.1.3-ota-verify-dev")',f'set(PROJECT_VER "{UPSTREAM["candidate_version"]}")')
+    if 'set(PROJECT_VER "0.1.4-ota-client-dev")' in cmake.read_text():
+        replace(cmake,'set(PROJECT_VER "0.1.4-ota-client-dev")',f'set(PROJECT_VER "{UPSTREAM["candidate_version"]}")')
     if f'set(PROJECT_VER "{UPSTREAM["candidate_version"]}")' not in cmake.read_text():
         raise RuntimeError('Prepared project version differs from the candidate version')
     component=work/'main/idf_component.yml'
