@@ -126,6 +126,24 @@ with tempfile.TemporaryDirectory(prefix='ampve-browser-fixture-') as directory,s
     assert 'PRIVATE-FIXTURE-MAC' not in exported_plan and str(root) not in exported_plan
     page.locator('#separate-copy').check();page.locator('#rom-recovery').check()
     assert page.locator('#install-ampve').is_disabled()
+    # Recovery must be reachable after reloading/importing original files, without a live ROM reader.
+    page.evaluate("""() => {Object.defineProperty(navigator,'serial',{configurable:true,value:{
+      requestPort:async()=>{window.recoveryPortRequests=(window.recoveryPortRequests||0)+1;throw new DOMException('Fixture cancellation','AbortError');},addEventListener(){}}});}""")
+    page.locator('#recover-device').click()
+    page.locator('#board-confirm').check();page.locator('#confirm-device').click()
+    assert page.locator('#existing-backups').is_visible()
+    page.locator('#import-backups').set_input_files([])
+    page.wait_for_function('!document.querySelector("#import-backups").disabled')
+    page.locator('#import-backups').set_input_files([str(root/name) for name in ['backup-a.bin','backup-b.bin','audit-private.json']])
+    page.wait_for_function('document.querySelector("#setup-status").textContent.includes("Original-backup recovery prepared")')
+    assert page.locator('#restore-panel').is_visible()
+    assert page.locator('#restore-original').is_enabled()
+    assert page.locator('#install-ampve').is_disabled()
+    page.once('dialog',lambda dialog:dialog.accept())
+    page.locator('#restore-original').click()
+    page.wait_for_function('window.recoveryPortRequests===1 && !document.querySelector("#restore-original").disabled')
+    assert page.locator('#setup-status').inner_text().startswith('Stopped.')
+    assert page.locator('#restore-panel').is_visible()
     page.evaluate(r"""() => {
       const packet=(type,data)=>{const p=[73,77,80,82,79,86,1,type,data.length,...data];p.push(p.reduce((a,b)=>a+b,0)&255);return new Uint8Array([10,...p,10]);};
       const rpc=(command,strings)=>{const data=strings.flatMap(s=>{const b=[...new TextEncoder().encode(s)];return [b.length,...b];});return packet(4,[command,data.length,...data]);};
@@ -163,4 +181,4 @@ with tempfile.TemporaryDirectory(prefix='ampve-browser-fixture-') as directory,s
         page.screenshot(path=f'.browser-tests/stock-onboarding-{width}.png',full_page=True)
     assert not errors,errors
     browser.close()
-print('Rendered browser fixtures passed: local backup import/integrity, sanitized backup/plan downloads, candidate comparison and saved recovery, unsigned write gate, simulated USB Wi-Fi/password clearing, no uploads and three viewport widths. No physical hardware tested.')
+print('Rendered browser fixtures passed: local backup import/integrity, sanitized backup/plan downloads, candidate comparison and saved recovery, recovery entry without a live reader and cancelled-port retry, unsigned write gate, simulated USB Wi-Fi/password clearing, no uploads and three viewport widths. No physical hardware tested.')

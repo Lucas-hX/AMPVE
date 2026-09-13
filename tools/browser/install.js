@@ -1,3 +1,4 @@
+import {resetApplication} from './reset.js';
 // AMPVE's guarded integration uses ESP Web Tools manifest conventions and its
 // pinned esptool-js writer. Its generic install dialog cannot keep our audited
 // connection or verify the app before switching boot selection; do not expose it.
@@ -146,7 +147,7 @@ export async function executePlan(reader, plan, policy, consent, progress=()=>{}
     }
     ensure(verify.digest('hex')===item.sha256,'Write verification failed. Keep power stable and use the saved recovery plan.');
   }
-  await reader.loader.after('hard_reset');
+  await resetApplication(reader);
   return {written_and_read_back:true,physical_startup_verified:false};
 }
 
