@@ -1,6 +1,8 @@
 # Working on AMPVE
 
 Current device milestone: browser USB/ROM inspection and the pairing/heartbeat/settings backend are implemented. The native XiaoZhi shell and read-only audit/build tools now exist as a development candidate. Physical installation, validation and board audio/OTA remain pending. See docs/runbooks/NATIVE_FIRMWARE.md. See [docs/runbooks/DEVICES.md](docs/runbooks/DEVICES.md).
+Task tracking: use [the ESP32 Project](https://github.com/users/Lucas-hX/projects/10), [tracking issue #6](https://github.com/Lucas-hX/AMPVE/issues/6) and [docs/PROJECT_TRACKING.md](docs/PROJECT_TRACKING.md) for scope, dependencies and evidence-based status updates. The active roadmap is ESP32-only; Raspberry Pi remains future work.
+
 ## Read this first
 
 This repository starts as a product/implementation handoff with graphic assets. The Django platform foundation is implemented; consult docs/runbooks/PLATFORM.md for verified delivery status. Encrypted provider connections and an experimental FastAPI/Pipecat browser preview are implemented; Gemini validation, the XiaoZhi audio adapter and physical firmware validation remain future work. Lucas reports successful OpenAI browser voice. Inspect the current checkout before making claims; later sessions may have added implementation.

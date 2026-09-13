@@ -8,6 +8,8 @@ Our first experience is **AMPVE Companion**: an expressive AI companion that lis
 
 **Current status:** Django platform foundation with an English frontend, private accounts, profile/password settings, administration, and a Companion preview catalog. Encrypted provider connections and an experimental FastAPI/Pipecat browser voice preview are implemented; Lucas reports a successful OpenAI conversation; Gemini still needs account validation. USB chip inspection and the device-management backend are implemented. A pinned XiaoZhi native shell and read-only local audit/build tools are implemented as an unvalidated development candidate. Physical installation, the XiaoZhi audio adapter and remote OTA remain pending. See the [native firmware runbook](docs/runbooks/NATIVE_FIRMWARE.md). See the [platform runbook](docs/runbooks/PLATFORM.md) for commands and delivery limits.
 
+Follow the [ESP32 delivery Project](https://github.com/users/Lucas-hX/projects/10) and [task-tracking guide](docs/PROJECT_TRACKING.md) for browser onboarding, private backups, device management, recoverable Wi-Fi updates and firmware efficiency.
+
 ## The first experience
 
 1. Sign in to your AMPVE workspace.
