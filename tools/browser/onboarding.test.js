@@ -83,9 +83,10 @@ test('a matching P4 chip cannot substitute for owner-confirmed board identity',a
 });
 
 function flashFixture(flash,{failAppReadback=false}={}) {
-  let pending=[];const writes=[];
+  let pending=[];const writes=[],reads=[];
   const reader={loader:{ESP_READ_FLASH:0xd2,checkCommand:async(_,op,payload)=>{
     const v=new DataView(payload.buffer),readAt=v.getUint32(0,true),readSize=v.getUint32(4,true);
+    reads.push({offset:readAt,size:readSize});
     const bytes=flash.slice(readAt,readAt+readSize);
     if(failAppReadback&&writes.length&&readAt>=0xe00000&&readAt<0x11f0000)bytes[0]^=1;
     pending=[];for(let at=0;at<bytes.length;at+=4096)pending.push(bytes.slice(at,at+4096));
@@ -94,7 +95,7 @@ function flashFixture(flash,{failAppReadback=false}={}) {
     assert.equal(options.eraseAll,false);assert.equal(options.flashMode,'keep');assert.equal(options.fileArray.length,1);
     const item=options.fileArray[0];writes.push(item.address);flash.set(item.data,item.address);
   },after:async()=>writes.push('reset')},transport:{read:async()=>pending.shift(),write:async()=>{}}};
-  return {reader,writes};
+  return {reader,writes,reads};
 }
 
 test('app is read back before boot selection; failed verification never writes otadata',async()=>{
@@ -427,9 +428,11 @@ async function reinstallFixture(){
 }
 const installConsent={exact_plan:true,separate_copy:true,rom_recovery:true};
 test('same install action replaces a known failed image, clears its longer tail and preserves NVS without a stock reboot',async()=>{
-  const {flash,plan,latest}=await reinstallFixture(),{reader,writes}=flashFixture(flash);let revalidated=false;
+  const {flash,plan,latest}=await reinstallFixture(),{reader,writes,reads}=flashFixture(flash);let revalidated=false;
   const result=await api.executeInstallOrReinstall(reader,plan,latest,installConsent,()=>{},undefined,async()=>{revalidated=true;});
   assert.equal(revalidated,true);assert.equal(result.physical_startup_verified,false);
+  assert.equal(reads.reduce((sum,read)=>sum+read.size,0),FLASH_BYTES+8192+4096);
+  assert.equal(result.installation_summary.preflight_bytes,FLASH_BYTES);
   assert.deepEqual(writes,[0xe00000,0x10d000,'reset']);assert.equal(flash[0x3b000],12);
   assert.ok(flash.slice(0xe00000,0xe01000).every(b=>b===42));assert.ok(flash.slice(0xe01000,0xe02000).every(b=>b===255));
   assert.equal(plan.recovery[0].bytes.length,8192);
@@ -454,4 +457,27 @@ test('reinstall rejects unknown images, protected changes, changed stock selecti
     await assert.rejects(api.executeInstallOrReinstall(reader,plan,latest,installConsent,()=>{},controller.signal,async()=>{if(failure==='revoked')throw new Error('Revoked');}));
     assert.deepEqual(writes,failure==='readback'?[0xe00000]:[],failure);
   }
+});
+
+test('installation failure result distinguishes a verified flash from restart failure and excludes raw exception text',async()=>{
+  const {flash,plan,latest}=await reinstallFixture(),{reader,writes}=flashFixture(flash);
+  reader.loader.after=async()=>{throw new TypeError('PRIVATE_PASSWORD /private/path serial dump');};
+  let error;try{await api.executeInstallOrReinstall(reader,plan,latest,installConsent);}catch(e){error=e;}
+  assert.equal(error.installationSummary.phase,'restart');
+  assert.equal(error.installationSummary.app_readback_verified,true);
+  assert.equal(error.installationSummary.selection_readback_verified,true);
+  assert.equal(error.installationSummary.reset_completed,false);
+  assert.equal(error.userMessage.includes('written and verified'),true);
+  assert.equal(JSON.stringify(error.installationSummary).includes('PRIVATE'),false);
+  assert.deepEqual(writes,[0xe00000,0x10d000]);
+});
+test('write transport failure exports its actual phase without claiming a verified application',async()=>{
+  const {flash,plan,latest}=await reinstallFixture(),{reader}=flashFixture(flash);
+  reader.loader.writeFlash=async()=>{throw new Error('PRIVATE serial output');};
+  let error;try{await api.executeInstallOrReinstall(reader,plan,latest,installConsent);}catch(e){error=e;}
+  assert.equal(error.installationSummary.phase,'app_write');
+  assert.equal(error.installationSummary.write_attempted,true);
+  assert.equal(error.installationSummary.app_readback_verified,false);
+  assert.equal(error.installationSummary.preflight_bytes,FLASH_BYTES);
+  assert.equal(error.userMessage.includes('PRIVATE'),false);
 });

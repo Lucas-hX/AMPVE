@@ -91,8 +91,10 @@ with tempfile.TemporaryDirectory(prefix='ampve-browser-fixture-') as directory,s
     page.locator('#import-backups').set_input_files([str(root/name) for name in ['backup-a.bin','backup-b.bin','audit-private.json']])
     page.wait_for_function('document.querySelector("#backup-result").textContent.includes("saved copies match") && !document.querySelector("#prepare-install").disabled',timeout=30000)
     page.locator('#technical-review summary').click()
+    operation_status=page.locator('#setup-status').inner_text()
     with page.expect_download() as download_event:
         page.locator('#export-review').click()
+    assert page.locator('#setup-status').inner_text()==operation_status
     exported=Path(download_event.value.path()).read_text()
     review=json.loads(exported)
     assert review['kind']=='ampve-browser-review-summary' and review['installable'] is False

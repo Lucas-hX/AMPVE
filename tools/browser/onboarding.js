@@ -73,6 +73,12 @@ if(root) {
       if(error.startupSummary){downloadLink('export-runtime-review',error.startupSummary);recoveryMode=true;installedRuntime=null;show('device-confirmation');show('backup-step');show('existing-backups');get('wifi-step').hidden=true;status.textContent='AMPVE did not start. Select your original backup files below to prepare installation of the latest version.';}
       detail.textContent=writing?'A write may be incomplete. Keep your recovery files; use the reviewed USB recovery procedure.':
         'If AMPVE did not start, use Repair or reinstall AMPVE. Keep the original backups. Use the USB TO UART port; an accessible RESET button is not required for the first automatic reconnect attempt.';
+      if(error.installationSummary){
+        downloadLink('export-install-result',error.installationSummary);
+        detail.textContent=error.installationSummary.app_readback_verified&&error.installationSummary.selection_readback_verified?
+          'Flash verification completed. The remaining step is USB startup checking.':
+          `Installation result: ${error.installationSummary.phase.replaceAll('_',' ')}. Use Download installation result below; the backup summary describes only your saved files.`;
+      }
       await close();plan=null;
     }finally{busy=false;writing=false;sync();}
   }
@@ -209,9 +215,9 @@ if(root) {
     reportSource='imported-capture-record';
     status.textContent='Local files verified. Checking the available installation automatically…';await showReport();
   });
-  for(const id of ['export-review','export-plan-review'])get(id).onclick=event=>{
+  for(const id of ['export-review','export-plan-review','export-install-result'])get(id).onclick=event=>{
     if(busy||!downloadUrls.has(id)){event.preventDefault();return;}
-    status.textContent='Your support summary is ready. If the browser blocks the download, use Save link as on this link.';
+    // Downloading support evidence must never replace the operation's result or error.
   };
   get('prepare-install').onclick=()=>run(prepareInstallation);
   async function prepareInstallation(){
@@ -251,7 +257,7 @@ if(root) {
     get('plan-panel').hidden=false;get('approve-plan').checked=false;
     downloadLink('export-plan-review',planReviewSummary(plan));
     recoveryPlan=await prepareRecovery(backup,report,plan);show('restore-panel');
-    if(port && get('read-consent').checked)await checkRecovery(controller?.signal);
+    // Physical preflight runs once, at installation time, on the connection used to write.
     if((recoveryMode||currentFlashChanged)&&!reinstallReference){
       get('release-status').textContent='Use USB startup checking or restore your original software. A changed device cannot be treated as a new installation.';
       status.textContent='Original-backup recovery prepared. No software has been changed.';
@@ -287,12 +293,12 @@ if(root) {
     ensure(allowsUsbCommissioning(policy) || (c6Observation?.version_matches && c6Observation.unit_identity &&
       c6Observation.unit_identity===reader.hardware.identity),'Complete the Wi-Fi hardware check on this unit before installing.');
     recoveryPlan=await prepareRecovery(backup,report,plan);show('restore-panel');
-    await (reinstallReference?executeInstallOrReinstall:executePlan)(reader,plan,policy,consent,progress,signal,async()=>{
+    const installed=await (reinstallReference?executeInstallOrReinstall:executePlan)(reader,plan,policy,consent,progress,signal,async()=>{
       const response=await fetch(root.dataset.release,{cache:'no-store'});ensure(response.ok,'Release unavailable.');
       const latest=await verifyRelease(await response.json());
       ensure(JSON.stringify(latest)===JSON.stringify(policy),'Release or publisher trust changed; prepare a new plan.');
       if(reinstallReference){const previous=await fetch(root.dataset.release+'?recovery=1',{cache:'no-store'});ensure(previous.ok && JSON.stringify(await verifyRelease(await previous.json()))===JSON.stringify(reinstallReference),'Previous release or publisher trust changed; prepare again.');}
-    });await close();
+    });downloadLink('export-install-result',installed.installation_summary);await close();
     writing=false;recoveryMode=false;currentFlashChanged=false;get('cancel-setup').disabled=false;
     const expectedVersion=policy.firmware_version;
     const usbAssisted=allowsUsbCommissioning(policy);plan=null;

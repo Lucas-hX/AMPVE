@@ -1,5 +1,15 @@
 # First Waveshare 7B installation handoff
 
+## Single-pass installation and retained results — 2026-09-13
+
+The owner reported more than one hour spent on repeated comparisons, followed by a generic possible-write warning. The supplied JSON is an imported-backup review, not installation evidence; clicking its download had replaced the actual operation error. The previous failure phase cannot be reconstructed from that report.
+
+Preparation now performs local file checks only. At installation time one full 32 MiB read on the same stopped ROM/stub connection simultaneously checks protected bytes, the original stock selection and the known padded app identity. It replaces the preparation-time scan, separate known-app reread and second complete pre-write scan. Publisher approval is still rechecked after that scan, and app/selection readbacks remain mandatory before reset. There is no reusable preflight flag or unchecked write path: the validator belongs to the in-memory prepared plan and executes on every installation attempt. Software tests count exactly one flash-length preflight plus the two write-region readbacks. Real USB duration is not yet measured.
+
+The operation exports `ampve-installation-result.json` with bounded phase, preflight byte count, elapsed time, whether a write was attempted, separate app/selection verification and reset completion. Raw exceptions, serial output and private data are excluded. A reset failure after both successful readbacks is distinguished from an incomplete write. Downloading backup/plan/result evidence never overwrites the visible operation message. The existing backup summary still describes the original files only.
+
+Validation: 56 Node tests, including byte-count enforcement and write/reset failure injection, and rendered Chromium onboarding at three widths, including preservation of the operation message after downloading a backup summary. Physical installation, the previous failure's cause and measured on-device duration remain unverified. Firmware artifacts remain unchanged.
+
 ## Direct USB reinstallation — 2026-09-13
 
 The owner reports that the previous recovery screen kept offering startup checks for 0.1.11. **Repair or reinstall AMPVE** now enters the same installation flow and always selects the current signed release (0.1.12). A failed USB startup exposes original-backup import instead of another mandatory startup attempt. The existing **Install AMPVE** action requests the USB port when needed; no additional installation-method button is added.
