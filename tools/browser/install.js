@@ -76,6 +76,7 @@ export async function makePlan(file, report, policy, app) {
   const otadata=new Uint8Array(await file.slice(OTA.offset,(OTA.offset+OTA.size)).arrayBuffer()),selection=selectBoot(otadata);
   const appPadded=new Uint8Array(Math.ceil(app.length/4096)*4096).fill(255);appPadded.set(app);
   return {profile:PROFILE,backup_sha256:report.sha256,app_sha256:policy.app.sha256,
+    bootloader_sha256:policy.bootloader_sha256,table_sha256:policy.table_sha256,current_selection:selection.current,
     writes:[{name:'AMPVE application',offset:SLOT.offset,bytes:appPadded,sha256:await sha256(appPadded)},
       {name:'Boot selection (one sector)',offset:selection.offset,bytes:selection.bytes,sha256:await sha256(selection.bytes)}],
     recovery:[{name:'restore-otadata.bin',offset:OTA.offset,bytes:otadata},
@@ -83,7 +84,34 @@ export async function makePlan(file, report, policy, app) {
       {name:'restore-ota1-touched-sectors.bin',offset:SLOT.offset,bytes:new Uint8Array(await file.slice(SLOT.offset,SLOT.offset+appPadded.length).arrayBuffer())}]};
 }
 
+// Preparation from authenticated candidate bytes is deliberately not write authority.
+export async function makeReviewPlan(file, report, candidate, app) {
+  ensure(candidate.status==='development-review' && candidate.installable===false && candidate.profile===PROFILE,
+    'No matching review candidate is available.');
+  ensure(candidate.app?.offset===SLOT.offset && Number.isInteger(candidate.app.size) && candidate.app.size>=24 && candidate.app.size<=SLOT.size,
+    'Invalid candidate application region.');
+  const boot=report.images?.find(image=>image.name==='bootloader');
+  const fingerprints=[boot?.region_sha256,report.table_sha256,candidate.app.sha256];
+  ensure(fingerprints.every(value=>/^[a-f0-9]{64}$/.test(value||'')),'Verified backup fingerprints are required.');
+  const plan=await makePlan(file,report,{compatibility:CONTRACT,app:candidate.app,
+    bootloader_sha256:boot.region_sha256,table_sha256:report.table_sha256},app);
+  return {...plan,review_only:true};
+}
+
+export function planReviewSummary(plan) {
+  ensure(plan?.writes?.length===2,'Prepare the exact plan first.');
+  return {schema:1,kind:'ampve-browser-plan-review',installable:false,compatibility:CONTRACT,
+    backup_sha256:plan.backup_sha256,bootloader_sha256:plan.bootloader_sha256,
+    table_sha256:plan.table_sha256,candidate_sha256:plan.app_sha256,
+    current_physical_state_verified:false,
+    current_selection:plan.current_selection?{sequence:plan.current_selection.seq,state:plan.current_selection.state,index:plan.current_selection.index}:null,
+    proposed_regions:plan.writes.map(({offset,bytes,sha256})=>({offset,size:bytes.length,sha256})),
+    recovery_files_saved:plan.recovery_saved===true,
+    remaining:['Review exact stock bootloader and C6 compatibility','Publisher approval and current-unit comparison','Owner approval of exact physical writes']};
+}
+
 export async function executePlan(reader, plan, policy, consent, progress=()=>{}, signal, revalidate=async()=>{}) {
+  ensure(plan?.review_only!==true,'An unsigned review plan cannot write hardware.');
   ensure(consent?.exact_plan===true && consent?.separate_copy===true && consent?.rom_recovery===true,'Explicit plan and recovery confirmation required.');
   ensure(matchesContract(policy?.compatibility),'Prepare a matching versioned release.','profile_contract_mismatch');
   ensure(plan.profile===PROFILE && policy?.installable===true && Date.parse(policy.expires_at)>Date.now() && plan.app_sha256===policy.app.sha256,'Invalid or expired plan.');

@@ -167,3 +167,14 @@ test('shareable summary allowlists metadata and never exports private capture st
  for(const altered of [{...report,matching_files:false},{...report,sha256:secret},{...report,images:[{...report.images[0],offset:-1}]}])assert.throws(()=>api.reviewSummary(altered,'imported-capture-record'));
  assert.throws(()=>api.reviewSummary(report,secret));
 });
+
+
+test('unsigned candidate review plans cannot reach a serial reader or writer',async()=>{
+  const reader=new Proxy({}, {get(){throw new Error('Unexpected hardware access');}});
+  await assert.rejects(executePlan(reader,{review_only:true},policy,{exact_plan:true,separate_copy:true,rom_recovery:true}),
+    error=>error.userMessage==='An unsigned review plan cannot write hardware.');
+  for(const candidate of [{status:'reviewed-development-release'},
+    {status:'development-review',installable:false,profile:'waveshare-7b-stock-v1',app:{offset:0x8000,size:112}}]){
+    await assert.rejects(api.makeReviewPlan({}, {},candidate,new Uint8Array()));
+  }
+});
