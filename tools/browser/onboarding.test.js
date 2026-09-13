@@ -279,3 +279,16 @@ test('RAM probe reuses the real esptool reader and closes on success, cancellati
     assert.deepEqual(commands,[['begin',8,1,1024,0x4ff20000],['block'],['finish',0x4ff20000]]);
   }
 });
+
+test('C6 failure stages retain bounded error codes and never establish compatibility',()=>{
+  const nonce='a'.repeat(32);
+  for(const status of ['host_init_failed','connection_failed','version_query_failed','event_loop_failed','task_start_failed']){
+    const record={kind:'ampve-c6-probe',schema:1,nonce,status,version:[0,0,0],error_code:-1};
+    const result=api.probeResult(JSON.stringify(record),nonce);
+    assert.equal(result.status,status);assert.equal(result.error_code,-1);assert.equal(result.version_matches,false);
+    for(const error_code of [-2,65536,true,'private'])assert.throws(()=>api.probeResult(JSON.stringify({...record,error_code}),nonce));
+  }
+  const good={kind:'ampve-c6-probe',schema:1,nonce,status:'observed',version:[2,12,13],error_code:0};
+  assert.equal(api.probeResult(JSON.stringify(good),nonce).version_matches,true);
+  assert.throws(()=>api.probeResult(JSON.stringify({...good,error_code:-1}),nonce));
+});

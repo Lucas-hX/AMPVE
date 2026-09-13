@@ -13,23 +13,28 @@
 
 static char nonce[33];
 static atomic_bool reported=false;
-static void emit(const char *status, const esp_hosted_coprocessor_fwver_t *version) {
+static void emit(const char *status, const esp_hosted_coprocessor_fwver_t *version, esp_err_t error) {
     if(atomic_exchange(&reported,true))return;
-    esp_rom_printf("\n{\"kind\":\"ampve-c6-probe\",\"schema\":1,\"nonce\":\"%s\",\"status\":\"%s\",\"version\":[%u,%u,%u]}\n",
+    esp_rom_printf("\n{\"kind\":\"ampve-c6-probe\",\"schema\":1,\"nonce\":\"%s\",\"status\":\"%s\",\"version\":[%u,%u,%u],\"error_code\":%d}\n",
         nonce,status,(unsigned)(version?version->major1:0),
-        (unsigned)(version?version->minor1:0),(unsigned)(version?version->patch1:0));
+        (unsigned)(version?version->minor1:0),(unsigned)(version?version->patch1:0),(int)error);
 }
 static void query(void *unused) {
     esp_hosted_coprocessor_fwver_t version={0};
-    if(esp_hosted_connect_to_slave()!=ESP_OK || esp_hosted_get_coprocessor_fwversion(&version)!=ESP_OK)
-        emit("unavailable",NULL);
+    // Explicit initialization is idempotent; do not depend solely on a constructor.
+    esp_err_t error=esp_hosted_init();
+    if(error!=ESP_OK)emit("host_init_failed",NULL,error);
+    else if((error=esp_hosted_connect_to_slave())!=ESP_OK)emit("connection_failed",NULL,error);
+    else if((error=esp_hosted_get_coprocessor_fwversion(&version))!=ESP_OK)
+        emit("version_query_failed",NULL,error);
     else if(version.major1==0 || version.major1>255 || version.minor1>255 || version.patch1>255)
-        emit("invalid_version",NULL);
+        emit("invalid_version",NULL,ESP_ERR_INVALID_RESPONSE);
     else {
         uint32_t chip_id=0;char target[24]={0};
-        if(esp_hosted_get_cp_info(&chip_id,target,sizeof(target)-1)!=ESP_OK || strcmp(target,"esp32c6")!=0)
-            emit("identity_unavailable",NULL);
-        else emit("observed",&version);
+        error=esp_hosted_get_cp_info(&chip_id,target,sizeof(target)-1);
+        if(error!=ESP_OK || strcmp(target,"esp32c6")!=0)
+            emit("identity_unavailable",NULL,error==ESP_OK?ESP_ERR_INVALID_RESPONSE:error);
+        else emit("observed",&version,ESP_OK);
     }
     vTaskSuspend(NULL);
 }
@@ -47,10 +52,11 @@ void app_main(void) {
         else used=0;
     }
     if(used!=32)return;
-    esp_event_loop_create_default();
-    if(xTaskCreate(query,"c6_query",4096,NULL,2,NULL)!=pdPASS){emit("unavailable",NULL);return;}
+    esp_err_t event_error=esp_event_loop_create_default();
+    if(event_error!=ESP_OK && event_error!=ESP_ERR_INVALID_STATE){emit("event_loop_failed",NULL,event_error);return;}
+    if(xTaskCreate(query,"c6_query",4096,NULL,2,NULL)!=pdPASS){emit("task_start_failed",NULL,ESP_ERR_NO_MEM);return;}
     // The host library can block internally. A terminal timeout is never success.
     vTaskDelay(pdMS_TO_TICKS(20000));
-    emit("timeout",NULL);
+    emit("timeout",NULL,ESP_ERR_TIMEOUT);
     vTaskSuspend(NULL);
 }
