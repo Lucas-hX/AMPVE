@@ -86,3 +86,11 @@ The public bootloader contains version string `v5.5.1-875-g64726df15e-dirty`; th
 Remaining engineering work belongs to AMPVE: establish a bounded way to identify/check the installed C6 before enabling the release and establish exact stock boot-selection/recovery behavior. The P4 ROM connection and known P4 flash hashes alone cannot observe C6 flash. Generic ESP32 discovery cannot select arbitrary board pin/peripheral firmware. Add independently tested profiles/releases; do not treat a successful chip probe or public vendor fingerprint as universal installation approval.
 
 The automated 7B diagnostic and recovery comparison are now documented in [C6_DIAGNOSTIC_RECOVERY.md](C6_DIAGNOSTIC_RECOVERY.md). Candidate preparation runs automatically after backup verification; its button is a retry. C6 version observation, actual Wi-Fi operation, return from RAM diagnostics and physical restoration are separate evidence. No signed installation approval follows from the read-only checks alone.
+
+## USB-assisted deployment verification
+
+PR #67 merged as `f258acd79ec4582fd4f6e71fb73f95a484db67bf`. The private platform configuration now selects the signed `firmware-usb-initial-release-01` and the independently prepared development trust registry; its previous configuration was retained privately before the atomic update. Only `ampve-platform` was restarted after static collection. Platform, audio and tunnel remained online under PM2.
+
+Live authenticated Chromium verification on `https://ampve.com` passed: anonymous firmware access redirected to login; the exact signed initial-install policy verified with browser Ed25519; the app returned HTTP 200 and rehashed to the recorded 2,879,840-byte artifact; startup/recovery controls were present without JavaScript errors. Installation was correctly disabled before local board/backup preparation. No physical write or provider request was performed. Django deployment checks reported only the existing optional HSTS subdomain/preload warnings; no related security setting was changed.
+
+The C6 query no longer gates this signed USB mode. First on-board USB confirmation and physical restoration remain pending in #12, and the exact local install consent remains a browser gate in #10/#17.
