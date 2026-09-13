@@ -448,6 +448,16 @@ void ampve_runtime_start() {
     if(chip.model!=CHIP_ESP32P4 || chip.revision!=103 || flash_bytes!=32*1024*1024) {
         printf("AMPVE recovery: chip/revision/flash do not match this development build.\n");return;
     }
+    // Refuse a legacy migration image/layout before opening NVS or starting drivers.
+    const auto* running=esp_ota_get_running_partition();
+    const auto* stock=esp_partition_find_first(ESP_PARTITION_TYPE_APP,ESP_PARTITION_SUBTYPE_APP_FACTORY,"factory");
+    const auto* slot0=esp_partition_find_first(ESP_PARTITION_TYPE_APP,ESP_PARTITION_SUBTYPE_APP_OTA_0,"ota_0");
+    const auto* slot1=esp_partition_find_first(ESP_PARTITION_TYPE_APP,ESP_PARTITION_SUBTYPE_APP_OTA_1,"ota_1");
+    if(!running || !stock || !slot0 || !slot1 || stock->address!=0x110000 || stock->size!=0x900000 ||
+       slot0->address!=0xA10000 || slot1->address!=0xE00000 || slot0->size!=0x3F0000 || slot1->size!=0x3F0000 ||
+       (running->address!=slot0->address && running->address!=slot1->address)) {
+        printf("AMPVE recovery: stock partition layout required. Nothing initialized or erased.\n");return;
+    }
     // NVS errors never trigger erase. Serial recovery is preferable to data destruction.
     if(nvs_flash_init()!=ESP_OK || nvs_open("ampve",NVS_READWRITE,&store_handle)!=ESP_OK){
         printf("AMPVE recovery: NVS unavailable; nothing erased. Use the audited USB recovery procedure.\n");return;

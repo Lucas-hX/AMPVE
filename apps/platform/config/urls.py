@@ -1,7 +1,7 @@
 from django.contrib import admin
 from django.contrib.auth import views as auth
 from django.urls import path
-from workspace import views, connection_views, device_views
+from workspace import views, connection_views, device_views, firmware_views
 
 urlpatterns = [
     path('', views.landing, name='landing'),
@@ -13,6 +13,9 @@ urlpatterns = [
     path('home/', views.page, name='home'),
     path('devices/', device_views.devices, name='devices'),
     path('devices/add/', device_views.onboarding, name='onboarding'),
+    path('devices/firmware/release/', firmware_views.release, name='firmware_release'),
+    path('devices/firmware/review-bundle/', firmware_views.review_bundle, name='firmware_review_bundle'),
+    path('devices/firmware/artifacts/<str:digest>.bin', firmware_views.artifact, name='firmware_artifact'),
     path('devices/interface-preview/', device_views.interface_preview, name='interface_preview'),
     path('devices/<uuid:pk>/', device_views.detail, name='device_detail'),
     path('devices/<uuid:pk>/revoke/', device_views.revoke, name='device_revoke'),

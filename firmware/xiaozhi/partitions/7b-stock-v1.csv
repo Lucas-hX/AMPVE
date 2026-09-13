@@ -1,0 +1,12 @@
+# AMPVE stock-preserving development profile. Never flash this generated table.
+# Offsets/sizes: owner's 2026-09-13 audit. Types/flags must match a local MD5-verified table.
+# Name, Type, SubType, Offset, Size, Flags
+nvsfactory, data, nvs, 0x9000, 0x32000,
+nvs, data, nvs, 0x3B000, 0xD2000,
+otadata, data, ota, 0x10D000, 0x2000,
+phy_init, data, phy, 0x10F000, 0x1000,
+factory, app, factory, 0x110000, 0x900000,
+ota_0, app, ota_0, 0xA10000, 0x3F0000,
+ota_1, app, ota_1, 0xE00000, 0x3F0000,
+assets, data, spiffs, 0x11F0000, 0x900000,
+storage, data, spiffs, 0x1AF0000, 0x500000,

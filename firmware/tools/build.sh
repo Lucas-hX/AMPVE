@@ -18,6 +18,11 @@ cd "$AMPVE_WORK"
 export SOURCE_DATE_EPOCH=1789257600
 python scripts/gen_lang.py --language en-US --output main/assets/lang_config.h
 export SDKCONFIG_DEFAULTS='sdkconfig.defaults;sdkconfig.defaults.esp32p4;sdkconfig.ampve'
+# A prior generated configuration overrides defaults. Refuse silently reusing the old layout.
+if [[ -f sdkconfig ]] && ! grep -q 'CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions/ampve/7b-stock-v1.csv"' sdkconfig; then
+    cp sdkconfig sdkconfig.pre-stock-profile
+    rm sdkconfig
+fi
 if [[ ! -d components/78__esp-wifi-connect ]]; then
     idf.py -DIDF_TARGET=esp32p4 reconfigure
     "$AMPVE_TOOL_PYTHON" "$AMPVE_ROOT/firmware/tools/provisioning.py" --work "$AMPVE_WORK"

@@ -2,7 +2,7 @@
 import argparse
 import json
 from pathlib import Path
-from audit import analyze, digest, security_is_unprotected
+from audit import analyze, digest, security_is_unprotected, partition_table
 
 
 def compare(audit_directory, candidate_directory):
@@ -18,12 +18,22 @@ def compare(audit_directory, candidate_directory):
             not security_is_unprotected(hardware['security'])):
         raise ValueError('Hardware/security audit does not match the candidate profile')
     candidate = json.loads((candidate_directory/'review-manifest.json').read_text())
-    for item in candidate['proposed_regions_not_approved_writes']:
+    for item in candidate.get('build_artifacts_not_installation_plan', [])+candidate['proposed_regions_not_approved_writes']:
         path = (candidate_directory/item['file']).resolve()
-        if not path.is_relative_to(candidate_directory.resolve()) or digest(path.read_bytes()) != item['sha256']:
+        if not path.is_relative_to(candidate_directory.resolve()) or path.stat().st_size != item['size'] or digest(path.read_bytes()) != item['sha256']:
             raise ValueError('Candidate file missing, outside bundle, or hash mismatch')
     def layout(partitions):
         return [(p['name'], p['type'], p['subtype'], p['offset'], p['size'], p['flags']) for p in partitions]
+    if candidate.get('installation_profile') == 'waveshare-7b-stock-v1':
+        from release import config_values, validate_config
+        config=candidate_directory/'sdkconfig'
+        if digest(config.read_bytes())!=candidate['sdkconfig_sha256']:
+            raise ValueError('SDK configuration hash mismatch')
+        validate_config(config_values(config))
+        table=(candidate_directory/'partition_table/partition-table.bin').read_bytes()
+        generated=partition_table(b'\xff'*0x8000+table,0x8000,len(first))
+        if layout(generated)!=layout(candidate['partitions']):
+            raise ValueError('Manifest does not describe the generated partition binary')
     return {'installable': False, 'backup_hashes_verified': True,
             'partition_layout_identical': layout(actual['partitions']) == layout(candidate['partitions']),
             'stock_partition_table_offset': actual['partition_table_offset'],

@@ -41,3 +41,5 @@ staticfiles/
 .venv-audio/
 apps/platform/static/workspace/inspect.bundle.js
 apps/platform/static/workspace/inspect.bundle.js.LEGAL.txt
+apps/platform/static/workspace/onboarding.bundle.js
+apps/platform/static/workspace/onboarding.bundle.js.LEGAL.txt

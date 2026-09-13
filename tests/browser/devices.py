@@ -34,8 +34,8 @@ with sync_playwright() as p:
         page.wait_for_url('**/home/')
         page.goto(base+'/devices/add/')
         page.get_by_role('button',name='Select a USB serial port').click()
-        page.get_by_text('Board model not confirmed.',exact=False).wait_for()
-        assert 'No firmware will be written.' in page.content()
+        page.get_by_text('Confirm the printed 7B label.',exact=False).wait_for()
+        assert 'this step does not write flash' in page.content()
         for width in [390,768,1440]:
             page.set_viewport_size({'width':width,'height':1000});page.wait_for_timeout(350)
             assert page.evaluate('document.documentElement.scrollWidth <= innerWidth'),width
