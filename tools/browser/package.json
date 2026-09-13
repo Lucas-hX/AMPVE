@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "build": "node build.mjs",
-    "test": "node --test inspect.test.js onboarding.test.js wifi.test.js"
+    "test": "node --test inspect.test.js onboarding.test.js wifi.test.js serial-transport.test.js"
   },
   "dependencies": {
     "esp-web-tools": "10.4.0",
