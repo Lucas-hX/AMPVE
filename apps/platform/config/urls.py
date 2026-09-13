@@ -1,7 +1,7 @@
 from django.contrib import admin
 from django.contrib.auth import views as auth
 from django.urls import path
-from workspace import views, connection_views, device_views, firmware_views, deployment_views
+from workspace import diagnostic_views, views, connection_views, device_views, firmware_views, deployment_views
 
 urlpatterns = [
     path('', views.landing, name='landing'),
@@ -13,6 +13,7 @@ urlpatterns = [
     path('home/', views.page, name='home'),
     path('devices/', device_views.devices, name='devices'),
     path('devices/add/', device_views.onboarding, name='onboarding'),
+    path('devices/diagnostics/c6/', diagnostic_views.c6_probe, name='c6_probe'),
     path('devices/firmware/release/', firmware_views.release, name='firmware_release'),
     path('devices/firmware/review-bundle/', firmware_views.review_bundle, name='firmware_review_bundle'),
     path('devices/firmware/artifacts/<str:digest>.bin', firmware_views.artifact, name='firmware_artifact'),

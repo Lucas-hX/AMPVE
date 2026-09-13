@@ -115,7 +115,7 @@ export function decodeSecurity(bytes) {
   return {flash_crypt_cnt:bytes[4],parsed_flags:{SECURE_BOOT_EN:false,SECURE_BOOT_AGGRESSIVE_REVOKE:false,SECURE_DOWNLOAD_ENABLE:false}};
 }
 
-export async function openReader(port, {Loader=ESPLoader,SerialTransport=Transport,baud=460800}={}) {
+export async function openReader(port, {Loader=ESPLoader,SerialTransport=Transport,baud=460800,stub=true}={}) {
   const transport=new SerialTransport(port,false);
   const loader=new Loader({transport,baudrate:baud,debugLogging:false,terminal:{clean(){},write(){},writeLine(){}}});
   try {
@@ -131,8 +131,7 @@ export async function openReader(port, {Loader=ESPLoader,SerialTransport=Transpo
     ensure((flashId>>>16 & 255)===25,'Expected a 32 MiB flash chip.','flash_capacity_mismatch');
     const identity=await loader.chip.readMac(loader); // Private RAM/file only, never an ownership proof.
     if(loader.chip.postConnect) await loader.chip.postConnect(loader);
-    await loader.runStub();
-    await loader.flashSpiAttach(0);
+    if(stub){await loader.runStub();await loader.flashSpiAttach(0);}
     if(baud!==115200) await loader.changeBaud();
     return {loader,transport,hardware:{chip:'ESP32-P4',revision:103,flash_bytes:FLASH_BYTES,security,identity,reader:'esptool-js-0.6.1',baud}};
   } catch(error) {await transport.disconnect();throw error;}

@@ -4,11 +4,13 @@ import {openWifi,validCredentials} from './wifi.js';
 import {CONTRACT} from './profile.js';
 import {reviewSummary} from './review.js';
 import {recognizeBaseline} from './baselines.js';
+import {runProbe} from './c6-probe.js';
+import {prepareRecovery,validateRecovery} from './recovery.js';
 
 const root=document.querySelector('#firmware-setup');
 if(root) {
   const get=id=>document.getElementById(id),status=get('setup-status'),meter=get('setup-progress'),detail=get('setup-progress-detail');
-  let wifi;
+  let wifi,c6Observation;
   const downloadUrls=new Map();
   function downloadLink(id,summary){
     const old=downloadUrls.get(id);if(old)URL.revokeObjectURL(old);
@@ -41,10 +43,13 @@ if(root) {
     get('export-review').hidden=!report||!downloadUrls.has('export-review');
     get('export-plan-review').hidden=!plan||!downloadUrls.has('export-plan-review');
     get('export-review').setAttribute('aria-disabled',String(busy||!report));
+    get('check-recovery').disabled=busy||!plan||!port;
+    get('check-c6').disabled=busy||!port||!get('board-confirm').checked;
     get('save-recovery').disabled=busy||!plan||!window.showDirectoryPicker;
     get('export-plan-review').setAttribute('aria-disabled',String(busy||!plan));
     get('approve-plan').disabled=busy||!policy||plan?.review_only===true;
     get('install-ampve').disabled=busy||!policy||plan?.review_only===true||!plan?.recovery_saved||!port||
+      !c6Observation?.version_matches||!c6Observation.unit_identity||c6Observation.unit_identity!==report?.hardware?.identity||
       !get('approve-plan').checked||!get('separate-copy').checked||!get('rom-recovery').checked;
     get('cancel-setup').disabled=!busy||writing||!controller;
     get('import-backups').disabled=busy;
@@ -112,7 +117,44 @@ if(root) {
     show('device-confirmation');
     get('model-evidence').textContent='Resuming from saved files does not check the connected device. Confirm the printed name; AMPVE will check the board again before installation.';
   };
-  get('confirm-device').onclick=()=>run(async()=>{ensure(get('board-confirm').checked,'Confirm the board name first.');continueTo('backup-step');});
+  async function checkC6(signal){
+    ensure(get('board-confirm').checked&&port,'Confirm and connect the 7B board first.');
+    c6Observation=null;
+    get('c6-status').textContent='Checking the connected Wi-Fi hardware…';
+    get('export-c6-review').hidden=true;
+    const response=await fetch(root.dataset.probe,{cache:'no-store'});
+    if(!response.ok){get('c6-status').textContent='The temporary Wi-Fi check is not available yet.';return;}
+    const manifest=await response.json();
+    const artifact=await fetch(root.dataset.probe+'?artifact=1',{cache:'no-store'});
+    ensure(artifact.ok,'Temporary Wi-Fi check unavailable.');await close();
+    status.textContent='Checking the Wi-Fi hardware without installing software…';
+    const result=await runProbe(port,new Uint8Array(await artifact.arrayBuffer()),manifest,progress,signal);
+    c6Observation=result;
+    downloadLink('export-c6-review',{schema:1,kind:'ampve-c6-diagnostic-summary',profile:CONTRACT,
+      diagnostic_sha256:manifest.sha256,status:result.status,version:result.version,version_matches:result.version_matches,
+      wifi_function_verified:false,physical_recovery_verified:false,installable:false});
+    get('c6-status').textContent=result.version_matches?'The Wi-Fi chip responded with the expected firmware version. Network setup is checked after AMPVE starts.':
+      'Wi-Fi compatibility could not be confirmed. AMPVE installation remains unavailable.';
+    detail.textContent='This check does not prove a working Wi-Fi session or successful recovery. The next step reconnects the board automatically.';
+  }
+  get('confirm-device').onclick=()=>run(async signal=>{
+    ensure(get('board-confirm').checked,'Confirm the board name first.');
+    if(port)try{await checkC6(signal);}catch(error){
+      if(error.name==='AbortError')throw error;
+      get('c6-status').textContent='The Wi-Fi check could not finish. You can still prepare your backups; installation remains unavailable.';
+    }
+    continueTo('backup-step');
+  });
+  get('check-c6').onclick=()=>run(checkC6);
+  get('check-recovery').onclick=()=>run(checkRecovery);
+  async function checkRecovery(signal){
+    boardConsent();ensure(plan&&port,'Prepare the installation and connect this board first.');
+    const recovery=await prepareRecovery(backup,report,plan);await freshReader();
+    const result=await validateRecovery(reader,recovery,progress,signal);
+    get('recovery-status').textContent=result.already_original?'The connected flash matches your original backup. No restoration was needed or performed.':
+      'Differences are limited to the expected installation/settings areas. No restoration was performed.';
+    status.textContent='Recovery comparison complete. The device was not changed.';
+  }
   get('use-existing').onclick=()=>{show('existing-backups');get('import-backups').focus();};
   get('already-installed').onclick=()=>{show('wifi-step');continueTo('pairing-step');};
   get('capture-backup').onclick=()=>run(async signal=>{
@@ -181,6 +223,7 @@ if(root) {
     for(const item of plan.writes) {const li=document.createElement('li');li.textContent=`${item.name}: 0x${item.offset.toString(16)} · ${item.bytes.length} bytes · SHA-256 ${item.sha256}`;list.append(li);}
     get('plan-panel').hidden=false;get('approve-plan').checked=false;
     downloadLink('export-plan-review',planReviewSummary(plan));
+    if(port && get('read-consent').checked)await checkRecovery(controller?.signal);
     get('release-status').textContent=approved?'Ready to install after you save your return-to-original files.':'This board’s first AMPVE release is still being validated. Installation is not available yet. Your device has not been changed.';
     status.textContent=approved?'Installation prepared. Save your return-to-original files to continue.':'Candidate compared with your backups. The installation option is prepared for review.';
     detail.textContent=approved?'': 'You do not need to run commands or interpret technical details. The development review must finish before installation becomes available.';
@@ -206,6 +249,8 @@ if(root) {
     const current=await verifyRelease(await response.json());
     ensure(JSON.stringify(current)===JSON.stringify(policy),'Release changed; prepare a new plan.');
     if(!reader)await freshReader();
+    ensure(c6Observation?.version_matches && c6Observation.unit_identity &&
+      c6Observation.unit_identity===reader.hardware.identity,'Complete the Wi-Fi hardware check on this unit before installing.');
     await executePlan(reader,plan,policy,consent,progress,signal,async()=>{
       const response=await fetch(root.dataset.release,{cache:'no-store'});ensure(response.ok,'Release unavailable.');
       const latest=await verifyRelease(await response.json());

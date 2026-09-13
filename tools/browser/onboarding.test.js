@@ -8,7 +8,7 @@ import {readFileSync} from 'node:fs';
 const profile=JSON.parse(readFileSync('../../firmware/profiles/waveshare-7b-stock-v1.json'));
 const contract={profile_id:profile.id,profile_version:profile.version,layout_id:profile.layout.id,firmware_lineage:profile.firmware_lineage};
 if(!globalThis.crypto)globalThis.crypto=webcrypto;
-await build({stdin:{contents:'export * from "./audit.js"; export * from "./install.js"; export * from "./review.js"; export * from "./baselines.js";',resolveDir:process.cwd()},bundle:true,platform:'node',format:'esm',outfile:'build/test-api.mjs'});
+await build({stdin:{contents:'export * from "./audit.js"; export * from "./install.js"; export * from "./review.js"; export * from "./baselines.js"; export * from "./recovery.js"; export * from "./c6-probe.js";',resolveDir:process.cwd()},bundle:true,platform:'node',format:'esm',outfile:'build/test-api.mjs'});
 const api=await import('./build/test-api.mjs');
 const {parseTable,STOCK,matchesStock,decodeSecurity,readChunk,openReader,selectBoot,verifyRelease,executePlan,sha256,FLASH_BYTES}=api;
 function record(seq,state=2,index=0){const b=new Uint8Array(8192).fill(255),v=new DataView(b.buffer);v.setUint32(index*4096,seq,true);v.setUint32(index*4096+24,state,true);v.setUint32(index*4096+28,crc32(-1,b,4,index*4096)>>>0,true);return b;}
@@ -191,4 +191,84 @@ test('known vendor fingerprints are recognized without approving unknown hardwar
   for(const changed of [{...report,matching_files:false},{...report,stock_layout_matches:false},{...report,partition_table_offset:0},
     {...report,table_sha256:'0'.repeat(64)},{...report,images:[{...report.images[0],region_sha256:'0'.repeat(64)}]},
     {...report,images:[{...report.images[0],internal_checksum_verified:false}]}])assert.equal(api.recognizeBaseline(changed),null);
+});
+
+
+async function recoveryFixture(){
+  const original=new Uint8Array(FLASH_BYTES).fill(255),backup=new Blob([original]),digest=await sha256(original);
+  const report={matching_files:true,independent_reads_match:true,stock_layout_matches:true,ota_1_erased:true,sha256:digest};
+  const installation={backup_sha256:digest,writes:[{offset:0xe00000,bytes:new Uint8Array(4096)}]};
+  return {original,plan:await api.prepareRecovery(backup,report,installation)};
+}
+const recoveryConsent={restore_original:true,discard_ampve_settings:true,stable_usb_power:true};
+
+test('recovery restores only exact original regions, selection last, and verifies the full backup',async()=>{
+  const {original,plan}=await recoveryFixture();const flash=original.slice();
+  flash[0x3b000]=12;flash[0xe00000]=42;flash[0x10d000]=1;
+  const {reader,writes}=flashFixture(flash);
+  const check=await api.validateRecovery(reader,plan);
+  assert.equal(check.changed_bytes,3);assert.equal(check.physical_restore_verified,false);
+  const result=await api.executeRecovery(reader,plan,check,recoveryConsent);
+  assert.deepEqual(writes,[0x3b000,0xe00000,0x10d000,'reset']);
+  assert.equal(result.full_backup_readback_verified,true);assert.equal(result.physical_stock_startup_verified,false);
+  assert.equal(await sha256(flash),await sha256(original));
+});
+
+test('recovery refuses other changed areas, stale review, modified source, expansion and missing consent',async()=>{
+  const {original,plan}=await recoveryFixture();const flash=original.slice();const {reader,writes}=flashFixture(flash);
+  flash[0x8000]=0;await assert.rejects(api.validateRecovery(reader,plan));assert.deepEqual(writes,[]);flash[0x8000]=255;
+  const check=await api.validateRecovery(reader,plan);flash[0xe00000]=0;
+  await assert.rejects(api.executeRecovery(reader,plan,check,recoveryConsent));assert.deepEqual(writes,[]);
+  await assert.rejects(api.executeRecovery(reader,plan,check,{}));assert.deepEqual(writes,[]);
+  plan.writes[1].bytes=new Uint8Array(8192).fill(255);plan.writes[1].size=8192;plan.writes[1].sha256=await sha256(plan.writes[1].bytes);
+  await assert.rejects(api.validateRecovery(reader,plan));
+});
+
+test('failed recovery readback never restores boot selection or claims stock startup',async()=>{
+  const {original,plan}=await recoveryFixture();const flash=original.slice();flash[0xe00000]=0;
+  const {reader,writes}=flashFixture(flash,{failAppReadback:true});const check=await api.validateRecovery(reader,plan);
+  await assert.rejects(api.executeRecovery(reader,plan,check,recoveryConsent));assert.deepEqual(writes,[0x3b000,0xe00000]);
+});
+
+test('C6 diagnostics bind the current nonce and never infer Wi-Fi or recovery success',()=>{
+  const nonce='a'.repeat(32),record={kind:'ampve-c6-probe',schema:1,nonce,status:'observed',version:[2,12,13]};
+  const result=api.probeResult(JSON.stringify(record),nonce);assert.equal(result.version_matches,true);assert.equal(result.wifi_function_verified,false);
+  for(const status of ['timeout','unavailable','identity_unavailable'])assert.equal(api.probeResult(JSON.stringify({...record,status}),nonce).version_matches,false);
+  assert.equal(api.probeResult(JSON.stringify({...record,version:[1,4,0]}),nonce).version_matches,false);
+  for(const changed of [{...record,nonce:'b'.repeat(32)},{...record,version:[256,0,0]},{...record,secret:'fixture'}])assert.throws(()=>api.probeResult(JSON.stringify(changed),nonce));
+});
+
+test('RAM diagnostic refuses flash-mapped, overlapping and tampered images',async()=>{
+  const bytes=new Uint8Array(40),v=new DataView(bytes.buffer);bytes[0]=0xe9;bytes[1]=1;
+  v.setUint32(4,0x4ff20000,true);v.setUint16(12,18,true);v.setUint16(15,100,true);v.setUint16(17,199,true);
+  v.setUint32(24,0x4ff20000,true);v.setUint32(28,8,true);
+  const manifest={schema:1,kind:'ampve-c6-ram-probe',chip_revision:103,flash_writes:false,size:bytes.length,sha256:await sha256(bytes)};
+  assert.equal((await api.ramSegments(bytes,manifest)).entry,0x4ff20000);
+  v.setUint32(24,0x40000000,true);await assert.rejects(api.ramSegments(bytes,{...manifest,sha256:await sha256(bytes)}));
+  v.setUint32(24,0x4ff20000,true);bytes[39]^=1;await assert.rejects(api.ramSegments(bytes,manifest));
+});
+
+test('RAM probe uses ROM memory commands, correlates the response and closes on silent cancellation',async()=>{
+  const bytes=new Uint8Array(40),v=new DataView(bytes.buffer);bytes[0]=0xe9;bytes[1]=1;
+  v.setUint32(4,0x4ff20000,true);v.setUint16(12,18,true);v.setUint16(15,100,true);v.setUint16(17,199,true);
+  v.setUint32(24,0x4ff20000,true);v.setUint32(28,8,true);
+  const manifest={schema:1,kind:'ampve-c6-ram-probe',chip_revision:103,flash_writes:false,size:40,sha256:await sha256(bytes)};
+  for(const cancel of [false,true]){
+    const controller=new AbortController(),commands=[];let receive,disconnected=false,released=false;
+    const port={writable:{getWriter:()=>({write:async data=>{
+      const nonce=new TextDecoder().decode(data).trim();
+      receive(new TextEncoder().encode(JSON.stringify({kind:'ampve-c6-probe',schema:1,nonce,status:'observed',version:[2,12,13]})+'\n'));
+    },releaseLock:()=>{released=true;}})}};
+    const connect=async(selected,options)=>{
+      assert.equal(selected,port);assert.deepEqual(options,{baud:115200,stub:false});
+      return {loader:{memBegin:async(...args)=>commands.push(['begin',...args]),memBlock:async()=>commands.push(['block']),
+        memFinish:async entry=>commands.push(['finish',entry])},
+        transport:{rawRead:async callback=>{receive=callback;if(cancel)setTimeout(()=>controller.abort(),10);},
+          disconnect:async()=>{disconnected=true;}}};
+    };
+    const result=api.runProbe(port,bytes,manifest,()=>{},controller.signal,connect);
+    if(cancel)await assert.rejects(result,{name:'AbortError'});else assert.equal((await result).version_matches,true);
+    assert.equal(disconnected,true);assert.equal(released,!cancel);
+    assert.deepEqual(commands,[['begin',8,1,1024,0x4ff20000],['block'],['finish',0x4ff20000]]);
+  }
 });

@@ -6,7 +6,7 @@ The canonical task board is [AMPVE — ESP32 Onboarding and Device Lifecycle](ht
 
 A supported ESP32 can be audited and privately backed up through the browser, receive a reviewed first AMPVE installation, connect to Wi-Fi, pair with its owner, report its capabilities and software, accept dashboard settings, discover eligible releases and update over Wi-Fi with verified startup or recovery.
 
-The first profile is Waveshare ESP32-P4-WIFI6-Touch-LCD-7B revision 1.3. A second precisely identified common ESP32 development board will prove the generic workflow. Selecting that board and confirming physical availability are explicit tasks; an ESP32 chip family is not a compatibility guarantee. A headless board without audio supports management, not an invented Companion voice capability. Raspberry Pi/Linux runtimes, arbitrary application marketplaces, camera and robotic motion are future scope.
+The first profile is Waveshare ESP32-P4-WIFI6-Touch-LCD-7B revision 1.3. The current implementation/validation scope is this 7B profile only. A second precisely identified common ESP32 development board is deferred until the first profile is validated; it will later prove the generic workflow. Selecting that board and confirming physical availability are explicit tasks; an ESP32 chip family is not a compatibility guarantee. A headless board without audio supports management, not an invented Companion voice capability. Raspberry Pi/Linux runtimes, arbitrary application marketplaces, camera and robotic motion are future scope.
 
 ## Workstreams
 
