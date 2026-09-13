@@ -360,3 +360,23 @@ test('startup retries a lost early request using one nonce and performs reset af
   assert.equal(result.core_confirmed,true);assert.equal(requests,2);assert.equal(port.closed,true);
   assert.deepEqual(signals.filter(s=>Object.hasOwn(s,'requestToSend')).map(s=>s.requestToSend),[true,false]);
 });
+test('panic details distinguish allocator failures and expose only instruction PCs',()=>{
+  assert.deepEqual(api.bootFailureDetails('E (41) esp_psram: Failed to allocate dummy cacheline for PSRAM memory barrier!').details,['psram_memory_barrier_allocation','allocation_failed']);
+  assert.deepEqual(api.bootFailureDetails('E (44) LvglPsramPool: Failed to allocate 204800 bytes in PSRAM').details,['lvgl_psram_pool_allocation','allocation_failed']);
+  assert.deepEqual(api.bootFailureDetails('abort() was called at PC 0x4ff01234 on core 0').program_counters,['0x4ff01234']);
+  assert.deepEqual(api.bootFailureDetails('ESP_ERROR_CHECK failed: esp_err_t 0xffffffff (ESP_FAIL) at 0x4801abcd').program_counters,['0x4801abcd']);
+  assert.deepEqual(api.bootFailureDetails('E (21) esp-sha: Failed to allocate aligned SPIRAM memory').details,['allocation_failed','sha_aligned_input_allocation']);
+  assert.deepEqual(api.bootFailureDetails('MEPC : 0x48012340 RA : 0x482abcde SP : 0x4ff54320').program_counters,['0x48012340']);
+  assert.deepEqual(api.bootFailureDetails('ELF file SHA256: 12345678abcdef00...').elf_prefixes,['12345678abcdef00']);
+  assert.deepEqual(api.bootFailureDetails('ELF file SHA256: private-password').elf_prefixes,[]);
+  for(const line of ['password private-secret /private/path','A0 : 0x48012340','MEPC : 0x00000000','abort() was called at PC 0x4ff01234'+'x'.repeat(768)])assert.deepEqual(api.bootFailureDetails(line),{details:[],program_counters:[],elf_prefixes:[]});
+});
+test('first panic ends capture with a bounded tail instead of waiting for repeated-boot overflow',async()=>{
+  const port=runtimePort((request,c)=>{c.enqueue(new TextEncoder().encode('E (1) LvglPsramPool: Failed to allocate 512 bytes in PSRAM\nabort() was called at PC 0x4ff01234 on core 0\nMEPC : 0x48012340\nSSID private-network password private-secret\n'));});
+  let summary;
+  try{await api.checkRuntime(port,runtimeExpected,()=>{},undefined,4000);}catch(error){summary=error.startupSummary;}
+  assert.equal(summary.capture_stop,'panic_captured');assert.equal(summary.timed_out,false);
+  assert.deepEqual(summary.panic_program_counters,['0x4ff01234','0x48012340']);
+  assert.ok(summary.failure_details.includes('lvgl_psram_pool_allocation'));
+  assert.equal(JSON.stringify(summary).includes('private-'),false);assert.equal(port.closed,true);
+});
