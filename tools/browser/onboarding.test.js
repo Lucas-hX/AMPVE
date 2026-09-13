@@ -8,7 +8,7 @@ import {readFileSync} from 'node:fs';
 const profile=JSON.parse(readFileSync('../../firmware/profiles/waveshare-7b-stock-v1.json'));
 const contract={profile_id:profile.id,profile_version:profile.version,layout_id:profile.layout.id,firmware_lineage:profile.firmware_lineage};
 if(!globalThis.crypto)globalThis.crypto=webcrypto;
-await build({stdin:{contents:'export * from "./audit.js"; export * from "./install.js";',resolveDir:process.cwd()},bundle:true,platform:'node',format:'esm',outfile:'build/test-api.mjs'});
+await build({stdin:{contents:'export * from "./audit.js"; export * from "./install.js"; export * from "./review.js";',resolveDir:process.cwd()},bundle:true,platform:'node',format:'esm',outfile:'build/test-api.mjs'});
 const api=await import('./build/test-api.mjs');
 const {parseTable,STOCK,matchesStock,decodeSecurity,readChunk,openReader,selectBoot,verifyRelease,executePlan,sha256,FLASH_BYTES}=api;
 function record(seq,state=2,index=0){const b=new Uint8Array(8192).fill(255),v=new DataView(b.buffer);v.setUint32(index*4096,seq,true);v.setUint32(index*4096+24,state,true);v.setUint32(index*4096+28,crc32(-1,b,4,index*4096)>>>0,true);return b;}
@@ -153,4 +153,17 @@ test('storage failure aborts the backup and cannot return a completed hash',asyn
   const flash=new Uint8Array(FLASH_BYTES).fill(255),{reader}=flashFixture(flash);let aborted=false,closed=false;
   const handle={createWritable:async()=>({write:async()=>{throw new Error('quota fixture');},abort:async()=>{aborted=true;},close:async()=>{closed=true;}})};
   await assert.rejects(api.captureRead(reader,handle,undefined,()=>{}));assert.equal(aborted,true);assert.equal(closed,false);
+});
+
+test('shareable summary allowlists metadata and never exports private capture strings',()=>{
+ const secret='PRIVATE-FIXTURE-DO-NOT-EXPORT';
+ const report={schema:1,matching_files:true,independent_reads_match:true,sha256:'a'.repeat(64),table_sha256:'b'.repeat(64),flash_bytes:FLASH_BYTES,partition_table_offset:0x8000,partition_table_md5_verified:true,stock_layout_matches:true,ota_1_erased:true,
+  hardware:{identity:secret,security:{secret}},connections:[secret],path:secret,evidence:secret,
+  partitions:[{name:secret,type:1,subtype:2,offset:0x9000,size:4096,flags:0,secret}],
+  images:[{name:'bootloader',offset:0x2000,image_bytes:112,chip_id:18,min_revision:100,max_revision:199,internal_checksum_verified:true,appended_sha256_verified:true,region_sha256:'c'.repeat(64),application:{version:secret,project:secret,idf:secret},secret}]};
+ for(const source of ['live-browser-capture','imported-capture-record']){
+  const result=api.reviewSummary(report,source);assert.equal(result.installable,false);assert.equal(result.evidence.current_physical_state_verified,false);assert.equal(result.evidence.source,source);assert.ok(!JSON.stringify(result).includes(secret));assert.equal(result.images[0].region_sha256,'c'.repeat(64));
+ }
+ for(const altered of [{...report,matching_files:false},{...report,sha256:secret},{...report,images:[{...report.images[0],offset:-1}]}])assert.throws(()=>api.reviewSummary(altered,'imported-capture-record'));
+ assert.throws(()=>api.reviewSummary(report,secret));
 });

@@ -46,7 +46,7 @@ html=render_to_string('workspace/onboarding.html',{'title':'Bring your device.',
 with tempfile.TemporaryDirectory(prefix='ampve-browser-fixture-') as directory,sync_playwright() as p:
     root=Path(directory);data=backup();digest=hashlib.sha256(data).hexdigest()
     for name in ['backup-a.bin','backup-b.bin']:(root/name).write_bytes(data)
-    (root/'audit-private.json').write_text(json.dumps({'independent_reads_match':True,'sha256':digest,'hardware':{'chip':'ESP32-P4','revision':103}}))
+    (root/'audit-private.json').write_text(json.dumps({'independent_reads_match':True,'sha256':digest,'hardware':{'chip':'ESP32-P4','revision':103,'identity':'PRIVATE-FIXTURE-MAC','path':str(root)}}))
     browser=p.chromium.launch();page=browser.new_page();errors=[];requests=[]
     page.on('pageerror',lambda e:errors.append(str(e)))
     def route(r):
@@ -65,6 +65,17 @@ with tempfile.TemporaryDirectory(prefix='ampve-browser-fixture-') as directory,s
     page.locator('#import-backups').set_input_files([str(root/name) for name in ['backup-a.bin','backup-b.bin','audit-private.json']])
     page.wait_for_function('document.querySelector("#backup-result").textContent.includes("Two matching")',timeout=30000)
     assert digest in page.locator('#backup-result').inner_text()
+    with page.expect_download() as download_event:
+        page.locator('#export-review').click()
+    exported=Path(download_event.value.path()).read_text()
+    review=json.loads(exported)
+    assert review['kind']=='ampve-browser-review-summary' and review['installable'] is False
+    assert review['evidence']['source']=='imported-capture-record'
+    assert review['evidence']['current_physical_state_verified'] is False
+    assert review['table_sha256']==hashlib.sha256(data[0x8000:0x9000]).hexdigest()
+    assert review['images'][0]['region_sha256']==hashlib.sha256(data[0x2000:0x8000]).hexdigest()
+    assert 'PRIVATE-FIXTURE-MAC' not in exported and str(root) not in exported
+
     page.locator('#prepare-install').click()
     page.wait_for_function('document.querySelector("#setup-status").textContent.includes("waiting for a reviewed release")')
     assert page.locator('#install-ampve').is_disabled()
@@ -105,4 +116,4 @@ with tempfile.TemporaryDirectory(prefix='ampve-browser-fixture-') as directory,s
         page.screenshot(path=f'.browser-tests/stock-onboarding-{width}.png',full_page=True)
     assert not errors,errors
     browser.close()
-print('Rendered browser fixtures passed: local backup import/integrity, release gate, simulated USB Wi-Fi/password clearing, no uploads and three viewport widths. No physical hardware tested.')
+print('Rendered browser fixtures passed: local backup import/integrity, sanitized review download, release gate, simulated USB Wi-Fi/password clearing, no uploads and three viewport widths. No physical hardware tested.')

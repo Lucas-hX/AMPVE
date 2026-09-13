@@ -2,11 +2,13 @@ import {openReader,readChunk,captureRead,compareBackups,parseTable,matchesStock,
 import {verifyRelease,makePlan,executePlan} from './install.js';
 import {openWifi,validCredentials} from './wifi.js';
 import {CONTRACT} from './profile.js';
+import {reviewSummary} from './review.js';
 
 const root=document.querySelector('#firmware-setup');
 if(root) {
   const get=id=>document.getElementById(id),status=get('setup-status'),meter=get('setup-progress'),detail=get('setup-progress-detail');
   let wifi;
+  let reportSource;
   let port,reader,report,backup,plan,policy,busy=false,controller,writing=false,phaseStart=0,lastPhase='',lastPaint=0;
   const actions=[...root.querySelectorAll('button[data-action]')];
   function progress(phase,done,total) {
@@ -25,6 +27,7 @@ if(root) {
     get('inspect-chip').disabled=busy||!port;
     get('capture-backup').disabled=busy||!port||!window.showDirectoryPicker;
     get('prepare-install').disabled=busy||!report;
+    get('export-review').disabled=busy||!report;
     get('install-ampve').disabled=busy||!plan?.recovery_saved||!port||
       !get('approve-plan').checked||!get('separate-copy').checked||!get('rom-recovery').checked;
     get('cancel-setup').disabled=!busy||writing||!controller;
@@ -100,6 +103,7 @@ if(root) {
     ensure(report.sha256===hashes[0],'Saved files differ from the physical transfer.');
     report={...report,independent_reads_match:true,hardware:hardware[0],connections:hardware,captured_at:new Date().toISOString(),
       evidence:'Two full physical reads in separate ROM connections; both saved files rehashed.'};
+    reportSource='live-browser-capture';
     await save(directory,'audit-private.json',JSON.stringify(report,null,2)+'\n');
     await save(directory,'SHA256SUMS.txt',`${report.sha256}  backup-a.bin\n${report.sha256}  backup-b.bin\n`);
     status.textContent='Backup complete and verified. Nothing installed.';showReport();
@@ -114,7 +118,16 @@ if(root) {
     const result=await compareBackups(bins[0],bins[1],progress,signal);
     ensure(record.independent_reads_match===true && record.sha256===result.sha256 && record.hardware?.chip==='ESP32-P4' && record.hardware.revision===103,'Completed independent capture evidence is required.');
     report={...result,independent_reads_match:true,hardware:record.hardware,evidence:'Owner-supplied capture record; files rehashed locally.'};backup=bins[0];
+    reportSource='imported-capture-record';
     showReport();status.textContent='Local files verified. A live comparison is still required before installation.';
+  });
+  get('export-review').onclick=()=>run(async()=>{
+    const summary=reviewSummary(report,reportSource);
+    const url=URL.createObjectURL(new Blob([JSON.stringify(summary,null,2)+'\n'],{type:'application/json'}));
+    const link=document.createElement('a');link.href=url;link.download='ampve-review-summary.json';
+    document.body.append(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),10000);
+    status.textContent='Review summary prepared for download. Inspect it before sharing it manually.';
+    detail.textContent='This summary contains hashes and bounded layout/image metadata. It does not contain flash bytes, MAC addresses, Wi-Fi details or file paths. Nothing was uploaded; it does not approve installation.';
   });
   get('prepare-install').onclick=()=>run(async()=>{
     plan=null;status.textContent='Checking the curated AMPVE release…';

@@ -68,3 +68,13 @@ Node tests use synthetic flash/serial/storage fixtures, including app-readback f
 
 
 Improv development update (2026-09-13): the onboarding page now offers USB Wi-Fi setup after AMPVE startup, using the pinned Improv browser SDK and the candidate's physically authorized UART service. It shares serial-operation controls with audit/backup/install, clears the password field before sending, and keeps pairing separate. The protected local portal remains available. See [NATIVE_WIFI.md](NATIVE_WIFI.md) for protocol, SDK fixes, simulated tests and required physical P4/C6 validation. This does not enable an unapproved installation release.
+
+## Share review metadata from the browser
+
+After a completed two-backup capture or a verified import, select **Download shareable review summary**. The local `ampve-review-summary.json` contains the configured profile contract, backup/table/bootloader-region hashes, numeric partition/image metadata, layout/empty-slot results and remaining review gates. Inspect the JSON before choosing to share it manually. The page performs no upload and does not include flash bytes, MAC addresses, file paths, Wi-Fi data or application-descriptor strings. Hashes still identify a particular backup state; share only with the intended reviewer.
+
+The summary explicitly distinguishes `live-browser-capture` from `imported-capture-record`. Matching imported files and an owner-supplied capture record are not a new physical read or proof of current chip/security state. Every export remains `installable: false`; it neither approves a release nor supplies ownership proof. It helps the initial fingerprint/layout review without requiring a private dump upload. Exact candidate comparison, private write/recovery preparation, C6 review, separate-storage confirmation and current-unit checks remain required.
+
+Software fixtures exercise a downloaded summary from the actual rendered onboarding page, verify its table/bootloader-region hashes against synthetic backup bytes, and confirm that private identity/path fields do not escape. The parser uses an explicit field allowlist and bounded numeric/hash values; it never spreads the imported capture record into the output. No physical read/write is established by these fixtures.
+
+Review-export evidence (2026-09-13): 28 Node tests, seven Django firmware-delivery tests and the Chromium onboarding fixture passed. The browser fixture downloaded and parsed the real JSON output from synthetic 32 MiB backups, checked the table/bootloader hashes, confirmed private-field exclusion and no uploads, and retained installation gating at three viewport widths. The summary is metadata for manual review, not a completed stock/C6/restore approval.
