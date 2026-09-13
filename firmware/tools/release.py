@@ -9,6 +9,7 @@ import subprocess
 from pathlib import Path
 from audit import partition_table, private_directory, image_metadata
 from profile_contract import CONTRACT, PROFILE, matches_layout, native_header
+from artifact_archive import archive_tree
 
 ROOT = Path(__file__).resolve().parents[2]
 IDF_PIN = 'fff9895c82d744c7237be8847347bdd1b07c6643'
@@ -146,8 +147,9 @@ def package(work, idf, destination, comparison=None):
                     'Explicit owner approval for the reviewed write plan', 'Physical startup/display/touch/Wi-Fi/audio/recovery tests'],
                 'bit_reproducibility': reproducibility}
     (destination/'review-manifest.json').write_text(json.dumps(manifest, indent=2)+'\n')
-    archive=shutil.make_archive(str(destination), 'zip', root_dir=destination)
-    Path(archive).chmod(0o600)
+    archive=Path(str(destination)+'.zip')
+    archive_tree(destination,archive)
+    archive.chmod(0o600)
     print('Review bundle created; installable=false. No ESP Web Tools manifest or hardware writes.')
 
 

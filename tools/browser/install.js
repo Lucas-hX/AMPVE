@@ -39,12 +39,25 @@ export async function verifyRelease(data, now=Date.now()) {
   const raw=decode(data.envelope.payload),key=await crypto.subtle.importKey('raw',Uint8Array.from(data.publisher_key.match(/../g),h=>parseInt(h,16)),{name:'Ed25519'},false,['verify']);
   ensure(await crypto.subtle.verify('Ed25519',key,decode(data.envelope.signature),raw),'Release publisher verification failed.');
   const policy=JSON.parse(new TextDecoder().decode(raw));
+  const fields=['schema','key_id','sequence','channel','purpose','installable','profile','compatibility','chip_revision',
+    'flash_bytes','expires_at','repository_commit','firmware_version','app','bootloader_sha256','table_sha256',
+    'bootloader_review','c6_review','recovery_review','provenance'];
+  ensure(Object.keys(policy).length===fields.length && fields.every(key=>Object.hasOwn(policy,key)) && policy.schema===2 &&
+    policy.purpose==='initial-install' && policy.channel==='development','This is not an approved USB installation policy.');
+  ensure(typeof policy.key_id==='string' && /^[a-z0-9][a-z0-9-]{0,63}$/.test(policy.key_id) &&
+    Number.isInteger(policy.sequence) && policy.sequence>=1 && policy.sequence<=2147483647 &&
+    Number.isInteger(data.minimum_sequence) && data.minimum_sequence>=1 && policy.sequence>=data.minimum_sequence,'Release sequence or trusted floor is invalid.');
+  ensure(await sha256(raw)===data.release_id,'Release identity does not match its signed bytes.');
+  ensure(/^[a-f0-9]{40}$/.test(policy.repository_commit||'') && /^[A-Za-z0-9._+-]{1,31}$/.test(policy.firmware_version||''),'Release source/version missing.');
+  const hashes=['review_manifest_sha256','archive_sha256','sdkconfig_sha256','dependency_lock_sha256'];
+  ensure(policy.provenance && Object.keys(policy.provenance).length===6 && hashes.every(key=>/^[a-f0-9]{64}$/.test(policy.provenance[key]||'')) &&
+    ['xiaozhi_commit','esp_idf_commit'].every(key=>/^[a-f0-9]{40}$/.test(policy.provenance[key]||'')),'Release provenance is incomplete.');
   ensure(matchesContract(policy.compatibility),'This release targets a different board, layout, version or firmware lineage.','profile_contract_mismatch');
   ensure(policy.installable===true && policy.profile===PROFILE && policy.chip_revision===103 && policy.flash_bytes===FLASH_BYTES,'Incompatible release profile.');
-  ensure(Number.isFinite(Date.parse(policy.expires_at)) && Date.parse(policy.expires_at)>now,'Release approval expired.');
-  ensure(policy.bootloader_review && policy.c6_review && policy.recovery_review,'Compatibility/recovery review is missing.');
+  ensure(typeof policy.expires_at==='string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/.test(policy.expires_at) && Number.isFinite(Date.parse(policy.expires_at)) && Date.parse(policy.expires_at)>now,'Release approval expired.');
+  ensure(['bootloader_review','c6_review','recovery_review'].every(key=>typeof policy[key]==='string' && policy[key].trim() && policy[key].length<=1000 && !policy[key].includes('REPLACE')),'Compatibility/recovery review is missing.');
   for(const value of [policy.bootloader_sha256,policy.table_sha256,policy.app?.sha256]) ensure(/^[a-f0-9]{64}$/.test(value||''),'Missing release fingerprints.');
-  ensure(Number.isInteger(policy.app.size) && policy.app.size>0 && policy.app.size<=SLOT.size && policy.app.offset===SLOT.offset,'App exceeds the stock target slot.');
+  ensure(Object.keys(policy.app).length===3 && Number.isInteger(policy.app.size) && policy.app.size>=24 && policy.app.size<=SLOT.size && policy.app.offset===SLOT.offset,'App exceeds the stock target slot.');
   return policy;
 }
 
@@ -70,7 +83,7 @@ export async function makePlan(file, report, policy, app) {
       {name:'restore-ota1-touched-sectors.bin',offset:SLOT.offset,bytes:new Uint8Array(await file.slice(SLOT.offset,SLOT.offset+appPadded.length).arrayBuffer())}]};
 }
 
-export async function executePlan(reader, plan, policy, consent, progress=()=>{}, signal) {
+export async function executePlan(reader, plan, policy, consent, progress=()=>{}, signal, revalidate=async()=>{}) {
   ensure(consent?.exact_plan===true && consent?.separate_copy===true && consent?.rom_recovery===true,'Explicit plan and recovery confirmation required.');
   ensure(matchesContract(policy?.compatibility),'Prepare a matching versioned release.','profile_contract_mismatch');
   ensure(plan.profile===PROFILE && policy?.installable===true && Date.parse(policy.expires_at)>Date.now() && plan.app_sha256===policy.app.sha256,'Invalid or expired plan.');
@@ -84,6 +97,8 @@ export async function executePlan(reader, plan, policy, consent, progress=()=>{}
   }
   ensure(hash.digest('hex')===plan.backup_sha256,'The connected flash changed. Make new backups before installing.');
   for(const item of plan.writes) ensure(await sha256(item.bytes)===item.sha256,'Plan bytes changed.');
+  // Recheck revocation/trust after a potentially long full-flash comparison.
+  await revalidate();
   if(signal?.aborted) throw new DOMException('Cancelled','AbortError');
   ensure(Date.parse(policy.expires_at)>Date.now(),'Release approval expired during preflight. Prepare a new approved plan.');
   // After this point do not cancel/disconnect automatically. App first, readback,
