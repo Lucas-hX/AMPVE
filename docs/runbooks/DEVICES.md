@@ -85,3 +85,7 @@ The dashboard shows reported memory, display geometry and separate capability st
 The private /devices/interface-preview/ page is an interactive, English web design concept using the existing symbol avatar and Companion icon. All network/mute/speaker interactions are simulated locally; no API call, Wi-Fi password, microphone capture or real pairing is involved. It is linked from Add a device.
 
 Delivery checks: 42 Django tests passed; public browser checks covered five concept screens at 390/768/1440 px without horizontal overflow or network requests during interactions. A separate temporary software-client test covered actual PostgreSQL storage and dashboard display of the optional hardware report. No firmware or physical peripheral was tested.
+
+## Persistent deployment backend
+
+See [FIRMWARE_DEPLOYMENTS.md](FIRMWARE_DEPLOYMENTS.md) for owner requests, release import, authenticated device reports, cancellation, expiry and restart reconciliation. This backend does not establish physical OTA support; the native client and board recovery tests remain pending.

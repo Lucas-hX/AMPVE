@@ -1,7 +1,7 @@
 from django.contrib import admin
 from django.contrib.auth import views as auth
 from django.urls import path
-from workspace import views, connection_views, device_views, firmware_views
+from workspace import views, connection_views, device_views, firmware_views, deployment_views
 
 urlpatterns = [
     path('', views.landing, name='landing'),
@@ -19,6 +19,12 @@ urlpatterns = [
     path('devices/interface-preview/', device_views.interface_preview, name='interface_preview'),
     path('devices/<uuid:pk>/', device_views.detail, name='device_detail'),
     path('devices/<uuid:pk>/revoke/', device_views.revoke, name='device_revoke'),
+    path('devices/<uuid:pk>/updates/', deployment_views.updates, name='device_updates'),
+    path('devices/<uuid:pk>/updates/<uuid:job_id>/cancel/', deployment_views.cancel, name='device_update_cancel'),
+    path('api/devices/v1/<uuid:pk>/firmware/identity/', deployment_views.identity),
+    path('api/devices/v1/<uuid:pk>/updates/poll/', deployment_views.poll),
+    path('api/devices/v1/<uuid:pk>/updates/<uuid:job_id>/report/', deployment_views.report),
+    path('api/devices/v1/<uuid:pk>/updates/<uuid:job_id>/artifact/', deployment_views.artifact),
     path('api/devices/v1/enroll/', device_views.enrollment_start),
     path('api/devices/v1/enroll/<uuid:pk>/exchange/', device_views.enrollment_exchange),
     path('api/devices/v1/<uuid:pk>/heartbeat/', device_views.heartbeat),

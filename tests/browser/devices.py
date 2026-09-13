@@ -75,12 +75,19 @@ with sync_playwright() as p:
             page.set_viewport_size({'width':width,'height':1000});page.wait_for_timeout(350)
             assert page.evaluate('document.documentElement.scrollWidth <= innerWidth'),width
             page.screenshot(path=f'.browser-tests/device-{width}.png',full_page=True)
+        page.get_by_role('link',name='View firmware updates',exact=True).click()
+        page.get_by_text('No confirmed firmware image has been reported.',exact=False).wait_for()
+        for width in [390,768,1440]:
+            page.set_viewport_size({'width':width,'height':1000});page.wait_for_timeout(350)
+            assert page.evaluate('document.documentElement.scrollWidth <= innerWidth'),width
+            page.screenshot(path=f'.browser-tests/device-updates-{width}.png',full_page=True)
+        page.goto(base+f'/devices/{device_id}/')
         page.get_by_role('button',name='Revoke device access',exact=True).click()
         page.get_by_text('Revoked',exact=True).wait_for()
         rejected=context.request.post(base+f'/api/devices/v1/{device_id}/heartbeat/',data=heartbeat,headers={'Authorization':'Bearer '+credential})
         assert rejected.status==401
         assert not errors,errors
-        print('Public software-fixture flow passed: USB selector, claim, exchange, heartbeat, settings pending, revocation, three widths. No hardware validation.')
+        print('Public software-fixture flow passed: USB selector, claim, exchange, heartbeat, settings pending, firmware update empty state, revocation, three widths. No hardware validation.')
     finally:
         browser.close()
         def cleanup():

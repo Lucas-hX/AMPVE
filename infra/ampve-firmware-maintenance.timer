@@ -1,0 +1,10 @@
+[Unit]
+Description=Check pending AMPVE firmware deployments every five minutes
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=5min
+RandomizedDelaySec=30s
+
+[Install]
+WantedBy=timers.target
