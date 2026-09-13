@@ -6,7 +6,7 @@ AMPVE gives the devices you already own new ways to help, create, and connect. S
 
 Our first experience is **AMPVE Companion**: an expressive AI companion that listens, speaks, and lives on a small screen. It is the first application in a broader vision of bringing useful software and AI to everyday hardware.
 
-**Current status:** Django platform foundation with an English frontend, private accounts, profile/password settings, administration, and a Companion preview catalog. Encrypted provider connections and an experimental FastAPI/Pipecat browser voice preview are implemented; Lucas reports a successful OpenAI conversation; Gemini still needs account validation. USB chip inspection and the device-management backend are implemented. Device installation, the embedded client, the XiaoZhi audio adapter, and firmware remain unimplemented. See the [platform runbook](docs/runbooks/PLATFORM.md) for commands and delivery limits.
+**Current status:** Django platform foundation with an English frontend, private accounts, profile/password settings, administration, and a Companion preview catalog. Encrypted provider connections and an experimental FastAPI/Pipecat browser voice preview are implemented; Lucas reports a successful OpenAI conversation; Gemini still needs account validation. USB chip inspection and the device-management backend are implemented. A pinned XiaoZhi native shell and read-only local audit/build tools are implemented as an unvalidated development candidate. Physical installation, the XiaoZhi audio adapter and remote OTA remain pending. See the [native firmware runbook](docs/runbooks/NATIVE_FIRMWARE.md). See the [platform runbook](docs/runbooks/PLATFORM.md) for commands and delivery limits.
 
 ## The first experience
 

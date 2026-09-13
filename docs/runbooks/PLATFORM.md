@@ -1,6 +1,6 @@
 # Platform foundation
 
-Current device milestone: browser USB/ROM inspection and the pairing/heartbeat/settings backend are implemented. Physical tests, the embedded XiaoZhi client, firmware installation and board audio/OTA remain pending. See [the device runbook](DEVICES.md).
+Current device milestone: browser USB/ROM inspection and the pairing/heartbeat/settings backend are implemented. A native XiaoZhi shell and local audit/build tools now exist as a development candidate; physical installation, validation and board audio/OTA remain pending. See [the device runbook](DEVICES.md).
 Date: 2026-09-13
 Architecture: [ADR 0001](../decisions/0001-platform-architecture.md) and [ADR 0002](../decisions/0002-provider-audio-and-xiaozhi.md)
 
