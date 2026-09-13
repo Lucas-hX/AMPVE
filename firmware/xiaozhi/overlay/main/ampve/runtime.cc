@@ -1,6 +1,7 @@
 // AMPVE native development shell. No cloud audio or firmware-write endpoint.
 #include "runtime.h"
 #include "image_identity.h"
+#include "ota_platform.h"
 #include "board.h"
 #include "boards/waveshare/esp32-p4-wifi6-touch-lcd/config.h"
 #include "profile.h"
@@ -65,6 +66,7 @@ void ampve_request_wifi() { wifi_requested=true; }
 static void message(const std::string& text) {
     std::lock_guard<std::mutex> lock(ui_mutex); management_text=text;
 }
+void ampve_ota_status(const char* text) { message(text); }
 static std::string json_string(cJSON* value, const char* key, size_t maximum) {
     auto field=cJSON_GetObjectItemCaseSensitive(value,key);
     if (!cJSON_IsString(field) || !field->valuestring || strlen(field->valuestring)>maximum) return "";
@@ -224,6 +226,7 @@ static void page(int id) {
             local_volume=lv_slider_get_value(static_cast<lv_obj_t*>(lv_event_get_target(event)));
         },LV_EVENT_RELEASED,nullptr);
         button(body,"Wi-Fi and pairing",go,1);
+        button(body,"Cancel firmware download",[](lv_event_t*){ampve_cancel_update();message("Cancellation requested before firmware restart.");});
     } else {
         label(body,"A little company.",&lv_font_montserrat_36);
         auto image=lv_image_create(body);lv_image_set_src(image,&ampve_companion);
@@ -454,6 +457,7 @@ static void worker(void*) {
                     identity_reported=post(device+"/firmware/identity/",token,identity,identity_reply)==200;
                     cJSON_Delete(identity);
                 }
+                if(status==200 && boot_confirmed)ampve_ota_tick(device,token,running_hash);
                 if(status==429)next_request=now+60000000;
             }
         }

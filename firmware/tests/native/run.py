@@ -93,3 +93,16 @@ with tempfile.TemporaryDirectory(prefix='ampve-native-policy-') as directory:
     run('NUL truncation',raw=canonical(policy).replace(b'"development"',b'"development\\u0000evil"'))
     changed=copy.deepcopy(policy);changed['c6_review']='Reviewed with accented text and emoji: café 😀';run('canonical Unicode review',p=changed,expected=True)
     print(f'{count} native policy cases passed with AddressSanitizer and UndefinedBehaviorSanitizer. Synthetic signatures only.')
+
+    subprocess.run(['g++','-std=c++17','-Wall','-Wextra','-Werror','-O1','-g','-fsanitize=address,undefined',*includes,
+        str(ROOT/'firmware/xiaozhi/overlay/main/ampve/ota_policy.cc'),str(ROOT/'firmware/xiaozhi/overlay/main/ampve/ota_client.cc'),
+        str(ROOT/'firmware/tests/native/client_harness.cc'),str(tmp/'cjson.o'),
+        str(args.sodium_host/'src/libsodium/.libs/libsodium.a'),'-pthread','-o',str(tmp/'client')],check=True)
+    policy['app']['size']=524288
+    payload=canonical(policy)
+    (tmp/'envelope.json').write_bytes(canonical({'payload':base64.b64encode(payload).decode(),
+        'signature':base64.b64encode(key.sign(payload)).decode()}))
+    (tmp/'context.json').write_bytes(canonical(context))
+    for scenario in ['success','claim_ack_lost','progress_ack_lost','verify_ack_lost','reboot_ack_lost','outcome_ack_lost',
+                     'network','cancel','hash','select','save_fail','save_ack_fail','power_download','power_before_select','rollback','reauthorization_denied','revoked_after_lost_ack','owner_cancel_race','select_uncertain','corrupt_journal','deep_journal']:
+        subprocess.run([str(tmp/'client'),str(tmp/'envelope.json'),str(tmp/'context.json'),hashlib.sha256(payload).hexdigest(),scenario],check=True)

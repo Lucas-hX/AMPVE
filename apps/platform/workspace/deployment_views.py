@@ -65,6 +65,17 @@ def report(request,data,device,job_id):
 
 
 @firmware_api
+def status(request,data,device,job_id):
+    if set(data)!={'release_id'} or not digest(data['release_id']):
+        raise ValueError()
+    job=FirmwareDeployment.objects.select_related('release','device__owner').get(pk=job_id,device=device)
+    if job.release_id!=data['release_id']:
+        raise service.DeploymentError('The request identifies another release.')
+    service.expire_queued(job)
+    return JsonResponse(service.job_data(job))
+
+
+@firmware_api
 def artifact(request,data,device,job_id):
     if set(data)!={'release_id'} or not digest(data['release_id']):
         raise ValueError()

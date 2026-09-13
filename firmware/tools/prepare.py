@@ -1,5 +1,7 @@
 """Apply the reviewed integration to an isolated pinned XiaoZhi checkout; never flash."""
 import argparse
+import os
+from native_trust import generate as generate_native_trust
 import json
 import shutil
 import subprocess
@@ -79,6 +81,8 @@ def prepare(work):
         replace(cmake,'set(PROJECT_VER "0.1.1-stock-dev")',f'set(PROJECT_VER "{UPSTREAM["candidate_version"]}")')
     if 'set(PROJECT_VER "0.1.2-profile-dev")' in cmake.read_text():
         replace(cmake,'set(PROJECT_VER "0.1.2-profile-dev")',f'set(PROJECT_VER "{UPSTREAM["candidate_version"]}")')
+    if 'set(PROJECT_VER "0.1.3-ota-verify-dev")' in cmake.read_text():
+        replace(cmake,'set(PROJECT_VER "0.1.3-ota-verify-dev")',f'set(PROJECT_VER "{UPSTREAM["candidate_version"]}")')
     if f'set(PROJECT_VER "{UPSTREAM["candidate_version"]}")' not in cmake.read_text():
         raise RuntimeError('Prepared project version differs from the candidate version')
     component=work/'main/idf_component.yml'
@@ -92,8 +96,13 @@ def prepare(work):
     if '"ampve/image_identity.cc"' not in component_cmake.read_text():
         replace(component_cmake,'set(SOURCES "ampve/ota_policy.cc"',
                 'set(SOURCES "ampve/image_identity.cc" "ampve/ota_policy.cc"')
+    if '"ampve/ota_client.cc"' not in component_cmake.read_text():
+        replace(component_cmake,'set(SOURCES ', 'set(SOURCES "ampve/ota_client.cc" "ampve/ota_platform.cc" ')
     shutil.copytree(overlay,work,dirs_exist_ok=True)
     (work/'main/ampve/profile.h').write_text(native_header())
+    trust_header,trust_metadata=generate_native_trust(os.environ.get('AMPVE_NATIVE_TRUST'))
+    (work/'main/ampve/publisher_trust.h').write_text(trust_header)
+    (work/'native-public-trust.json').write_bytes(trust_metadata)
     shutil.copyfile(ROOT/'firmware/xiaozhi/sdkconfig.ampve',work/'sdkconfig.ampve')
     shutil.copytree(ROOT/'firmware/xiaozhi/partitions',work/'partitions/ampve',dirs_exist_ok=True)
     lock=ROOT/'firmware/xiaozhi/dependencies.lock'

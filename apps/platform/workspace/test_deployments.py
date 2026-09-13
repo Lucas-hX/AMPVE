@@ -215,3 +215,22 @@ class DeploymentTests(TestCase):
         self.assertEqual(self.api('firmware/identity/',self.running()).status_code,200)
         self.device.hardware_report['psram_bytes']=8388608;self.device.save()
         with self.assertRaises(service.DeploymentError):self.queue()
+
+    def test_rejected_boot_selection_can_fail_without_claiming_rollback(self):
+        job=self.rebooting()
+        self.assertEqual(self.report(job,'failed',error_code='storage',boot_confirmed=False)[0].status_code,409)
+        self.assertEqual(self.report(job,'failed',error_code='network')[0].status_code,409)
+        response,payload=self.report(job,'failed',error_code='image_rejected')
+        self.assertEqual(response.status_code,200)
+        self.assertEqual(self.api(f'updates/{job.pk}/report/',payload).status_code,200)
+        self.assertEqual(DeviceFirmware.objects.get(device=self.device).release_id,self.initial.pk)
+
+    def test_local_cancellation_and_status_reconciliation(self):
+        job=self.queue()
+        self.assertEqual(self.report(job,'failed',bytes_written=0,error_code='local_cancelled')[0].status_code,200)
+        status=self.api(f'updates/{job.pk}/status/',{'release_id':job.release_id})
+        self.assertEqual(status.status_code,200);self.assertEqual(status.json()['state'],'failed')
+        self.assertEqual(self.api(f'updates/{job.pk}/status/',{'release_id':self.initial.pk}).status_code,409)
+        self.assertEqual(self.api(f'updates/{job.pk}/status/',{'release_id':job.release_id},token=secrets.token_urlsafe(32)).status_code,401)
+        job=self.queue();service.cancel_update(self.owner,self.device.pk,job.pk)
+        self.assertEqual(self.api(f'updates/{job.pk}/status/',{'release_id':job.release_id}).json()['state'],'cancelled')

@@ -106,7 +106,7 @@ The comparison rehashes both full backups and proposed artifact files, checks th
 - Validate and harden the native drivers, screen legibility, provisioning and management on this physical board. Replace remaining fatal optional-codec paths with degraded UI errors before calling the runtime production ready.
 - Implement the XiaoZhi Opus/audio adapter to FastAPI/Pipecat and explicit local Companion start/stop, echo behavior and interruption. Browser voice success does not prove this adapter.
 - Add a permissioned local microphone meter before enabling network capture; keep local mute authoritative.
-- Implement authenticated, compatible inactive-slot app OTA with publisher verification and physically tested rollback. ESP-IDF rollback configuration alone is not an update service.
+- Validate the implemented native inactive-slot OTA candidate and complete physical rollback tests; see [NATIVE_OTA.md](NATIVE_OTA.md). ESP-IDF rollback configuration alone is not an update service.
 
 ## Sources used for compatibility review
 
@@ -127,4 +127,4 @@ The comparison rehashes both full backups and proposed artifact files, checks th
 
 ## Native verification foundation
 
-See [NATIVE_OTA.md](NATIVE_OTA.md) for the `0.1.3-ota-verify-dev` candidate: native signed-policy verification, complete-image hashing and checked startup identity reports. Deployment download/write execution and physical OTA/rollback remain pending.
+See [NATIVE_OTA.md](NATIVE_OTA.md) for the `0.1.3-ota-verify-dev` candidate: native signed-policy verification, complete-image hashing and checked startup identity reports. The integrated client follows in `0.1.4-ota-client-dev`; physical OTA/rollback remain pending.

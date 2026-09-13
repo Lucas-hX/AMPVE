@@ -54,6 +54,19 @@ class PublisherTests(unittest.TestCase):
         (self.root/'private.key').write_bytes(self.key.private_bytes(Encoding.Raw,PrivateFormat.Raw,NoEncryption()))
         self.trust={'schema':1,'keys':{'fixture-key':{'public_key':self.key.public_key().public_bytes(Encoding.Raw,PublicFormat.Raw).hex(),
                     'channels':['development'],'purposes':['initial-install','ota'],'revoked':False}},'minimum_sequence':1,'revoked_releases':[]}
+        self.bind_build_sequence(self.review['sequence'])
+
+    def bind_build_sequence(self,sequence):
+        from native_trust import generate
+        config={'schema':1,'build_sequence':sequence,'trust':self.trust}
+        header,public=generate(config=config)
+        (self.candidate/'native-public-trust.json').write_bytes(public)
+        (self.candidate/'publisher_trust.h').write_text(header)
+        path=self.candidate/'review-manifest.json';manifest=json.loads(path.read_bytes())
+        manifest.update(native_build_sequence=sequence,native_ota_testing_only=False,native_public_trust_sha256=hashlib.sha256(public).hexdigest(),
+            generated_inputs={'main/ampve/publisher_trust.h':hashlib.sha256(header.encode()).hexdigest()})
+        path.write_bytes(canonical(manifest));(self.root/'candidate.zip').unlink()
+        archive_tree(self.candidate,self.root/'candidate.zip')
 
     def run_publish(self,name='release'):
         (self.root/'review.json').write_bytes(canonical(self.review))
@@ -114,7 +127,29 @@ class PublisherTests(unittest.TestCase):
             with self.assertRaises(ValueError):self.run_publish('another-release')
             self.assertFalse((self.root/'another-release').exists())
         self.review['sequence']=8
+        self.bind_build_sequence(8)
         self.run_publish('next-release')
+
+    def test_native_sequence_and_header_must_match_the_reviewed_build(self):
+        self.review['sequence']=8
+        with self.assertRaises(ValueError):self.run_publish()
+        self.review['sequence']=7
+        (self.candidate/'publisher_trust.h').write_text('changed')
+        with self.assertRaises(ValueError):self.run_publish()
+        self.assertFalse((self.root/'release').exists())
+
+    def test_enabled_software_build_fixture_cannot_be_promoted(self):
+        from native_trust import generate
+        header,public=generate(config={'schema':1,'build_sequence':7,'testing_only':True,'trust':self.trust})
+        (self.candidate/'native-public-trust.json').write_bytes(public)
+        (self.candidate/'publisher_trust.h').write_text(header)
+        path=self.candidate/'review-manifest.json';manifest=json.loads(path.read_bytes())
+        manifest.update(native_ota_testing_only=True,native_public_trust_sha256=hashlib.sha256(public).hexdigest(),
+            generated_inputs={'main/ampve/publisher_trust.h':hashlib.sha256(header.encode()).hexdigest()})
+        path.write_bytes(canonical(manifest));(self.root/'candidate.zip').unlink()
+        archive_tree(self.candidate,self.root/'candidate.zip')
+        with self.assertRaisesRegex(ValueError,'fixture builds cannot be promoted'):self.run_publish()
+        self.assertFalse((self.root/'release').exists())
 
     def test_concurrent_publishers_cannot_reserve_the_same_sequence(self):
         from concurrent.futures import ThreadPoolExecutor

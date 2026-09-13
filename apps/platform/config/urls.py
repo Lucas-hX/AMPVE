@@ -24,6 +24,7 @@ urlpatterns = [
     path('api/devices/v1/<uuid:pk>/firmware/identity/', deployment_views.identity),
     path('api/devices/v1/<uuid:pk>/updates/poll/', deployment_views.poll),
     path('api/devices/v1/<uuid:pk>/updates/<uuid:job_id>/report/', deployment_views.report),
+    path('api/devices/v1/<uuid:pk>/updates/<uuid:job_id>/status/', deployment_views.status),
     path('api/devices/v1/<uuid:pk>/updates/<uuid:job_id>/artifact/', deployment_views.artifact),
     path('api/devices/v1/enroll/', device_views.enrollment_start),
     path('api/devices/v1/enroll/<uuid:pk>/exchange/', device_views.enrollment_exchange),
