@@ -1,0 +1,25 @@
+# 7B USB-assisted first-install engineering review
+
+Date: 2026-09-13. Scope: development first-install trial for the exact 7B stock layout, P4 revision 1.3, 32 MiB flash. This is not production hardware acceptance or an OTA approval. ADR 0005 records the owner's request to defer network/peripheral acceptance until after USB core installation.
+
+## Static boot and write review
+
+The pinned public Waveshare factory artifact and both bootloader/table fingerprints were reverified with `verify_stock_source.py`. They match the owner-reported original fingerprints documented in FIRST_INSTALLATION.md. The actual stock bootloader and stock OTA app have valid checksums/appended digests, P4 chip ID 18, accepted revision ceiling 199 and flash header bytes `02 5f`. The new AMPVE image has the same flash header bytes, valid checksum/digest and revision bounds 100–199; the runtime further requires revision 103 and the complete expected partition layout.
+
+[Espressif's bootloader compatibility documentation](https://docs.espressif.com/projects/esp-idf/en/v6.1/esp32p4/api-guides/bootloader.html) supports newer-IDF apps on an older bootloader and explains that the application header selects flash settings. This supports a bounded first boot trial; it does not prove the behavior of the vendor's dirty bootloader build. Automatic rollback remains unverified and is not the recovery promise. The original ROM USB connection, original bootloader/table/apps and a fresh byte comparison are retained as the recovery foundation.
+
+Only the empty `ota_1` app's rounded sector span and one locally selected inactive otadata sector are written. The original factory/ota_0 images, bootloader, table, assets, storage and both NVS regions are preserved during installation. App execution may subsequently change shared NVS and otadata. The browser must still compare the actual current full flash to the owner's verified backup, check chip/security/identity, save exact recovery files and obtain the install-button consent. A fingerprint or signed policy alone cannot bypass those checks.
+
+## C6 and USB review
+
+The owner-observed C6 version query returned `version_query_failed`, error -1. C6 identity and actual Wi-Fi operation remain unknown. This release does not assert matching C6 firmware and never writes C6 flash. Host 2.12.13 remains pinned. Network initialization is isolated from core USB startup; firmware incompatibility, including a fatal driver fault, may still require another reviewed build or USB restoration.
+
+The dedicated `CONFIG_AMPVE_USB_COMMISSIONING=y` image starts its sole UART/Improv owner early and exposes only bounded read-only status outside credential frames. Browser requests bind a fresh nonce to the exact installed app version/hash, wait for core confirmation, discard raw logs and release the reader before the next phase. The publisher requires the signed mode to match the hashed archived configuration and forbids this build as an OTA publication. Core confirmation is deliberately narrower than full peripheral/network health.
+
+## Recovery review and test evidence
+
+The browser restoration executor is now exposed with explicit original-settings/power consent. It derives original bytes only from the rehashed original full backup and its in-memory installation plan. Full-flash comparison rejects any change outside original NVS, that app span and both otadata sectors. Selection is restored last after prior readbacks; the entire original backup hash is checked before reset. Reload requires original files and the matching plan to be selected again. No generic full erase, arbitrary region upload or automatic destructive fallback is offered.
+
+Software validation: publisher/firmware Python tests; signed-policy and actual recovery executor Node fixtures; Web Serial stream ownership, cancellation, nonce/image rejection and core-wait tests; the compiled UART parser with the pinned Improv SDK under ASan/UBSan; Django authenticated firmware/diagnostic delivery; actual rendered Chromium onboarding fixtures at three widths. These tests exercise software with fixtures, not physical hardware. Exact counts, binary/reproduction hashes and publication identity are recorded in the first-install runbook after packaging.
+
+Physical acceptance remains open: native USB exchange after this first flash, original startup after an actual restoration, actual Wi-Fi provisioning/reconnect, account pairing/heartbeat, display/touch/audio and OTA/rollback. A separate protected signing-key backup is an outstanding operational follow-up; public build trust is archived, but private signing material is excluded from every artifact and Git.

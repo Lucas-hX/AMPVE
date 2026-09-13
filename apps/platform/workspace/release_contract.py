@@ -52,6 +52,10 @@ def validate_policy(policy, now=None):
               'bootloader_sha256','table_sha256','bootloader_review','c6_review','recovery_review','provenance'}
     if not isinstance(policy, dict) or policy.get('purpose') not in ('initial-install', 'ota'):
         raise ValueError('Unknown release purpose')
+    if 'commissioning' in policy or 'usb_review' in policy:
+        if policy['purpose'] != 'initial-install' or policy.get('commissioning') != 'usb-assisted-v1' or not text(policy.get('usb_review')):
+            raise ValueError('Invalid USB commissioning review or purpose')
+        fields |= {'commissioning','usb_review'}
     if policy['purpose'] == 'ota':
         fields |= {'ota_review', 'from_app_sha256'}
     if set(policy) != fields or type(policy['schema']) is not int or policy['schema'] != 2:

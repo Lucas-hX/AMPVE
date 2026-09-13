@@ -1,5 +1,24 @@
 # First Waveshare 7B installation handoff
 
+## USB-assisted commissioning update — 2026-09-13
+
+[ADR 0005](../decisions/0005-usb-assisted-commissioning.md) supersedes the mandatory pre-install C6 check **only for an explicitly signed USB-assisted initial-install release**. The platform prepares the same exact stock-preserving write/recovery plan, then checks the installed core over USB before network provisioning. A failed C6 version query remains a diagnostic finding, not proof of incompatibility or a mandatory gate for this mode. Core confirmation, Wi-Fi initialization, actual network operation, pairing and physical recovery are separate evidence. The browser now exposes explicit original-backup restoration with fresh full-flash comparison; it is not yet physically validated. Other releases retain their existing gates.
+
+## Prepared USB-assisted development release
+
+Source `ffa9eb782e7f5998410473c16e4cff02c09c5e3a`, version `0.1.11-usb-setup-dev`, sequence 1. [Engineering review](USB_COMMISSIONING_REVIEW.md) permits the bounded first-install trial with C6/network/peripheral acceptance deferred; it does not claim physical success. Exact local current-unit comparison and browser install consent remain mandatory.
+
+- Candidate: `/home/ampve/.local/state/ampve/firmware-usb-commissioning-review-01`.
+- Signed release: `/home/ampve/.local/state/ampve/firmware-usb-initial-release-01`; ID `53a37434e30b88b7d14da9cd3762e0082a93b7ebc84bbaa1898cee72181265c9`, initial-install only, expires `2026-09-27T15:51:59Z`.
+- Application: 2,879,840 bytes, SHA-256 `9431969a70d060db94f92a11873ce5200d597a6df199ceeed90c80de2deae33e`.
+- Review ZIP: 1,885,673 bytes, SHA-256 `e795b7e36f0c16f0703bfe634dea6a3a3ffa96829453ae0440b7d51ae311075e`.
+- Sector-rounded app span: `0x2C0000` bytes, `[0xE00000, 0x10C0000)`. The selected inactive otadata sector is still computed from the actual original backup; it cannot be selected from the sanitized summary alone.
+- Four packaged artifacts matched across `xiaozhi-ota` and `xiaozhi-improv-clean`; each compiled in its own CMake workspace on the same VPS/toolchain/cache. Logs: `usb-commissioning-final.log` and `usb-commissioning-comparison.log` in the external firmware cache. This is not cross-machine reproduction.
+- Validation passed: 44 firmware-tool Python tests, 42 Node tests, 8 Django firmware/diagnostic tests, 22 compiled Improv/USB scenarios with ASan/UBSan, and Chromium rendered onboarding fixtures at three widths. Publication verification passed against the separately prepared public registry.
+
+The paragraphs below retain earlier candidate/diagnostic history; their unsigned-release state is superseded by this signed USB-assisted trial. No physical write was performed from the VPS. Keep native startup, original startup after restoration, real Wi-Fi/pairing and OTA acceptance open.
+
+
 Date: 2026-09-13. Target: the owner's Waveshare ESP32-P4-WIFI6-Touch-LCD-7B, P4 revision 1.3, 32 MiB flash. **Preparation is not installation approval.** The device and its backups are on the owner's PC, not this VPS.
 
 ## What is complete

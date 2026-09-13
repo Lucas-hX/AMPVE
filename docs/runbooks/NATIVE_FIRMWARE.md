@@ -1,5 +1,9 @@
 # Native development firmware: audit, build and hardware acceptance
 
+## USB-assisted commissioning update — 2026-09-13
+
+[ADR 0005](../decisions/0005-usb-assisted-commissioning.md) supersedes the mandatory pre-install C6 check **only for an explicitly signed USB-assisted initial-install release**. The platform prepares the same exact stock-preserving write/recovery plan, then checks the installed core over USB before network provisioning. A failed C6 version query remains a diagnostic finding, not proof of incompatibility or a mandatory gate for this mode. Core confirmation, Wi-Fi initialization, actual network operation, pairing and physical recovery are separate evidence. The browser now exposes explicit original-backup restoration with fresh full-flash comparison; it is not yet physically validated. Other releases retain their existing gates.
+
 Status: native source and build tooling merged in PR #5, followed by the stock-preserving browser flow in PR #39. Hardware installation is **not approved**. See the delivery evidence at the end of this runbook for the actual build result.
 
 ## Stock-preserving successor

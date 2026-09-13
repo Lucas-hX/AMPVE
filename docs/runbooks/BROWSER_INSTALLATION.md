@@ -1,5 +1,9 @@
 # Browser installation and stock-preserving review
 
+## USB-assisted commissioning update — 2026-09-13
+
+[ADR 0005](../decisions/0005-usb-assisted-commissioning.md) supersedes the mandatory pre-install C6 check **only for an explicitly signed USB-assisted initial-install release**. The platform prepares the same exact stock-preserving write/recovery plan, then checks the installed core over USB before network provisioning. A failed C6 version query remains a diagnostic finding, not proof of incompatibility or a mandatory gate for this mode. Core confirmation, Wi-Fi initialization, actual network operation, pairing and physical recovery are separate evidence. The browser now exposes explicit original-backup restoration with fresh full-flash comparison; it is not yet physically validated. Other releases retain their existing gates.
+
 Implementation: browser audit, local backup/import, signed-release gate, exact plan/recovery preparation, bounded app-first writer and pairing handoff. **Physical browser reads/writes are not yet tested. No release is approved for this unit.** See [ADR 0004](../decisions/0004-stock-preserving-browser-installation.md).
 
 Current preparation and remaining exact-unit evidence: [FIRST_INSTALLATION.md](FIRST_INSTALLATION.md).

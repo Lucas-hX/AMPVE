@@ -29,3 +29,6 @@ CONFIG_FLASH_DEFAULT_ASSETS=n
 CONFIG_APP_REPRODUCIBLE_BUILD=y
 
 CONFIG_LIBSODIUM_USE_MBEDTLS_SHA=n
+
+# Initial installation only; OTA must use the full startup health requirements.
+CONFIG_AMPVE_USB_COMMISSIONING=y

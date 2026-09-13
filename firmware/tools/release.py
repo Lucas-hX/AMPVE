@@ -143,7 +143,7 @@ def package(work, idf, destination, comparison=None, notes_file=None):
         raise ValueError('Expected recorded IDF 6.1 / Python 3.13 build environment')
     for executable, name in [(idf_python, 'idf-python-freeze.txt'), (Path(sys.executable), 'tooling-python-freeze.txt')]:
         (destination/name).write_bytes(subprocess.check_output([str(executable), '-m', 'pip', 'freeze']))
-    manifest = {'schema': 1, 'installable': False, 'status': 'software-build-fixture-not-for-installation' if json.loads(trust_bytes)['testing_only'] else 'development-candidate-awaiting-local-audit',
+    manifest = {'commissioning': 'usb-assisted-v1' if config_values(work/'sdkconfig').get('CONFIG_AMPVE_USB_COMMISSIONING')=='y' else 'network-first-v1', 'schema': 1, 'installable': False, 'status': 'software-build-fixture-not-for-installation' if json.loads(trust_bytes)['testing_only'] else 'development-candidate-awaiting-local-audit',
                 'hardware_profile': upstream['hardware_profile'], 'runtime_revision_guard': 103,
                 'improv_sdk': json.loads((ROOT/'firmware/xiaozhi/improv.json').read_text()),
                 'xiaozhi_commit': upstream['commit'], 'esp_idf_commit': IDF_PIN, 'compiler': compiler,

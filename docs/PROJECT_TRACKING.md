@@ -44,3 +44,5 @@ Reuse XiaoZhi, ESP-IDF, ESP Web Tools/Improv and Pipecat. Keep Django/PostgreSQL
 - Keep owner isolation, revocable identity, local mute/stop and secret redaction. Provider/device credentials and raw audio never belong in issues, logs or firmware examples.
 - Label fixture/simulation evidence separately from actual hardware results. Compilation proves a build, not screen/audio/Wi-Fi operation, safe installation or recovery.
 - Optimize against measured boot/UI latency, internal heap/PSRAM, stack headroom, CPU, traffic, NVS writes and app size. Retain recovery and security; measure electrical power only with appropriate hardware.
+
+USB commissioning: ADR 0005 assigns preflight, post-write USB core checks and exact original-backup restoration to onboarding. Keep #10/#12/#17 open for release/physical acceptance as applicable; a passing software fixture does not close Wi-Fi, native startup or recovery acceptance.

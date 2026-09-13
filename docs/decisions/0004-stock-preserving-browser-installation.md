@@ -4,7 +4,7 @@ Date: 2026-09-13. Status: accepted development direction; exact first hardware w
 
 ## Decision and evidence
 
-Lucas authorized implementing a stock-preserving design, review artifacts and browser onboarding. His 2026-09-13 local handoff reports a printed Waveshare 7B, P4 revision 1.3, 32 MiB flash, disabled Secure Boot/download security/encryption, two independently read matching full backups, an MD5-verified partition table and an erased stock `ota_1`. He subsequently confirmed that the original application boots after the audit. A verified copy on separate storage is still awaiting confirmation.
+Lucas authorized implementing a stock-preserving design, review artifacts and browser onboarding. His 2026-09-13 local handoff reports a printed Waveshare 7B, P4 revision 1.3, 32 MiB flash, disabled Secure Boot/download security/encryption, two independently read matching full backups, an MD5-verified partition table and an erased stock `ota_1`. He subsequently confirmed that the original application boots after the audit. The owner subsequently confirmed a verified copy on separate storage.
 
 Treat these as owner-supplied physical evidence, not VPS-observed hardware tests. The current implementation must freshly check the connected unit. The full backup SHA-256 reported by the owner is `da6a7276ef6198f1e83089acd94362f5b3a6d64246a0df35ba94bbaf8393d3a3`. No private flash, NVS, serial logs or device identifiers are committed or uploaded.
 

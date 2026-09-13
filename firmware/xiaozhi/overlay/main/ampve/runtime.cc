@@ -47,13 +47,15 @@ static std::atomic<bool> wifi_requested{false}, pair_requested{false}, tone_requ
 static std::atomic<bool> local_muted{true}, heard_tone{false}, tone_played{false};
 static std::atomic<int> local_volume{-1};
 static std::atomic<uint32_t> ui_ticks{0};
-static std::atomic<bool> management_started{false}, boot_confirmed{false}, image_verified{false};
+static std::atomic<bool> management_started{false}, boot_confirmed{false}, image_verified{false}, usb_ready{false};
 static std::mutex ui_mutex;
 static std::string network_text="Starting Wi-Fi", management_text="Not paired", pair_code;
 static std::string device_name="My AMPVE", about_text;
 static std::atomic<bool> storage_ok{true};
 static std::atomic<bool> codec_initialized{false};
-static std::string setup_password;
+static std::string setup_password, usb_image_hash;
+static std::atomic<const char*> usb_phase{"starting"};
+static std::atomic<bool> usb_display_ready{false};
 extern "C" const char* ampve_wifi_password() { return setup_password.c_str(); }
 static std::atomic<int> displayed_volume{40};
 static lv_obj_t *body, *network_label, *status_label, *home_name=nullptr;
@@ -202,8 +204,8 @@ static void page(int id) {
         label(body,"Let's get connected.",&lv_font_montserrat_36);
         label(body,"Wi-Fi setup stays local. Your provider keys stay on AMPVE.");
         button(body,"Open local Wi-Fi setup",[](lv_event_t*){ampve_request_wifi();});
-        auto& wifi=WifiManager::GetInstance();
-        if(wifi.IsConfigMode()) {
+        if(ampve_wifi_initialized && WifiManager::GetInstance().IsConfigMode()) {
+            auto& wifi=WifiManager::GetInstance();
             std::string hint="Connect your phone or PC to "+wifi.GetApSsid()+"\nPassword: "+setup_password+" | Open "+wifi.GetApWebUrl();
             label(body,hint.c_str());
         }
@@ -281,7 +283,12 @@ static bool identifier(const std::string& value, size_t size, bool uuid=false) {
 }
 static void startup_check(void*) {
     vTaskDelay(pdMS_TO_TICKS(60000));
+#ifdef CONFIG_AMPVE_USB_COMMISSIONING
+    // Initial USB commissioning confirms the management core, not peripherals/network.
+    bool healthy = usb_ready && storage_ok && management_started && image_verified;
+#else
     bool healthy = ui_ticks>100 && ampve_wifi_initialized && ampve_touch_ready && storage_ok && management_started && image_verified;
+#endif
     // Never advertise a confirmed startup after a failed otadata write.
     if(healthy && esp_ota_mark_app_valid_cancel_rollback()==ESP_OK &&
        ampve::reset_boot_attempts(store_handle)) {
@@ -297,6 +304,7 @@ static void startup_check(void*) {
 static void worker(void*) {
     std::string running_hash; size_t running_size=0;
     image_verified=ampve::running_image_identity(running_hash,running_size);
+    {std::lock_guard<std::mutex> lock(ui_mutex);usb_image_hash=running_hash;}
     bool identity_reported=false;
     std::string stored=read_state();
     auto state=cJSON_Parse(stored.c_str());
@@ -322,6 +330,11 @@ static void worker(void*) {
     management_started=true;
     while(true) {
         const auto now=esp_timer_get_time();
+        if(!ampve_wifi_initialized){
+            if(wifi_requested.exchange(false))message("Wi-Fi is not ready. Keep USB connected for setup.");
+            {std::lock_guard<std::mutex> lock(ui_mutex);network_text="Wi-Fi pending · USB setup available";}
+            vTaskDelay(pdMS_TO_TICKS(100));continue;
+        }
         if(wifi_requested.exchange(false)){
             static_cast<WifiBoard&>(Board::GetInstance()).EnterWifiConfigMode();
             if(WifiManager::GetInstance().IsConfigMode())ap_started=now;
@@ -471,7 +484,17 @@ static void worker(void*) {
         vTaskDelay(pdMS_TO_TICKS(200));
     }
 }
+static void start_network(void*) {
+    usb_phase="network_starting";
+    Board::GetInstance().StartNetwork();
+    usb_phase=ampve_wifi_initialized?"network_initialized":"network_unavailable";
+    if(!ampve_wifi_initialized)message("Wi-Fi initialization failed. USB setup remains available.");
+    vTaskDelete(nullptr);
+}
 void ampve_runtime_start() {
+    // UART ownership precedes all optional peripheral/network initialization.
+    usb_ready=ampve_improv_start();
+    usb_phase="checking_profile";
     esp_chip_info(&chip);esp_flash_get_size(nullptr,&flash_bytes);
     if(chip.model!=CHIP_ESP32P4 || chip.revision<AMPVE_REVISION_MIN || chip.revision>AMPVE_REVISION_MAX || flash_bytes!=AMPVE_FLASH_BYTES) {
         printf("AMPVE recovery: chip/revision/flash do not match this development build.\n");return;
@@ -496,10 +519,12 @@ void ampve_runtime_start() {
        (running->address!=slot0->address && running->address!=slot1->address)) {
         printf("AMPVE recovery: stock partition layout required. Nothing initialized or erased.\n");return;
     }
+    usb_phase="opening_storage";
     // NVS errors never trigger erase. Serial recovery is preferable to data destruction.
     if(nvs_flash_init()!=ESP_OK || nvs_open("ampve",NVS_READWRITE,&store_handle)!=ESP_OK){
         printf("AMPVE recovery: NVS unavailable; nothing erased. Use the audited USB recovery procedure.\n");return;
     }
+    usb_phase="checking_boot_counter";
     auto boot_attempt=ampve::record_boot_attempt(store_handle);
     if(boot_attempt==ampve::BootAttempt::StorageError){
         printf("AMPVE recovery: boot counter could not be read or committed. Data preserved; drivers not started.\n");return;
@@ -518,16 +543,32 @@ void ampve_runtime_start() {
             vTaskDelay(pdMS_TO_TICKS(100));
         }
     }
+    usb_phase="starting_core";
     setup_password=credential().substr(0,16);
     if(xTaskCreate(startup_check,"ampve_startup",4096,nullptr,2,nullptr)!=pdPASS)return;
-    auto& board=Board::GetInstance();
+    if(xTaskCreate(worker,"ampve_management",16384,nullptr,3,nullptr)!=pdPASS)return;
+    usb_phase="starting_peripherals";
+    Board::GetInstance();
     if(!lv_display_get_default()){printf("AMPVE recovery: display not initialized.\n");return;}
     about_text="Waveshare P4 Touch LCD 7B\nAMPVE "+std::string(esp_app_get_description()->version)+
         " | ESP32-P4 revision 1.3\nFlash "+std::to_string(flash_bytes/(1024*1024))+" MiB | PSRAM "+
         std::to_string(esp_psram_get_size()/(1024*1024))+" MiB\nDisplay 1024 x 600 | microphone capture disabled";
-    create_ui();
-    board.StartNetwork();
-    if(!ampve_improv_start())message("USB Wi-Fi setup unavailable. Use the local setup portal.");
-    if(xTaskCreate(worker,"ampve_management",16384,nullptr,3,nullptr)!=pdPASS)
-        message("Management task unavailable. Restart after reviewing diagnostics.");
+    create_ui();usb_display_ready=true;
+    if(!usb_ready)message("USB setup unavailable. Use the reviewed recovery route.");
+    if(xTaskCreate(start_network,"ampve_network",8192,nullptr,2,nullptr)!=pdPASS)
+        message("Wi-Fi task unavailable. USB setup remains available.");
+}
+
+std::string ampve_usb_status(const char* nonce) {
+    auto data=cJSON_CreateObject();if(!data)return "";
+    cJSON_AddStringToObject(data,"kind","ampve-usb-status");cJSON_AddNumberToObject(data,"schema",1);
+    cJSON_AddStringToObject(data,"nonce",nonce);cJSON_AddStringToObject(data,"phase",usb_phase.load());
+    cJSON_AddStringToObject(data,"firmware_version",esp_app_get_description()->version);
+    {std::lock_guard<std::mutex> lock(ui_mutex);cJSON_AddStringToObject(data,"app_sha256",usb_image_hash.c_str());}
+    cJSON_AddBoolToObject(data,"core_confirmed",boot_confirmed);
+    cJSON_AddBoolToObject(data,"wifi_initialized",ampve_wifi_initialized);
+    cJSON_AddBoolToObject(data,"display_ready",usb_display_ready);
+    cJSON_AddBoolToObject(data,"touch_ready",ampve_touch_ready);
+    auto raw=cJSON_PrintUnformatted(data);std::string result=raw?raw:"";cJSON_free(raw);cJSON_Delete(data);
+    return result;
 }

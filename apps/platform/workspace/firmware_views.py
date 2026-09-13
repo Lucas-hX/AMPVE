@@ -28,6 +28,7 @@ def release_data():
         if manifest.get('installation_profile')!='waveshare-7b-stock-v1':raise ValueError()
         app=next(a for a in manifest['proposed_regions_not_approved_writes'] if a['file']=='xiaozhi.bin')
         return {'status':'development-review','installable':False,'profile':manifest['installation_profile'],
+            'commissioning':manifest.get('commissioning','network-first-v1'),
             'app':{'size':app['size'],'sha256':app['sha256'],'offset':app['offset']},
             'remaining':['Stock bootloader and C6 compatibility review','Exact local write/recovery plan and approval','Physical first-boot and recovery validation']},review
     except (OSError,ValueError,KeyError,StopIteration):
