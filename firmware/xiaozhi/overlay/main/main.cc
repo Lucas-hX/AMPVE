@@ -2,6 +2,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_heap_caps.h"
+#include "esp_task.h"
 #include "esp_rom_sys.h"
 #include "esp_private/startup_internal.h"
 #include "sdkconfig.h"
@@ -31,7 +32,7 @@ extern "C" void app_main() {
     // IDF has reclaimed the ROM/startup-stack heaps before entering app_main.
     // The board/UI startup retains its original 16 KiB budget on the same core.
     report_heap("runtime_pending");
-    if (xTaskCreatePinnedToCore(runtime_task, "ampve_runtime", 16384, nullptr, 1,
+    if (xTaskCreatePinnedToCore(runtime_task, "ampve_runtime", 16384 + TASK_EXTRA_STACK_SIZE, nullptr, ESP_TASK_MAIN_PRIO,
                                nullptr, CONFIG_ESP_MAIN_TASK_AFFINITY) != pdPASS) {
         esp_rom_printf("AMPVE runtime task allocation failed\n");
     }
