@@ -8,7 +8,7 @@ import {readFileSync} from 'node:fs';
 const profile=JSON.parse(readFileSync('../../firmware/profiles/waveshare-7b-stock-v1.json'));
 const contract={profile_id:profile.id,profile_version:profile.version,layout_id:profile.layout.id,firmware_lineage:profile.firmware_lineage};
 if(!globalThis.crypto)globalThis.crypto=webcrypto;
-await build({stdin:{contents:'export {Transport, ESPLoader} from "esptool-js"; export * from "./reset.js"; export * from "./audit.js"; export * from "./install.js"; export * from "./review.js"; export * from "./baselines.js"; export * from "./recovery.js"; export * from "./c6-probe.js"; export * from "./commissioning.js";',resolveDir:process.cwd()},bundle:true,platform:'node',format:'esm',outfile:'build/test-api.mjs'});
+await build({stdin:{contents:'export {Transport, ESPLoader} from "esptool-js"; export * from "./reset.js"; export * from "./audit.js"; export * from "./install.js"; export * from "./review.js"; export * from "./baselines.js"; export * from "./recovery.js"; export * from "./reinstall.js"; export * from "./c6-probe.js"; export * from "./commissioning.js";',resolveDir:process.cwd()},bundle:true,platform:'node',format:'esm',outfile:'build/test-api.mjs'});
 const api=await import('./build/test-api.mjs');
 const {parseTable,STOCK,matchesStock,decodeSecurity,readChunk,openReader,selectBoot,verifyRelease,executePlan,sha256,FLASH_BYTES}=api;
 function record(seq,state=2,index=0){const b=new Uint8Array(8192).fill(255),v=new DataView(b.buffer);v.setUint32(index*4096,seq,true);v.setUint32(index*4096+24,state,true);v.setUint32(index*4096+28,crc32(-1,b,4,index*4096)>>>0,true);return b;}
@@ -410,4 +410,48 @@ test('startup symbol catalog distinguishes current and previous builds without c
     assert.deepEqual(api.resolveStartupInitializers({sha256:build.app_sha256},[other.elf_sha256.slice(0,9)],failures),failures);
   }
   assert.equal(Object.values(builds[1].functions).includes('sleep_clock_icg_startup_init'),false);
+});
+
+async function reinstallFixture(){
+  const original=new Uint8Array(FLASH_BYTES).fill(255),backup=new Blob([original]),digest=await sha256(original);
+  const report={matching_files:true,independent_reads_match:true,stock_layout_matches:true,ota_1_erased:true,sha256:digest};
+  const selection=selectBoot(original.slice(0x10d000,0x10f000));
+  const make=async bytes=>({profile:policy.profile,backup_sha256:digest,app_sha256:await sha256(bytes),
+    writes:[{offset:0xe00000,bytes,sha256:await sha256(bytes)},{offset:selection.offset,bytes:selection.bytes,sha256:await sha256(selection.bytes)}],
+    recovery:[{offset:0xe00000,bytes:original.slice(0xe00000,0xe00000+bytes.length)}]});
+  const old=await make(new Uint8Array(8192).fill(41)),next=await make(new Uint8Array(4096).fill(42));
+  const latest={...policy,sequence:8,app:{...policy.app,sha256:next.app_sha256}},previous={...policy,app:{...policy.app,size:8192,sha256:old.app_sha256}};
+  const {plan}=await api.prepareReinstall(backup,report,next,latest,old,previous);
+  const flash=original.slice();flash.set(old.writes[0].bytes,0xe00000);flash.set(selection.bytes,selection.offset);flash[0x3b000]=12;
+  return {flash,original,plan,latest};
+}
+const installConsent={exact_plan:true,separate_copy:true,rom_recovery:true};
+test('same install action replaces a known failed image, clears its longer tail and preserves NVS without a stock reboot',async()=>{
+  const {flash,plan,latest}=await reinstallFixture(),{reader,writes}=flashFixture(flash);let revalidated=false;
+  const result=await api.executeInstallOrReinstall(reader,plan,latest,installConsent,()=>{},undefined,async()=>{revalidated=true;});
+  assert.equal(revalidated,true);assert.equal(result.physical_startup_verified,false);
+  assert.deepEqual(writes,[0xe00000,0x10d000,'reset']);assert.equal(flash[0x3b000],12);
+  assert.ok(flash.slice(0xe00000,0xe01000).every(b=>b===42));assert.ok(flash.slice(0xe01000,0xe02000).every(b=>b===255));
+  assert.equal(plan.recovery[0].bytes.length,8192);
+});
+test('adaptive installation also accepts the untouched original and an exact retry of the latest image',async()=>{
+  for(const state of ['original','latest']){
+    const {flash,original,plan,latest}=await reinstallFixture();
+    if(state==='original')flash.set(original);else flash.set(plan.writes[0].bytes,0xe00000);
+    const {reader,writes}=flashFixture(flash);
+    await api.executeInstallOrReinstall(reader,plan,latest,installConsent,()=>{},undefined,async()=>{});
+    assert.deepEqual(writes,[0xe00000,0x10d000,'reset']);
+  }
+});
+test('reinstall rejects unknown images, protected changes, changed stock selection, cancellation and revocation before writing',async()=>{
+  for(const failure of ['unknown','protected','selection','cancel','revoked','readback']){
+    const {flash,plan,latest}=await reinstallFixture();
+    if(failure==='unknown')flash[0xe00010]^=1;
+    if(failure==='protected')flash[0x8000]^=1;
+    if(failure==='selection')flash[0x10e000]^=1;
+    const {reader,writes}=flashFixture(flash,{failAppReadback:failure==='readback'});
+    const controller=new AbortController();if(failure==='cancel')controller.abort();
+    await assert.rejects(api.executeInstallOrReinstall(reader,plan,latest,installConsent,()=>{},controller.signal,async()=>{if(failure==='revoked')throw new Error('Revoked');}));
+    assert.deepEqual(writes,failure==='readback'?[0xe00000]:[],failure);
+  }
 });

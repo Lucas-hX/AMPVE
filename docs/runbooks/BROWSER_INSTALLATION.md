@@ -1,5 +1,15 @@
 # Browser installation and stock-preserving review
 
+## Direct USB reinstallation — 2026-09-13
+
+The owner reports that the previous recovery screen kept offering startup checks for 0.1.11. **Repair or reinstall AMPVE** now enters the same installation flow and always selects the current signed release (0.1.12). A failed USB startup exposes original-backup import instead of another mandatory startup attempt. The existing **Install AMPVE** action requests the USB port when needed; no additional installation-method button is added.
+
+The browser derives both current and previous signed application plans from the original verified backup. It saves recovery for the larger of the two sector-rounded app spans. On the same security-checked ROM connection it compares the whole flash, allows differences only inside that app span, NVS and otadata, requires the entire installed padded image to match either known signed app, and checks that the untouched original stock boot-record sector is unchanged. Untouched original flash is also accepted. Unknown/partial images or other changed regions stop before writing and retain explicit original restoration as a fallback.
+
+It then repeats a full current-flash hash comparison and revalidates both signed references before the first write. Only the new app (padding the previous longer tail with erased bytes) and the original plan's AMPVE boot-selection sector are written and read back. NVS/settings are preserved, stock software never needs to run between attempts, and reset happens only after both readbacks. A runtime handshake is not a prerequisite for ROM installation. Power-loss recovery and corrected physical startup remain unvalidated; this does not broaden support beyond the validated-profile workstream.
+
+Validation: 54 Node tests cover recognized previous/latest images, untouched originals, longer-tail clearing, NVS preservation, write/reset order, unknown apps, protected regions, stock selection changes, cancellation, revocation and failed app readback. Rendered Chromium fixtures cover signed current/previous release selection, enabled installation after saved recovery/consent without a previously selected port, cancellation, fallback restoration and three widths. These are software fixtures, not hardware acceptance. Firmware and signed artifacts are unchanged from PR #72.
+
 ## Startup correction and previous-install recovery — 2026-09-13
 
 The owner captured an exact 0.1.11 pre-app system initializer failure. Version 0.1.12 removes the optional sleep-clock REGDMA initializer; reproducible artifact and signature evidence is in [FIRST_INSTALLATION.md](FIRST_INSTALLATION.md). A separate fixed `firmware_recovery_root` keeps the previous signed app's full restore span available when the current app is smaller. **Recover a device that did not start** uses that reference, original local backups and fresh whole-flash verification. After restoration the page links back to normal installation. This is software validation and release preparation; physical restored startup and corrected AMPVE startup remain pending.
