@@ -70,7 +70,7 @@ if(root) {
       // Never display raw transport data or exception messages from serial libraries.
       status.textContent=error.name==='AbortError'?'Stopped. Incomplete reads are not valid backups.':
         error.userMessage||'Setup stopped. Check the cable, programming port and current operation. No installation is approved by a failed check.';
-      if(error.startupSummary){downloadLink('export-runtime-review',error.startupSummary);recoveryMode=true;installedRuntime=null;show('device-confirmation');show('backup-step');show('existing-backups');get('wifi-step').hidden=true;status.textContent='AMPVE did not start. Select your original backup files below to prepare installation of the latest version.';}
+      if(error.startupSummary){downloadLink('export-runtime-review',error.startupSummary);downloadLink('export-install-result',error.startupSummary);recoveryMode=true;installedRuntime=null;show('device-confirmation');show('backup-step');show('existing-backups');get('wifi-step').hidden=true;status.textContent='AMPVE did not start. Select your original backup files below to prepare installation of the latest version.';}
       detail.textContent=writing?'A write may be incomplete. Keep your recovery files; use the reviewed USB recovery procedure.':
         'If AMPVE did not start, use Repair or reinstall AMPVE. Keep the original backups. Use the USB TO UART port; an accessible RESET button is not required for the first automatic reconnect attempt.';
       if(error.installationSummary){

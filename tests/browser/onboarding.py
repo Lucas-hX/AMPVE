@@ -199,6 +199,22 @@ with tempfile.TemporaryDirectory(prefix='ampve-browser-fixture-') as directory,s
     assert page.url=='https://ampve.test/devices/add/'
     page.locator('#close-wifi').click()
     page.wait_for_function('window.fixtureClosed===true')
+    page.evaluate(r"""async()=>{
+      const port=await navigator.serial.requestPort();
+      port.getInfo=()=>({usbVendorId:0x1a86,usbProductId:0x55d3});port.setSignals=async()=>{};
+      port.open=async()=>{
+        port.readable=new ReadableStream({start:c=>port.input=c});let sent=false;
+        port.writable=new WritableStream({write:()=>{if(!sent){sent=true;port.input.enqueue(new TextEncoder().encode('abort() was called at PC 0x480019e9 on core 0\nELF file SHA256: 6ea09dd6d\n'));}}});
+      };
+    }""")
+    page.locator('#check-startup').click()
+    page.wait_for_function('!document.querySelector("#export-install-result").hidden && !document.querySelector("#import-backups").disabled')
+    assert page.locator('#wifi-step').is_hidden()
+    failure_status=page.locator('#setup-status').inner_text()
+    with page.expect_download() as result_download:page.locator('#export-install-result').click()
+    failure=json.loads(Path(result_download.value.path()).read_text())
+    assert failure['kind']=='ampve-usb-startup-failure' and failure['capture_stop']=='panic_captured'
+    assert page.locator('#setup-status').inner_text()==failure_status
     assert not any(method!='GET' for method,_ in requests),requests
     Path('.browser-tests').mkdir(exist_ok=True)
     for width in [390,768,1440]:
@@ -208,4 +224,4 @@ with tempfile.TemporaryDirectory(prefix='ampve-browser-fixture-') as directory,s
         page.screenshot(path=f'.browser-tests/stock-onboarding-{width}.png',full_page=True)
     assert not errors,errors
     browser.close()
-print('Rendered browser fixtures passed: local backup import/integrity, sanitized backup/plan downloads, candidate comparison and saved recovery, signed latest-version reinstall preparation without a live reader, enabled install after consent and cancelled-port retry, unsigned write gate, simulated USB Wi-Fi/password clearing, no uploads and three viewport widths. No physical hardware tested.')
+print('Rendered browser fixtures passed: local backup import/integrity, sanitized backup/plan downloads, candidate comparison and saved recovery, signed latest-version reinstall preparation without a live reader, enabled install after consent and cancelled-port retry, unsigned write gate, simulated USB Wi-Fi/password clearing, visible panic-result download without replacing the error, no uploads and three viewport widths. No physical hardware tested.')
