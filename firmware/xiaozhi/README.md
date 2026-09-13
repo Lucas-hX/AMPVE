@@ -17,3 +17,6 @@ At commit `563a4f0a70d34eea5547977f2a39efa401c2ea35`, `main/boards/waveshare/esp
 The public web UI currently performs optional ROM chip inspection only. It does not read the original flash backup, upload a stub, install an application, modify eFuses, or publish a firmware manifest. Raspberry Pi and a permanent USB bridge remain separate future runtimes.
 
 Sources: [pinned board configuration](https://github.com/78/xiaozhi-esp32/blob/563a4f0a70d34eea5547977f2a39efa401c2ea35/main/boards/waveshare/esp32-p4-wifi6-touch-lcd/config.json), [pinned WebSocket protocol](https://github.com/78/xiaozhi-esp32/blob/563a4f0a70d34eea5547977f2a39efa401c2ea35/docs/websocket.md).
+
+
+Device-shell update (2026-09-13): Lucas reports a successful physical ROM inspection: ESP32-P4 v1.3 via USB 0x1a86:0x55d3. This validates chip inspection only. The runtime/UI/recovery design is recorded in [ADR 0003](../../docs/decisions/0003-device-runtime-and-recovery.md). A browser interface concept and bounded capability-report storage are implemented; native firmware and functional peripheral tests remain pending.

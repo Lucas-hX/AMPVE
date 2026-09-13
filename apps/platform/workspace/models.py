@@ -108,6 +108,8 @@ class Device(models.Model):
     firmware_version = models.CharField(max_length=80, blank=True)
     chip_revision = models.CharField(max_length=20, blank=True)
     transport = models.CharField(max_length=16, blank=True)
+    hardware_report = models.JSONField(default=dict, editable=False)
+    hardware_reported_at = models.DateTimeField(null=True, editable=False)
     config_version = models.PositiveIntegerField(default=1)
     acknowledged_version = models.PositiveIntegerField(default=0)
     volume = models.PositiveSmallIntegerField(default=40)

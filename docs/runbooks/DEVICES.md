@@ -65,3 +65,23 @@ Follow [the pinned XiaoZhi integration plan](../../firmware/xiaozhi/README.md). 
 - `tests/browser/devices.py` exercised the actual public HTTPS pairing/exchange/heartbeat/settings/revocation flow with an explicitly labeled software client, checked layout at 390/768/1440 px and stubbed only browser port selection. It cleans up its temporary device. No physical chip inspection or provider call occurs in this test.
 - The existing authenticated platform smoke test still passes with no JavaScript errors. New onboarding/device screens were visually reviewed. Services remained active; deployment checks retain only the two previously documented HSTS warnings.
 - Physical P4 detection, firmware operation and revised prompt behavior against a live model are pending owner testing. The OpenAI conversation success was reported by Lucas before the prompt revision; Gemini remains pending.
+
+
+Device-shell update (2026-09-13): Lucas reports a successful physical ROM inspection: ESP32-P4 v1.3 via USB 0x1a86:0x55d3. This validates chip inspection only. The runtime/UI/recovery design is recorded in [ADR 0003](../decisions/0003-device-runtime-and-recovery.md). A browser interface concept and bounded capability-report storage are implemented; native firmware and functional peripheral tests remain pending.
+
+## Capability report extension and interface concept
+
+The v1 heartbeat optionally accepts hardware_report without breaking existing clients. Its exact schema is enforced by workspace/hardware_reports.py:
+
+- schema: integer 1.
+- flash_bytes and psram_bytes: measured nonnegative byte counts (up to 1 GiB), or null for unknown.
+- display: null or integer width/height (1–4096).
+- capabilities: exactly display, touch, speaker, microphone and wifi, each using unknown/configured/initialized/passed/failed/unavailable.
+
+Unknown fields (including credentials or arbitrary diagnostic strings) are rejected; the overall 2048-byte request cap remains. A complete report replaces the prior snapshot and timestamps it. Omitting the optional report preserves its previous snapshot and timestamp. These fields never alter ownership, credential validation, provider access or release eligibility.
+
+The dashboard shows reported memory, display geometry and separate capability statuses. Unknown memory remains “Not reported”, not zero. The future native client must use SDK measurements, known-profile driver initialization and explicit functional tests as appropriate. A recognized audio codec alone cannot establish that a physical speaker produces sound.
+
+The private /devices/interface-preview/ page is an interactive, English web design concept using the existing symbol avatar and Companion icon. All network/mute/speaker interactions are simulated locally; no API call, Wi-Fi password, microphone capture or real pairing is involved. It is linked from Add a device.
+
+Delivery checks: 42 Django tests passed; public browser checks covered five concept screens at 390/768/1440 px without horizontal overflow or network requests during interactions. A separate temporary software-client test covered actual PostgreSQL storage and dashboard display of the optional hardware report. No firmware or physical peripheral was tested.

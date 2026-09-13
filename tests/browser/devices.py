@@ -53,9 +53,16 @@ with sync_playwright() as p:
         assert exchange.status==200
         device_id=exchange.json()['device_id']
         heartbeat={'protocol':1,'firmware_version':'software-fixture','chip_revision':'1.3','transport':'wifi','acknowledged_version':0}
+        heartbeat['hardware_report']={'schema':1,'flash_bytes':33554432,'psram_bytes':None,
+            'display':{'width':1024,'height':600},'capabilities':{
+                'display':'initialized','touch':'configured','speaker':'configured',
+                'microphone':'unknown','wifi':'passed'}}
         reply=context.request.post(base+f'/api/devices/v1/{device_id}/heartbeat/',data=heartbeat,headers={'Authorization':'Bearer '+credential})
         assert reply.status==200
         page.reload();page.get_by_text('Online',exact=True).wait_for()
+        assert page.get_by_text('Driver initialized',exact=False).is_visible()
+        assert page.get_by_text('Not checked',exact=False).is_visible()
+        assert page.get_by_text('Not reported',exact=True).is_visible()
         page.get_by_label('Speaker volume').fill('45')
         page.get_by_role('button',name='Save device settings').click()
         page.get_by_text('Settings saved.',exact=False).wait_for()

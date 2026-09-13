@@ -2,6 +2,7 @@
 {% block subtitle %}Connect locally. Make it yours. Stay connected.{% endblock %}
 {% block content %}
 <section class="app-detail"><div class="app-copy"><span class="pill">FIRST DEVICE</span><h2>Meet your Companion board.</h2><p class="lead">{{ hardware_name }}</p><p>USB helps with inspection and initial installation. After setup, the board connects to AMPVE over its own network connection.</p></div>{% include 'workspace/companion_visual.html' %}</section>
+<p><a class="button secondary" href="{% url 'interface_preview' %}">Explore the device interface concept →</a></p>
 <div class="settings-grid">
 <section class="form-card"><p class="eyebrow">01 · INSPECT USB</p><h2>Find your board.</h2><p>Use desktop Chrome or Edge and a data-capable USB cable connected to the board's programming port. Close other serial monitors first.</p>
 <button type="button" class="button secondary" id="select-usb">Select a USB serial port</button>

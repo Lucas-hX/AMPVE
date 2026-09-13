@@ -153,3 +153,41 @@ class DeviceTests(TestCase):
         for profile in ['raspberry-pi','esp32-c6']:
             self.assertEqual(self.machine.post('/api/devices/v1/enroll/',{'protocol':1,'hardware_profile':profile},content_type='application/json').status_code,400)
         self.assertEqual(self.machine.post('/api/devices/v1/enroll/','x'*3000,content_type='application/json').status_code,413)
+
+    def test_capability_report_preserves_unknown_and_driver_vs_functional_states(self):
+        self.claim();self.exchange()
+        report={'schema':1,'flash_bytes':33554432,'psram_bytes':None,
+            'display':{'width':1024,'height':600},
+            'capabilities':{'display':'initialized','touch':'configured','speaker':'configured',
+                'microphone':'unknown','wifi':'passed'}}
+        self.assertEqual(self.beat(hardware_report=report).status_code,200)
+        self.device.refresh_from_db()
+        self.assertEqual(self.device.hardware_report,report)
+        page=self.client.get(reverse('device_detail',args=[self.device.pk]))
+        self.assertContains(page,'Driver initialized')
+        self.assertContains(page,'Expected by profile')
+        self.assertContains(page,'Not reported')
+        self.assertContains(page,'Not checked')
+        Device.objects.update(last_seen=timezone.now()-timedelta(seconds=31))
+        self.assertEqual(self.beat().status_code,200)
+        self.device.refresh_from_db()
+        self.assertEqual(self.device.hardware_report,report)
+
+    def test_capability_report_rejects_unbounded_or_secret_fields(self):
+        from copy import deepcopy
+        self.claim();self.exchange()
+        report={'schema':1,'flash_bytes':None,'psram_bytes':None,'display':None,
+            'capabilities':dict.fromkeys(['display','touch','speaker','microphone','wifi'],'unknown')}
+        bad=[]
+        for field,value in [('flash_bytes',True),('psram_bytes',2**31),('schema',True),('api_key','must-not-be-persisted')]:
+            item=deepcopy(report);item[field]=value;bad.append(item)
+        item=deepcopy(report);item['capabilities']['speaker']='automatic-detection-proven';bad.append(item)
+        item=deepcopy(report);item['display']={'width':100000,'height':1};bad.append(item)
+        for item in bad:
+            self.assertEqual(self.beat(hardware_report=item).status_code,400)
+        self.device.refresh_from_db();self.assertEqual(self.device.hardware_report,{})
+
+    def test_interface_concept_is_private_and_does_not_create_devices(self):
+        self.assertEqual(Client().get(reverse('interface_preview')).status_code,302)
+        self.assertContains(self.client.get(reverse('interface_preview')),'Interactive concept')
+        self.assertEqual(Device.objects.count(),0)
