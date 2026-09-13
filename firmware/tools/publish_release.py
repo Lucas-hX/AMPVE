@@ -23,6 +23,7 @@ def publish(candidate, review_file, key_file, output, ledger_file):
     import io
     import zipfile
     from audit import image_metadata
+    from native_trust import generate as generate_native_trust
     from workspace.release_contract import canonical, sha256, strict_json, validate_policy
 
     manifest_bytes=(candidate/'review-manifest.json').read_bytes()
@@ -35,6 +36,15 @@ def publish(candidate, review_file, key_file, output, ledger_file):
     if review.get('purpose')=='ota':fields|={'ota_review','from_app_sha256'}
     if set(review)!=fields:
         raise ValueError('Supply the exact documented review fields for the release purpose')
+    public_bytes=(candidate/'native-public-trust.json').read_bytes()
+    public_config=strict_json(public_bytes)
+    trust_header,canonical_public=generate_native_trust(config=public_config)
+    if public_config.get('testing_only') is True or manifest.get('native_ota_testing_only') is not False:
+        raise ValueError('Software fixture builds cannot be promoted to firmware releases')
+    if public_bytes!=canonical_public or public_config['build_sequence']!=review['sequence'] or public_config['build_sequence']==0 or manifest.get('native_build_sequence')!=review['sequence'] or manifest.get('native_public_trust_sha256')!=sha256(public_bytes):
+        raise ValueError('Release sequence must match the independently provisioned native build')
+    if (candidate/'publisher_trust.h').read_text()!=trust_header or manifest.get('generated_inputs',{}).get('main/ampve/publisher_trust.h')!=sha256(trust_header.encode()):
+        raise ValueError('Native publisher trust differs from the recorded build input')
     app=(candidate/'xiaozhi.bin').read_bytes()
     recorded=manifest['proposed_regions_not_approved_writes']
     if len(recorded)!=1 or recorded[0]['sha256']!=sha256(app) or review['app_sha256']!=sha256(app) or recorded[0]['offset']!=0xe00000 or not 24<=len(app)<=0x3f0000:
@@ -55,6 +65,8 @@ def publish(candidate, review_file, key_file, output, ledger_file):
         entries=bundle.infolist();names=[item.filename for item in entries]
         if len(set(names))!=len(names) or sum(item.file_size for item in entries)>64*1024*1024 or any(name.startswith('/') or '..' in Path(name).parts or '\\' in name for name in names):
             raise ValueError('Invalid review archive structure')
+        if bundle.read('native-public-trust.json')!=public_bytes or bundle.read('publisher_trust.h')!=trust_header.encode():
+            raise ValueError('Archived native trust differs from the build')
         if bundle.read('review-manifest.json')!=manifest_bytes or bundle.read('xiaozhi.bin')!=app:
             raise ValueError('Review archive does not describe the actual candidate')
         if not any(name.startswith('LICENSE') for name in names) or not any(name.startswith('provisioning-component/') and 'LICENSE' in name.upper() for name in names):

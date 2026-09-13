@@ -1,6 +1,6 @@
 # Firmware deployment backend
 
-The Django/PostgreSQL backend persists owner-requested app updates and device-reported outcomes. The native OTA client and physical download, boot confirmation and rollback tests remain pending (#26–#27). No production signed release is currently imported. Software fixtures are not hardware evidence.
+The Django/PostgreSQL backend persists owner-requested app updates and device-reported outcomes. The native OTA client is implemented as a development candidate; physical download, boot confirmation and rollback tests remain pending (#26–#27). See [NATIVE_OTA.md](NATIVE_OTA.md). No production signed release is currently imported. Software fixtures are not hardware evidence.
 
 ## Release and identity prerequisites
 
@@ -30,13 +30,14 @@ All endpoints below require POST, application/json and the revocable device bear
 | `firmware/identity/` | `{protocol: 1, app_sha256: HASH, boot_confirmed: true}` establishes the initial baseline. |
 | `updates/poll/` | Same request; returns `deployment: null` or the current job, report sequence, bytes, previous hash and authorization information. A rebooting target can poll without advancing the confirmed baseline. |
 | `updates/<job UUID>/report/` | Exact fields: `release_id`, integer `sequence`, `state`, integer `bytes_written`, running `app_sha256`, boolean `boot_confirmed`, `error_code`. Returns the accepted state. |
+| `updates/<job UUID>/status/` | `{release_id: HASH}` returns the retained state/sequence, including terminal jobs, to reconcile rejected or lost authorization responses. |
 | `updates/<job UUID>/artifact/` | `{release_id: HASH}` downloads only the claimed job's currently authorized app. No arbitrary URL, redirect or filesystem path is accepted. |
 
 The examples describe JSON fields; replace HASH with a 64-character lowercase SHA-256 string. Poll includes the signed envelope only while authorization remains valid. `download_allowed` is true only after an accepted downloading claim. The client must independently verify the publisher, policy, profile, predecessor, sequence, image hash and inactive-slot capacity before selecting the next boot image. Server authorization alone cannot implement those checks.
 
-The normal sequence is queued → downloading → verifying → rebooting → confirmed. Downloading/verifying may report failed; rebooting may report rolled_back. Begin downloading at zero bytes; subsequent same-state progress must strictly increase by at least 64 KiB, except the final fragment. Verifying and later states require the complete app size. Reports are numbered 1–128 without gaps; exact latest-report replay is idempotent. Persist the job and report locally before sending so a lost response can be retried. Replayed downloading/rebooting authorization is rechecked, not treated as perpetual permission.
+The normal sequence is queued → downloading → verifying → rebooting → confirmed. Queued/downloading/verifying may report failed; rebooting may report rolled_back or a bounded boot-selection failure with the confirmed predecessor. Unclaimed failures must report zero written bytes. Begin downloading at zero bytes; subsequent same-state progress must strictly increase by at least 64 KiB, except the final fragment. Verifying and later states require the complete app size. Reports are numbered 1–128 without gaps; exact latest-report replay is idempotent. Persist the job and report locally before sending so a lost response can be retried. Replayed downloading/rebooting authorization is rechecked, not treated as perpetual permission.
 
-Before rebooting, the running hash remains the predecessor. Confirmed requires the expected target hash and confirmed startup. Rolled_back requires the predecessor hash and confirmed startup. Only confirmed advances the server baseline; silence never does. Outcomes can still be recorded after release approval expires or is withdrawn, provided device authentication remains valid. This preserves reported physical truth. Failure reasons are bounded: network, hash_mismatch, image_rejected, storage, approval_unavailable or boot_failed; other states use an empty string. Free-form device logs are not accepted.
+Before rebooting, the running hash remains the predecessor. Confirmed requires the expected target hash and confirmed startup. Rolled_back requires the predecessor hash and confirmed startup. Only confirmed advances the server baseline; silence never does. Outcomes can still be recorded after release approval expires or is withdrawn, provided device authentication remains valid. This preserves reported physical truth. Failure reasons are bounded: network, hash_mismatch, image_rejected, storage, approval_unavailable boot_failed or local_cancelled; other states use an empty string. Free-form device logs are not accepted.
 
 ## Reconciliation and recovery
 
@@ -57,4 +58,4 @@ VPS validation (2026-09-13): migration 0006 applied after the private database b
 
 ## Native verification foundation
 
-See [NATIVE_OTA.md](NATIVE_OTA.md) for the `0.1.3-ota-verify-dev` candidate: native signed-policy verification, complete-image hashing and checked startup identity reports. Deployment download/write execution and physical OTA/rollback remain pending.
+See [NATIVE_OTA.md](NATIVE_OTA.md) for the `0.1.3-ota-verify-dev` candidate: native signed-policy verification, complete-image hashing and checked startup identity reports. The integrated download/write client follows in `0.1.4-ota-client-dev`; physical OTA/rollback remain pending.

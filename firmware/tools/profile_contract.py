@@ -9,6 +9,7 @@ from workspace.hardware_profiles import CONTRACT, PARTITIONS, PROFILE, matches_c
 def native_header():
     """Generate constants and compile-time checks against the pinned board adapter."""
     lines = ['// Generated from firmware/profiles/waveshare-7b-stock-v1.json. Do not edit.', '#pragma once']
+    lines.append('#define AMPVE_INSTALLATION_PROFILE '+__import__('json').dumps(PROFILE['installation_id']))
     for key, value in CONTRACT.items():
         import json
         lines.append(f'#define AMPVE_{key.upper()} {json.dumps(value)}')

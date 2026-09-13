@@ -10,6 +10,7 @@ from pathlib import Path
 from audit import partition_table, private_directory, image_metadata
 from profile_contract import CONTRACT, PROFILE, matches_layout, native_header
 from artifact_archive import archive_tree
+from native_trust import generate as generate_native_trust
 
 ROOT = Path(__file__).resolve().parents[2]
 IDF_PIN = 'fff9895c82d744c7237be8847347bdd1b07c6643'
@@ -48,6 +49,12 @@ def package(work, idf, destination, comparison=None):
         raise ValueError('Generated native profile differs from the canonical contract')
     if (work/'main/ampve/profile.h').stat().st_mtime > (build/'xiaozhi.bin').stat().st_mtime:
         raise ValueError('Profile changed after compilation; rebuild before packaging')
+    trust_file=work/'native-public-trust.json'
+    trust_header,trust_bytes=generate_native_trust(config=json.loads(trust_file.read_bytes()))
+    if trust_file.read_bytes()!=trust_bytes or (work/'main/ampve/publisher_trust.h').read_text()!=trust_header:
+        raise ValueError('Generated native public trust differs from build metadata')
+    if (work/'main/ampve/publisher_trust.h').stat().st_mtime > (build/'xiaozhi.bin').stat().st_mtime:
+        raise ValueError('Public trust changed after compilation')
     image=image_metadata((build/'xiaozhi.bin').read_bytes())
     app_bytes=(build/'xiaozhi.bin').read_bytes()
     if app_bytes[32:36] != b'\x32\x54\xcd\xab' or app_bytes[48:80].split(b'\0')[0].decode('ascii') != upstream['candidate_version']:
@@ -107,6 +114,8 @@ def package(work, idf, destination, comparison=None):
     for source, name in [(work/'sdkconfig', 'sdkconfig'), (work/'dependencies.lock', 'dependencies.lock'),
                          (build/'project_description.json', 'project_description.json')]:
         shutil.copyfile(source, destination/name)
+    shutil.copyfile(trust_file,destination/'native-public-trust.json')
+    shutil.copyfile(work/'main/ampve/publisher_trust.h',destination/'publisher_trust.h')
     shutil.copyfile(ROOT/'firmware/profiles/waveshare-7b-stock-v1.json', destination/'hardware-profile.json')
     shutil.copyfile(work/'main/ampve/profile.h', destination/'generated-profile.h')
     for notice in work.glob('LICENSE*'):
@@ -131,7 +140,7 @@ def package(work, idf, destination, comparison=None):
         raise ValueError('Expected recorded IDF 6.1 / Python 3.13 build environment')
     for executable, name in [(idf_python, 'idf-python-freeze.txt'), (Path(sys.executable), 'tooling-python-freeze.txt')]:
         (destination/name).write_bytes(subprocess.check_output([str(executable), '-m', 'pip', 'freeze']))
-    manifest = {'schema': 1, 'installable': False, 'status': 'development-candidate-awaiting-local-audit',
+    manifest = {'schema': 1, 'installable': False, 'status': 'software-build-fixture-not-for-installation' if json.loads(trust_bytes)['testing_only'] else 'development-candidate-awaiting-local-audit',
                 'hardware_profile': upstream['hardware_profile'], 'runtime_revision_guard': 103,
                 'xiaozhi_commit': upstream['commit'], 'esp_idf_commit': IDF_PIN, 'compiler': compiler,
                 'repository_commit': subprocess.check_output(['git', '-C', str(ROOT), 'rev-parse', 'HEAD']).decode().strip(),
@@ -139,6 +148,9 @@ def package(work, idf, destination, comparison=None):
                 'sdkconfig_sha256': sha(work/'sdkconfig'), 'dependency_lock_sha256': sha(work/'dependencies.lock'),
                 'installation_profile': PROFILE['installation_id'], 'compatibility': CONTRACT,
                 'firmware_version': upstream['candidate_version'],
+                'native_build_sequence': json.loads(trust_bytes)['build_sequence'],
+                'native_ota_testing_only': json.loads(trust_bytes)['testing_only'],
+                'native_public_trust_sha256': hashlib.sha256(trust_bytes).hexdigest(),
                 'app_image': image,
                 'build_artifacts_not_installation_plan': planned,
                 'proposed_regions_not_approved_writes': proposed, 'partitions': partitions,

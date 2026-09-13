@@ -174,9 +174,9 @@ def poll_update(device, app_hash):
     return {'deployment':result}
 
 
-ERRORS={'','network','hash_mismatch','image_rejected','storage','approval_unavailable','boot_failed'}
-TRANSITIONS={'queued':{'downloading'},'downloading':{'downloading','verifying','failed'},
-             'verifying':{'rebooting','failed'},'rebooting':{'confirmed','rolled_back'}}
+ERRORS={'','network','hash_mismatch','image_rejected','storage','approval_unavailable','boot_failed','local_cancelled'}
+TRANSITIONS={'queued':{'downloading','failed'},'downloading':{'downloading','verifying','failed'},
+             'verifying':{'rebooting','failed'},'rebooting':{'confirmed','rolled_back','failed'}}
 
 
 def report_update(device, job_id, report):
@@ -195,6 +195,8 @@ def report_update(device, job_id, report):
     state=report['state'];written=report['bytes_written'];size=job.release.policy['app']['size']
     if report['sequence']!=job.report_sequence+1 or state not in TRANSITIONS.get(job.state,set()) or not job.bytes_written<=written<=size:
         raise DeploymentError('Stale report or invalid deployment transition.')
+    if job.state=='queued' and state=='failed' and written!=0:
+        raise DeploymentError('An unclaimed deployment cannot report written bytes.')
     if state=='downloading' and (job.state=='queued' and written!=0 or job.state=='downloading' and (written<=job.bytes_written or written!=size and written-job.bytes_written<65536)):
         raise DeploymentError('Report download progress in bounded 64 KiB increments.')
     if state in ('verifying','rebooting','confirmed','rolled_back') and written!=size:
@@ -204,6 +206,8 @@ def report_update(device, job_id, report):
         raise DeploymentError('The running image or boot confirmation does not match.')
     if (state in ('failed','rolled_back')) != bool(report['error_code']):
         raise DeploymentError('Use a bounded failure reason only for a failure outcome.')
+    if job.state=='rebooting' and state=='failed' and (report['boot_confirmed'] is not True or report['error_code'] not in ('storage','image_rejected','approval_unavailable','local_cancelled')):
+        raise DeploymentError('Boot-selection failure requires a confirmed predecessor and bounded reason.')
     if state in ('downloading','rebooting'):
         # Reauthorize both download start and the final boot-selection boundary.
         verified_release(job.release,'ota')
