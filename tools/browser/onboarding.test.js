@@ -4,6 +4,9 @@ import {build} from 'esbuild';
 import {webcrypto} from 'node:crypto';
 import {md5} from 'hash-wasm';
 import crc32 from 'pako/lib/zlib/crc32.js';
+import {readFileSync} from 'node:fs';
+const profile=JSON.parse(readFileSync('../../firmware/profiles/waveshare-7b-stock-v1.json'));
+const contract={profile_id:profile.id,profile_version:profile.version,layout_id:profile.layout.id,firmware_lineage:profile.firmware_lineage};
 if(!globalThis.crypto)globalThis.crypto=webcrypto;
 await build({stdin:{contents:'export * from "./audit.js"; export * from "./install.js";',resolveDir:process.cwd()},bundle:true,platform:'node',format:'esm',outfile:'build/test-api.mjs'});
 const api=await import('./build/test-api.mjs');
@@ -52,16 +55,24 @@ test('boot selection targets inactive metadata sector with Espressif CRC and pre
 });
 
 async function signed(policy){const key=await crypto.subtle.generateKey('Ed25519',true,['sign','verify']),payload=new TextEncoder().encode(JSON.stringify(policy));return {status:'reviewed-development-release',publisher_key:Buffer.from(await crypto.subtle.exportKey('raw',key.publicKey)).toString('hex'),envelope:{payload:Buffer.from(payload).toString('base64'),signature:Buffer.from(await crypto.subtle.sign('Ed25519',key.privateKey,payload)).toString('base64')}};}
-const policy={installable:true,profile:'waveshare-7b-stock-v1',chip_revision:103,flash_bytes:FLASH_BYTES,expires_at:'2099-01-01T00:00:00Z',bootloader_review:'fixture',c6_review:'fixture',recovery_review:'fixture',bootloader_sha256:'a'.repeat(64),table_sha256:'b'.repeat(64),app:{size:4096,offset:0xe00000,sha256:'c'.repeat(64)}};
+const policy={installable:true,compatibility:contract,profile:'waveshare-7b-stock-v1',chip_revision:103,flash_bytes:FLASH_BYTES,expires_at:'2099-01-01T00:00:00Z',bootloader_review:'fixture',c6_review:'fixture',recovery_review:'fixture',bootloader_sha256:'a'.repeat(64),table_sha256:'b'.repeat(64),app:{size:4096,offset:0xe00000,sha256:'c'.repeat(64)}};
 test('only signed, unexpired and complete release policies pass',async()=>{
   const good=await signed(policy);assert.equal((await verifyRelease(good)).profile,policy.profile);
   good.envelope.payload=Buffer.from('{}').toString('base64');await assert.rejects(verifyRelease(good));
-  for(const change of [{installable:false},{expires_at:'2000-01-01'},{c6_review:''},{app:{...policy.app,offset:0x110000}}])await assert.rejects(verifyRelease(await signed({...policy,...change})));
+  for(const change of [{compatibility:undefined},{compatibility:{...contract,profile_id:'waveshare-p4-4b'}},{compatibility:{...contract,profile_version:2}},{compatibility:{...contract,layout_id:'other-layout'}},{compatibility:{...contract,firmware_lineage:'other-firmware'}},{installable:false},{expires_at:'2000-01-01'},{c6_review:''},{app:{...policy.app,offset:0x110000}}])await assert.rejects(verifyRelease(await signed({...policy,...change})));
 });
 
 test('installer refuses missing consent or invalid regions before any serial command',async()=>{
   await assert.rejects(executePlan({}, {},policy,{}));
   await assert.rejects(executePlan({}, {profile:policy.profile,app_sha256:policy.app.sha256,writes:[{offset:0x8000,bytes:new Uint8Array(4096)}]},policy,{exact_plan:true,separate_copy:true,rom_recovery:true}));
+});
+
+test('a matching P4 chip cannot substitute for owner-confirmed board identity',async()=>{
+  for(const model of [undefined,'waveshare-esp32-p4-wifi6-touch-lcd-4b']) {
+    await assert.rejects(api.makePlan({}, {owner_confirmed_profile:model},policy,new Uint8Array()),{code:'model_unconfirmed'});
+  }
+  await assert.rejects(executePlan({}, {},{...policy,compatibility:{...contract,profile_id:'waveshare-esp32-p4-wifi6-touch-lcd-4b'}},
+    {exact_plan:true,separate_copy:true,rom_recovery:true}),{code:'profile_contract_mismatch'});
 });
 
 function flashFixture(flash,{failAppReadback=false}={}) {

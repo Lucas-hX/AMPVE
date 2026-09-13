@@ -1,18 +1,13 @@
 import {ESPLoader, Transport} from 'esptool-js';
 import {createSHA256, md5, sha256} from 'hash-wasm';
+import {HARDWARE_PROFILE, PARTITIONS} from './profile.js';
 
-export const FLASH_BYTES = 32 * 1024 * 1024;
+export const FLASH_BYTES = HARDWARE_PROFILE.resources.flash_bytes;
 export const BLOCK = 64 * 1024;
-export const PROFILE = 'waveshare-7b-stock-v1';
-export const STOCK = [
-  ['nvsfactory',1,2,0x9000,0x32000], ['nvs',1,2,0x3b000,0xd2000],
-  ['otadata',1,0,0x10d000,0x2000], ['phy_init',1,1,0x10f000,0x1000],
-  ['factory',0,0,0x110000,0x900000], ['ota_0',0,16,0xa10000,0x3f0000],
-  ['ota_1',0,17,0xe00000,0x3f0000], ['assets',1,130,0x11f0000,0x900000],
-  ['storage',1,130,0x1af0000,0x500000],
-];
+export const PROFILE = HARDWARE_PROFILE.installation_id;
+export const STOCK = HARDWARE_PROFILE.layout.partitions.map(p=>[p.name,p.type,p.subtype,p.offset,p.size]);
 export const hex = bytes => Array.from(bytes, b => b.toString(16).padStart(2,'0')).join('');
-export function ensure(value, message) {if (!value) {const error=new Error(message);error.userMessage=message;throw error;}}
+export function ensure(value, message, code) {if (!value) {const error=new Error(message);error.userMessage=message;if(code)error.code=code;throw error;}}
 const words = (...values) => {
   const bytes = new Uint8Array(values.length*4), view = new DataView(bytes.buffer);
   values.forEach((value,i) => view.setUint32(i*4,value,true)); return bytes;
@@ -86,7 +81,8 @@ export async function analyzeBackup(file, progress=()=>{}, signal) {
         try {tables.push({offset:offset+at,partitions:await parseTable(bytes.slice(at,at+4096),offset+at)});} catch { /* Not a valid table candidate. */ }
       }
     }
-    const start=Math.max(0,0xe00000-offset),end=Math.min(bytes.length,0x11f0000-offset);
+    const slot=PARTITIONS[HARDWARE_PROFILE.layout.initial_app];
+    const start=Math.max(0,slot.offset-offset),end=Math.min(bytes.length,slot.offset+slot.size-offset);
     if(end>start && !bytes.slice(start,end).every(b=>b===255)) erased=false;
     progress(offset+bytes.length,file.size);
   }
@@ -113,9 +109,9 @@ export async function analyzeBackup(file, progress=()=>{}, signal) {
 }
 
 export function decodeSecurity(bytes) {
-  ensure(bytes instanceof Uint8Array && bytes.length===20,'Security state unavailable.');
+  ensure(bytes instanceof Uint8Array && bytes.length===20,'Security state unavailable.','security_unverified');
   const v=new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength),flags=v.getUint32(0,true);
-  ensure(v.getUint32(12,true)===18 && !(flags&7) && bytes[4]===0,'Unsupported chip or enabled security.');
+  ensure(v.getUint32(12,true)===18 && !(flags&7) && bytes[4]===0,'Unsupported chip or enabled security.','security_unsupported');
   return {flash_crypt_cnt:bytes[4],parsed_flags:{SECURE_BOOT_EN:false,SECURE_BOOT_AGGRESSIVE_REVOKE:false,SECURE_DOWNLOAD_ENABLE:false}};
 }
 
@@ -124,13 +120,15 @@ export async function openReader(port, {Loader=ESPLoader,SerialTransport=Transpo
   const loader=new Loader({transport,baudrate:baud,debugLogging:false,terminal:{clean(){},write(){},writeLine(){}}});
   try {
     await loader.connect('default_reset',3,true);
-    ensure(loader.chip.CHIP_NAME==='ESP32-P4' && await loader.chip.getChipRevision(loader)===103,'Expected ESP32-P4 revision 1.3.');
+    const revision=await loader.chip.getChipRevision(loader);
+    ensure(loader.chip.CHIP_NAME===HARDWARE_PROFILE.chip.name && revision>=HARDWARE_PROFILE.chip.revision_min &&
+      revision<=HARDWARE_PROFILE.chip.revision_max,'Expected ESP32-P4 revision 1.3.','chip_revision_mismatch');
     // GET_SECURITY_INFO is an Espressif ROM command; parse the pinned esptool 5.4.0 format.
     const security=decodeSecurity(await loader.checkCommand('read security',0x14,new Uint8Array(),0,20));
     // ROM SPI_ATTACH includes its reserved legacy word; no flash_begin is used to attach.
     await loader.checkCommand('attach flash',loader.ESP_SPI_ATTACH,words(0,0));
     const flashId=await loader.readFlashId();
-    ensure((flashId>>>16 & 255)===25,'Expected a 32 MiB flash chip.');
+    ensure((flashId>>>16 & 255)===25,'Expected a 32 MiB flash chip.','flash_capacity_mismatch');
     const identity=await loader.chip.readMac(loader); // Private RAM/file only, never an ownership proof.
     if(loader.chip.postConnect) await loader.chip.postConnect(loader);
     await loader.runStub();

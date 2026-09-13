@@ -3,6 +3,7 @@ import argparse
 import json
 from pathlib import Path
 from audit import analyze, digest, security_is_unprotected, partition_table
+from profile_contract import PROFILE, matches_contract, matches_layout
 
 
 def compare(audit_directory, candidate_directory):
@@ -13,11 +14,16 @@ def compare(audit_directory, candidate_directory):
     if digest(first) != digest(second) or actual['sha256'] != audit['sha256']:
         raise ValueError('Private backups no longer match the completed audit')
     hardware = audit['hardware']
-    if (hardware['chip'] != 'ESP32-P4' or hardware['revision'] != 103 or
-            hardware['flash_bytes'] != len(first) or len(first) != 32*1024*1024 or
+    if (hardware['chip'] != PROFILE['chip']['name'] or
+            not PROFILE['chip']['revision_min'] <= hardware['revision'] <= PROFILE['chip']['revision_max'] or
+            hardware['flash_bytes'] != len(first) or len(first) != PROFILE['resources']['flash_bytes'] or
             not security_is_unprotected(hardware['security'])):
         raise ValueError('Hardware/security audit does not match the candidate profile')
     candidate = json.loads((candidate_directory/'review-manifest.json').read_text())
+    if not matches_contract(candidate.get('compatibility')):
+        raise ValueError('profile_contract_mismatch: candidate lacks the reviewed versioned contract')
+    if not matches_layout(actual['partitions'], actual['partition_table_offset']):
+        raise ValueError('layout_mismatch: local stock table differs from the canonical profile')
     for item in candidate.get('build_artifacts_not_installation_plan', [])+candidate['proposed_regions_not_approved_writes']:
         path = (candidate_directory/item['file']).resolve()
         if not path.is_relative_to(candidate_directory.resolve()) or path.stat().st_size != item['size'] or digest(path.read_bytes()) != item['sha256']:

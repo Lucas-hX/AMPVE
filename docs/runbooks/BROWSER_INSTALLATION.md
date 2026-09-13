@@ -30,7 +30,9 @@ The stock bootloader/table hashes, stock image header metadata and C6 compatibil
 
 ## Build and package
 
-Use the existing pinned external toolchain and `firmware/tools/build.sh` from the native runbook. It regenerates stale SDK configuration when moving from the old layout, copies the explicit stock CSV, and builds version `0.1.1-stock-dev`. The runtime rejects the wrong app slots/factory map before NVS/driver initialization.
+Current source: `0.1.2-profile-dev` uses the [shared versioned hardware profile](HARDWARE_PROFILES.md). New candidate/publication manifests must include its exact compatibility tuple. Old signed/candidate manifests cannot be made installable by manually adding a profile flag; rebuild and review the actual candidate. Existing private stock backups are unaffected.
+
+Use the existing pinned external toolchain and `firmware/tools/build.sh` from the native runbook. It regenerates stale SDK configuration when moving from the old layout, copies the explicit stock CSV, and builds version `0.1.2-profile-dev`. The runtime rejects the wrong app slots/factory map before NVS/driver initialization.
 
 `release.py` verifies the actual P4 image and produces the review directory plus a private ZIP sibling. The bundle includes generated bootloader/table/initial-otadata files for comparison only. Their presence does not authorize writing them. `proposed_regions_not_approved_writes` names only the app at `0xE00000`; exact otadata is generated locally from the owner's original selection.
 

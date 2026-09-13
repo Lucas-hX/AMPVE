@@ -2,6 +2,7 @@
 #include "runtime.h"
 #include "board.h"
 #include "boards/waveshare/esp32-p4-wifi6-touch-lcd/config.h"
+#include "profile.h"
 #include "driver/gpio.h"
 #include "wifi_board.h"
 #include "audio_codec.h"
@@ -140,7 +141,12 @@ static int post(const std::string& path,const std::string& token,cJSON* payload,
 }
 static cJSON* hardware_report() {
     auto report=cJSON_CreateObject();
-    cJSON_AddNumberToObject(report,"schema",1);
+    cJSON_AddNumberToObject(report,"schema",2);
+    auto compatibility=cJSON_AddObjectToObject(report,"compatibility");
+    cJSON_AddStringToObject(compatibility,"profile_id",AMPVE_PROFILE_ID);
+    cJSON_AddNumberToObject(compatibility,"profile_version",AMPVE_PROFILE_VERSION);
+    cJSON_AddStringToObject(compatibility,"layout_id",AMPVE_LAYOUT_ID);
+    cJSON_AddStringToObject(compatibility,"firmware_lineage",AMPVE_FIRMWARE_LINEAGE);
     if(flash_bytes)cJSON_AddNumberToObject(report,"flash_bytes",flash_bytes);
     else cJSON_AddNullToObject(report,"flash_bytes");
     cJSON_AddNumberToObject(report,"psram_bytes",esp_psram_get_size());
@@ -356,7 +362,7 @@ static void worker(void*) {
                 cJSON_DeleteItemFromObject(state,"credential");cJSON_AddStringToObject(state,"credential",token.c_str());
                 if(save(encode(state))) {
                     auto payload=cJSON_CreateObject();cJSON_AddNumberToObject(payload,"protocol",1);
-                    cJSON_AddStringToObject(payload,"hardware_profile","waveshare-esp32-p4-wifi6-touch-lcd-7b");
+                    cJSON_AddStringToObject(payload,"hardware_profile",AMPVE_PROFILE_ID);
                     std::string reply;int status=post("enroll/","",payload,reply);cJSON_Delete(payload);
                     auto response=cJSON_Parse(reply.c_str());
                     if(status==201 && response) {
@@ -445,16 +451,26 @@ static void worker(void*) {
 }
 void ampve_runtime_start() {
     esp_chip_info(&chip);esp_flash_get_size(nullptr,&flash_bytes);
-    if(chip.model!=CHIP_ESP32P4 || chip.revision!=103 || flash_bytes!=32*1024*1024) {
+    if(chip.model!=CHIP_ESP32P4 || chip.revision<AMPVE_REVISION_MIN || chip.revision>AMPVE_REVISION_MAX || flash_bytes!=AMPVE_FLASH_BYTES) {
         printf("AMPVE recovery: chip/revision/flash do not match this development build.\n");return;
     }
+    if(esp_psram_get_size()<AMPVE_MIN_PSRAM_BYTES) {
+        printf("AMPVE recovery: initialized PSRAM is below the profile requirement. Nothing initialized or erased.\n");return;
+    }
     // Refuse a legacy migration image/layout before opening NVS or starting drivers.
+    for(const auto& expected:AMPVE_PARTITIONS) {
+        const auto* partition=esp_partition_find_first(static_cast<esp_partition_type_t>(expected.type),
+            static_cast<esp_partition_subtype_t>(expected.subtype),expected.name);
+        if(!partition || partition->address!=expected.offset || partition->size!=expected.size || partition->encrypted) {
+            printf("AMPVE recovery: partition layout differs from the versioned profile. Nothing initialized or erased.\n");return;
+        }
+    }
     const auto* running=esp_ota_get_running_partition();
     const auto* stock=esp_partition_find_first(ESP_PARTITION_TYPE_APP,ESP_PARTITION_SUBTYPE_APP_FACTORY,"factory");
     const auto* slot0=esp_partition_find_first(ESP_PARTITION_TYPE_APP,ESP_PARTITION_SUBTYPE_APP_OTA_0,"ota_0");
     const auto* slot1=esp_partition_find_first(ESP_PARTITION_TYPE_APP,ESP_PARTITION_SUBTYPE_APP_OTA_1,"ota_1");
-    if(!running || !stock || !slot0 || !slot1 || stock->address!=0x110000 || stock->size!=0x900000 ||
-       slot0->address!=0xA10000 || slot1->address!=0xE00000 || slot0->size!=0x3F0000 || slot1->size!=0x3F0000 ||
+    if(!running || !stock || !slot0 || !slot1 || stock->address!=AMPVE_FACTORY_OFFSET || stock->size!=AMPVE_FACTORY_SIZE ||
+       slot0->address!=AMPVE_OTA_0_OFFSET || slot1->address!=AMPVE_OTA_1_OFFSET || slot0->size!=AMPVE_OTA_0_SIZE || slot1->size!=AMPVE_OTA_1_SIZE ||
        (running->address!=slot0->address && running->address!=slot1->address)) {
         printf("AMPVE recovery: stock partition layout required. Nothing initialized or erased.\n");return;
     }

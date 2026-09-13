@@ -4,9 +4,11 @@ import json
 import shutil
 import subprocess
 from pathlib import Path
+from profile_contract import PROFILE, native_header
 
 ROOT = Path(__file__).resolve().parents[2]
-PIN = json.loads((ROOT/'firmware/xiaozhi/upstream.json').read_text())['commit']
+UPSTREAM = json.loads((ROOT/'firmware/xiaozhi/upstream.json').read_text())
+PIN = UPSTREAM['commit']
 
 
 def replace(path, old, new):
@@ -17,6 +19,8 @@ def replace(path, old, new):
 
 
 def prepare(work):
+    if PROFILE['source']['commit'] != PIN or PROFILE['id'] != UPSTREAM['hardware_profile']:
+        raise RuntimeError('Hardware profile and pinned firmware source differ')
     if work.is_relative_to(ROOT) or any((parent/'.git').exists() for parent in work.parents):
         raise RuntimeError('Build workspaces must stay outside AMPVE and every enclosing Git checkout')
     if not work.exists():
@@ -71,7 +75,12 @@ def prepare(work):
     cmake=work/'CMakeLists.txt'
     if 'set(PROJECT_VER "0.1.0-dev")' in cmake.read_text():
         replace(cmake,'set(PROJECT_VER "0.1.0-dev")','set(PROJECT_VER "0.1.1-stock-dev")')
+    if 'set(PROJECT_VER "0.1.1-stock-dev")' in cmake.read_text():
+        replace(cmake,'set(PROJECT_VER "0.1.1-stock-dev")',f'set(PROJECT_VER "{UPSTREAM["candidate_version"]}")')
+    if f'set(PROJECT_VER "{UPSTREAM["candidate_version"]}")' not in cmake.read_text():
+        raise RuntimeError('Prepared project version differs from the candidate version')
     shutil.copytree(overlay,work,dirs_exist_ok=True)
+    (work/'main/ampve/profile.h').write_text(native_header())
     shutil.copyfile(ROOT/'firmware/xiaozhi/sdkconfig.ampve',work/'sdkconfig.ampve')
     shutil.copytree(ROOT/'firmware/xiaozhi/partitions',work/'partitions/ampve',dirs_exist_ok=True)
     lock=ROOT/'firmware/xiaozhi/dependencies.lock'

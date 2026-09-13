@@ -13,12 +13,14 @@ from datetime import datetime, timezone
 from pathlib import Path
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from cryptography.hazmat.primitives.serialization import Encoding, PrivateFormat, PublicFormat, NoEncryption
+from profile_contract import CONTRACT, PROFILE, matches_contract
 
 
 def publish(candidate,review_file,key_file,output):
     manifest=json.loads((candidate/'review-manifest.json').read_text())
     review=json.loads(review_file.read_text())
-    if manifest.get('installation_profile')!='waveshare-7b-stock-v1':raise ValueError('Wrong candidate profile')
+    if manifest.get('installation_profile')!=PROFILE['installation_id'] or not matches_contract(manifest.get('compatibility')):
+        raise ValueError('Wrong or missing versioned candidate profile')
     fields={'bootloader_sha256','table_sha256','bootloader_review','c6_review','recovery_review','expires_at','app_sha256'}
     if set(review)!=fields or any(not isinstance(v,str) or not v.strip() or 'REPLACE' in v for v in review.values()):
         raise ValueError('Supply the complete documented review; placeholders are not approval')
@@ -34,8 +36,9 @@ def publish(candidate,review_file,key_file,output):
         raise ValueError('Review does not match the actual candidate app')
     if output.exists():raise ValueError('Publish to a new immutable directory, then select it in private platform configuration')
     key=Ed25519PrivateKey.from_private_bytes(key_file.read_bytes())
-    policy={'schema':1,'installable':True,'profile':'waveshare-7b-stock-v1','chip_revision':103,'flash_bytes':32*1024*1024,
+    policy={'schema':1,'installable':True,'profile':PROFILE['installation_id'],'compatibility':CONTRACT,'chip_revision':103,'flash_bytes':32*1024*1024,
         **{k:v for k,v in review.items() if k!='app_sha256'},'repository_commit':manifest['repository_commit'],
+        'firmware_version':manifest['firmware_version'],
         'app':{'sha256':digest,'size':len(app),'offset':0xe00000},
         'physical_validation':'Development first-install approval; peripheral operation and automatic rollback are not certified'}
     payload=json.dumps(policy,sort_keys=True,separators=(',',':')).encode()
@@ -46,7 +49,7 @@ def publish(candidate,review_file,key_file,output):
     # Standard ESP Web Tools representation for tooling/interoperability. Never expose
     # the generic install button: AMPVE's wrapper must perform the exact preflight and
     # local dynamic otadata plan, which cannot be encoded by this manifest alone.
-    (output/'esp-web-tools-reference.json').write_text(json.dumps({'name':'AMPVE','version':'0.1.1-stock-dev','new_install_prompt_erase':False,
+    (output/'esp-web-tools-reference.json').write_text(json.dumps({'name':'AMPVE','version':manifest['firmware_version'],'new_install_prompt_erase':False,
         'builds':[{'chipFamily':'ESP32-P4','parts':[{'path':'xiaozhi.bin','offset':0xe00000}]}],
         'ampve_requires_guarded_installer':True},indent=2)+'\n')
     print('Signed development release prepared. Configure the separately trusted public key and review before activation. Nothing flashed.')

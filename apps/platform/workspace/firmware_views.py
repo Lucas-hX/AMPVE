@@ -10,6 +10,7 @@ from django.contrib.auth.decorators import login_required
 from django.http import FileResponse, Http404, JsonResponse
 from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_GET
+from .hardware_profiles import PROFILE, matches_contract
 
 
 def release_data():
@@ -22,7 +23,7 @@ def release_data():
         payload=base64.b64decode(envelope['payload'],validate=True)
         Ed25519PublicKey.from_public_bytes(key).verify(base64.b64decode(envelope['signature'],validate=True),payload)
         policy=json.loads(payload)
-        if policy['profile']!='waveshare-7b-stock-v1' or policy['installable'] is not True:
+        if policy['profile']!=PROFILE['installation_id'] or policy['installable'] is not True or not matches_contract(policy.get('compatibility')):
             raise ValueError('Wrong release policy')
         expiry = datetime.fromisoformat(policy['expires_at'].replace('Z', '+00:00'))
         if expiry.tzinfo is None or expiry <= datetime.now(timezone.utc):
