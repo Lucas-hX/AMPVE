@@ -1,0 +1,33 @@
+{
+  "app_sha256": "9431969a70d060db94f92a11873ce5200d597a6df199ceeed90c80de2deae33e",
+  "elf_sha256": "6ea09dd6dc6966b3882e13ff6fd758edee5c1c9dc7b13ee89e5abfb718f818f6",
+  "functions": {
+    "0x4800040a": "init_vfs_console",
+    "0x48000462": "init_show_app_info",
+    "0x48000488": "init_efuse_show_app_info",
+    "0x4800048c": "init_efuse_check",
+    "0x4800049e": "init_efuse",
+    "0x4800094a": "esp_timer_init_nonos",
+    "0x480009f6": "esp_security_init",
+    "0x48000d0e": "init_flash",
+    "0x48001a84": "init_show_cpu_freq",
+    "0x48001a98": "init_brownout",
+    "0x48001abc": "init_bootloader_offset",
+    "0x48001ad4": "init_disable_rtc_wdt",
+    "0x48002b4c": "esp_hw_debug_assist_init",
+    "0x48003768": "init_heap",
+    "0x48004fae": "esp_sleep_startup_init",
+    "0x480083a6": "init_libc",
+    "0x480083b6": "init_libc_stdio",
+    "0x480083ce": "init_libc_time",
+    "0x4800c236": "usb_serial_jtag_conn_status_init",
+    "0x4800c4ec": "init_vfs_nullfs",
+    "0x4810faa0": "esp_timer_init_os",
+    "0x4814611a": "mbedtls_psa_crypto_init_fn",
+    "0x4819df0a": "init_vfs_uart",
+    "0x4819e5c0": "init_vfs_usj_sec",
+    "0x481a16ec": "sleep_clock_icg_startup_init",
+    "0x481a1a36": "sleep_clock_startup_init",
+    "0x481a3ce6": "psram_core_stage_init"
+  }
+}
