@@ -88,6 +88,8 @@ def prepare(work):
         replace(cmake,'set(PROJECT_VER "0.1.4-ota-client-dev")',f'set(PROJECT_VER "{UPSTREAM["candidate_version"]}")')
     if 'set(PROJECT_VER "0.1.5-ota-recovery-dev")' in cmake.read_text():
         replace(cmake,'set(PROJECT_VER "0.1.5-ota-recovery-dev")',f'set(PROJECT_VER "{UPSTREAM["candidate_version"]}")')
+    if 'set(PROJECT_VER "0.1.6-audio-guard-dev")' in cmake.read_text():
+        replace(cmake,'set(PROJECT_VER "0.1.6-audio-guard-dev")',f'set(PROJECT_VER "{UPSTREAM["candidate_version"]}")')
     if f'set(PROJECT_VER "{UPSTREAM["candidate_version"]}")' not in cmake.read_text():
         raise RuntimeError('Prepared project version differs from the candidate version')
     component=work/'main/idf_component.yml'
@@ -103,6 +105,8 @@ def prepare(work):
                 'set(SOURCES "ampve/image_identity.cc" "ampve/ota_policy.cc"')
     if '"ampve/ota_client.cc"' not in component_cmake.read_text():
         replace(component_cmake,'set(SOURCES ', 'set(SOURCES "ampve/ota_client.cc" "ampve/ota_platform.cc" ')
+    if '"ampve/boot_guard.cc"' not in component_cmake.read_text():
+        replace(component_cmake,'set(SOURCES ', 'set(SOURCES "ampve/boot_guard.cc" ')
     prepare_audio(work, PIN)
     shutil.copytree(overlay,work,dirs_exist_ok=True)
     (work/'main/ampve/profile.h').write_text(native_header())

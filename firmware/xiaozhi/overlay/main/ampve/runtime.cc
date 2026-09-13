@@ -8,6 +8,7 @@
 #include "driver/gpio.h"
 #include "wifi_board.h"
 #include "audio_codec.h"
+#include "ampve/boot_guard.h"
 #include "wifi_manager.h"
 #include "display.h"
 #include "esp_lvgl_port.h"
@@ -282,7 +283,7 @@ static void startup_check(void*) {
     bool healthy = ui_ticks>100 && ampve_touch_ready && storage_ok && management_started && image_verified;
     // Never advertise a confirmed startup after a failed otadata write.
     if(healthy && esp_ota_mark_app_valid_cancel_rollback()==ESP_OK &&
-       nvs_set_u32(store_handle,"boots",0)==ESP_OK && nvs_commit(store_handle)==ESP_OK) {
+       ampve::reset_boot_attempts(store_handle)) {
         boot_confirmed=true;
     } else {
         printf("AMPVE startup diagnostics or confirmation failed. Attempting app rollback, otherwise bounded restart.\n");
@@ -496,19 +497,24 @@ void ampve_runtime_start() {
     if(nvs_flash_init()!=ESP_OK || nvs_open("ampve",NVS_READWRITE,&store_handle)!=ESP_OK){
         printf("AMPVE recovery: NVS unavailable; nothing erased. Use the audited USB recovery procedure.\n");return;
     }
-    uint32_t boots=0;nvs_get_u32(store_handle,"boots",&boots);
-    if(boots>=3){
-        printf("AMPVE recovery: repeated unconfirmed boots. Hold BOOT for five seconds to retry. Nothing erased.\n");
+    auto boot_attempt=ampve::record_boot_attempt(store_handle);
+    if(boot_attempt==ampve::BootAttempt::StorageError){
+        printf("AMPVE recovery: boot counter could not be read or committed. Data preserved; drivers not started.\n");return;
+    }
+    if(boot_attempt==ampve::BootAttempt::Recovery){
+        printf("AMPVE recovery: repeated unconfirmed boots. Release BOOT, then hold it for five seconds to retry. Nothing erased.\n");
         // A local physical retry clears only this app's boot counter, never network/identity data.
         gpio_config_t input={};input.pin_bit_mask=1ULL<<BOOT_BUTTON_GPIO;input.mode=GPIO_MODE_INPUT;input.pull_up_en=GPIO_PULLUP_ENABLE;
-        gpio_config(&input);int held=0;
+        if(gpio_config(&input)!=ESP_OK){printf("AMPVE recovery: BOOT input unavailable. Use audited USB recovery.\n");return;}
+        ampve::BootRetryHold retry;
         while(true){
-            held=gpio_get_level(BOOT_BUTTON_GPIO)==0?held+1:0;
-            if(held>=50 && nvs_set_u32(store_handle,"boots",0)==ESP_OK && nvs_commit(store_handle)==ESP_OK)esp_restart();
+            if(retry.update(gpio_get_level(BOOT_BUTTON_GPIO)==0,esp_timer_get_time())){
+                if(ampve::reset_boot_attempts(store_handle))esp_restart();
+                printf("AMPVE recovery: retry counter commit failed. Release BOOT before another five-second hold.\n");
+            }
             vTaskDelay(pdMS_TO_TICKS(100));
         }
     }
-    if(nvs_set_u32(store_handle,"boots",boots+1)!=ESP_OK || nvs_commit(store_handle)!=ESP_OK)return;
     setup_password=credential().substr(0,16);
     if(xTaskCreate(startup_check,"ampve_startup",4096,nullptr,2,nullptr)!=pdPASS)return;
     auto& board=Board::GetInstance();
