@@ -165,7 +165,7 @@ if(root) {
     status.textContent='Recovery comparison complete. The device was not changed.';
   }
   get('recover-device').onclick=()=>{
-    recoveryMode=true;plan=null;show('device-confirmation');show('wifi-step');
+    recoveryMode=true;installedRuntime=null;plan=null;show('device-confirmation');show('wifi-step');
     get('model-evidence').textContent='Confirm the board name, then select your original backups. You can check USB startup or restore without starting another installation.';
     status.textContent='Recovery mode. Use your backups from before AMPVE was installed.';
     get('device-confirmation').scrollIntoView({behavior:'smooth'});sync();
@@ -214,7 +214,7 @@ if(root) {
   get('prepare-install').onclick=()=>run(prepareInstallation);
   async function prepareInstallation(){
     plan=null;policy=null;get('release-status').textContent='Checking availability…';get('candidate-download').hidden=true;get('export-plan-review').hidden=true;get('plan-panel').hidden=true;status.textContent='Checking the curated AMPVE release…';
-    const response=await fetch(root.dataset.release,{cache:'no-store'});ensure(response.ok,'Release unavailable.');
+    const response=await fetch(root.dataset.release+(recoveryMode?'?recovery=1':''),{cache:'no-store'});ensure(response.ok,'Release unavailable.');
     const data=await response.json();
     const approved=data.status==='reviewed-development-release';
     if(!approved && data.status!=='development-review') {
@@ -226,7 +226,7 @@ if(root) {
     if(approved)policy=await verifyRelease(data);
     const appInfo=approved?policy.app:data.app;
     ensure(appInfo && /^[a-f0-9]{64}$/.test(appInfo.sha256),'Candidate identity missing.');
-    const appResponse=await fetch(`/devices/firmware/artifacts/${appInfo.sha256}.bin`,{cache:'no-store'});
+    const appResponse=await fetch(`/devices/firmware/artifacts/${appInfo.sha256}.bin${recoveryMode?'?recovery=1':''}`,{cache:'no-store'});
     ensure(appResponse.ok,'App unavailable.');
     ensure(get('board-confirm').checked,'Confirm the printed board model before preparing an installation.');
     const checkedReport={...report,owner_confirmed_profile:CONTRACT.profile_id};
@@ -263,7 +263,7 @@ if(root) {
     plan.recovery_saved=true;downloadLink('export-plan-review',planReviewSummary(plan));status.textContent='Recovery files saved and checked on your computer.';
   });
   get('install-ampve').onclick=()=>run(async signal=>{
-    boardConsent();ensure(policy&&plan?.review_only!==true,'A reviewed signed release is required before installation.');ensure(plan?.recovery_saved&&port,'Save recovery files and select the same board first.');
+    boardConsent();ensure(!recoveryMode&&!currentFlashChanged,'Restore the original software before installing again.');ensure(policy&&plan?.review_only!==true,'A reviewed signed release is required before installation.');ensure(plan?.recovery_saved&&port,'Save recovery files and select the same board first.');
     const consent={exact_plan:get('approve-plan').checked,separate_copy:get('separate-copy').checked,rom_recovery:get('rom-recovery').checked};
     ensure(Object.values(consent).every(Boolean),'Confirm the exact write/recovery plan first.');
     // Revalidate approval/signature at click time, then hold the same transport through all writes.
@@ -304,7 +304,7 @@ if(root) {
     // Release the ROM reader; the startup checker pulses reset after opening its sole reader.
     await close();
     if(!installedRuntime){
-      const response=await fetch(root.dataset.release,{cache:'no-store'});ensure(response.ok,'Release unavailable.');
+      const response=await fetch(root.dataset.release+(recoveryMode?'?recovery=1':''),{cache:'no-store'});ensure(response.ok,'Release unavailable.');
       const expected=await verifyRelease(await response.json());
       ensure(allowsUsbCommissioning(expected),'This release does not support USB startup checks.');
       installedRuntime={version:expected.firmware_version,sha256:expected.app.sha256};
@@ -325,7 +325,7 @@ if(root) {
       // The full read is cancellable. Lock cancellation before any restore write.
       writing=true;get('cancel-setup').disabled=true;
       await executeRecovery(reader,recoveryPlan,review,{restore_original:true,discard_ampve_settings:true,stable_usb_power:true},progress);
-      await close();recoveryPlan=null;currentFlashChanged=false;recoveryMode=false;
+      await close();recoveryPlan=null;installedRuntime=null;plan=null;policy=null;currentFlashChanged=false;recoveryMode=false;
       status.textContent='Original flash restored and verified. Confirm that the original application starts on the board.';
     });
   };

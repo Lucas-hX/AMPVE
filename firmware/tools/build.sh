@@ -23,6 +23,11 @@ if [[ -f sdkconfig ]] && ! grep -q 'CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="part
     cp sdkconfig sdkconfig.pre-stock-profile
     rm sdkconfig
 fi
+# Generated sdkconfig wins over defaults, including on existing development workdirs.
+if [[ -f sdkconfig ]] && grep -q '^CONFIG_PM_SLEEP_CLK_ICG_ENABLE=y$' sdkconfig; then
+    cp sdkconfig sdkconfig.pre-startup-retention-fix
+    sed -i 's/^CONFIG_PM_SLEEP_CLK_ICG_ENABLE=y$/# CONFIG_PM_SLEEP_CLK_ICG_ENABLE is not set/' sdkconfig
+fi
 if [[ ! -d components/78__esp-wifi-connect ]]; then
     idf.py -DIDF_TARGET=esp32p4 reconfigure
     "$AMPVE_TOOL_PYTHON" "$AMPVE_ROOT/firmware/tools/provisioning.py" --work "$AMPVE_WORK"

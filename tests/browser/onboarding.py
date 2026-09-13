@@ -136,6 +136,8 @@ with tempfile.TemporaryDirectory(prefix='ampve-browser-fixture-') as directory,s
     page.wait_for_function('!document.querySelector("#import-backups").disabled')
     page.locator('#import-backups').set_input_files([str(root/name) for name in ['backup-a.bin','backup-b.bin','audit-private.json']])
     page.wait_for_function('document.querySelector("#setup-status").textContent.includes("Original-backup recovery prepared")')
+    assert any(url.endswith('/devices/firmware/release/?recovery=1') for _,url in requests)
+    assert any(url.endswith('/devices/firmware/artifacts/'+app_hash+'.bin?recovery=1') for _,url in requests)
     assert page.locator('#restore-panel').is_visible()
     assert page.locator('#restore-original').is_enabled()
     assert page.locator('#install-ampve').is_disabled()

@@ -1,10 +1,14 @@
 # First Waveshare 7B installation handoff
 
+## Startup correction in preparation — 2026-09-13
+
+The latest owner summary identifies `sleep_clock_icg_startup_init` failing with `0x101` before `app_main` in 0.1.11. The exact ELF match makes further repetition of that diagnostic unnecessary. Version 0.1.12 disables the optional sleep-clock REGDMA initialization; see [the engineering review](USB_COMMISSIONING_REVIEW.md#startup-retention-correction--2026-09-13). Build/signing/deployment evidence will be recorded here after completion. Keep the old signed release available as the recovery reference for its exact `0x2C0000` app span. Physical restoration and corrected native startup remain pending.
+
 ## USB-assisted commissioning update — 2026-09-13
 
 [ADR 0005](../decisions/0005-usb-assisted-commissioning.md) supersedes the mandatory pre-install C6 check **only for an explicitly signed USB-assisted initial-install release**. The platform prepares the same exact stock-preserving write/recovery plan, then checks the installed core over USB before network provisioning. A failed C6 version query remains a diagnostic finding, not proof of incompatibility or a mandatory gate for this mode. Core confirmation, Wi-Fi initialization, actual network operation, pairing and physical recovery are separate evidence. The browser now exposes explicit original-backup restoration with fresh full-flash comparison; it is not yet physically validated. Other releases retain their existing gates.
 
-## Prepared USB-assisted development release
+## Previous USB-assisted development release (recovery reference)
 
 Source `ffa9eb782e7f5998410473c16e4cff02c09c5e3a`, version `0.1.11-usb-setup-dev`, sequence 1. [Engineering review](USB_COMMISSIONING_REVIEW.md) permits the bounded first-install trial with C6/network/peripheral acceptance deferred; it does not claim physical success. Exact local current-unit comparison and browser install consent remain mandatory.
 

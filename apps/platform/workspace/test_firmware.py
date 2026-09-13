@@ -16,7 +16,7 @@ class FirmwareDeliveryTests(TestCase):
         self.directory=tempfile.TemporaryDirectory()
         self.addCleanup(self.directory.cleanup)
         self.root=Path(self.directory.name)
-        self.settings=override_settings(FIRMWARE_REVIEW_ROOT=str(self.root),FIRMWARE_RELEASE_ROOT=str(self.root/'release'),FIRMWARE_PUBLISHER_TRUST=str(self.root/'trust.json'))
+        self.settings=override_settings(FIRMWARE_RECOVERY_ROOT='',FIRMWARE_REVIEW_ROOT=str(self.root),FIRMWARE_RELEASE_ROOT=str(self.root/'release'),FIRMWARE_PUBLISHER_TRUST=str(self.root/'trust.json'))
         self.settings.enable();self.addCleanup(self.settings.disable)
         self.user=User.objects.create_user(email='firmware-fixture@example.test',password='fixture-password-12345')
 
@@ -124,3 +124,28 @@ class FirmwareDeliveryTests(TestCase):
         self.assertEqual(data['status'],'ota-release-only')
         self.assertFalse(data['installable'])
         self.assertEqual(self.client.get('/devices/firmware/artifacts/'+app['sha256']+'.bin').status_code,404)
+
+    def test_previous_release_recovery_is_explicit_authenticated_and_fail_closed(self):
+        import shutil
+        root=self.approved()
+        previous=self.root/'previous'
+        shutil.copytree(root,previous)
+        digest=self.policy['app']['sha256']
+        # The current release can be unavailable without losing a valid previous recovery.
+        (root/'approved-release.json').write_text('{}')
+        with override_settings(FIRMWARE_RECOVERY_ROOT=str(previous)):
+            self.assert_blocked()
+            self.assertEqual(self.client.get('/devices/firmware/release/?recovery=1').json()['release_id'],self.release_id)
+            url='/devices/firmware/artifacts/'+digest+'.bin?recovery=1'
+            response=self.client.get(url)
+            self.assertEqual(response.status_code,200)
+            self.assertTrue(b''.join(response.streaming_content))
+            self.assertEqual(self.client.get('/devices/firmware/artifacts/'+'f'*64+'.bin?recovery=1').status_code,404)
+            self.client.logout()
+            self.assertEqual(self.client.get('/devices/firmware/release/?recovery=1').status_code,302)
+            self.assertEqual(self.client.get(url).status_code,302)
+            self.client.force_login(self.user)
+            (previous/'approved-release.json').unlink()
+            self.candidate()
+            self.assertEqual(self.client.get('/devices/firmware/release/?recovery=1').json()['status'],'release-verification-failed')
+            self.assertEqual(self.client.get(url).status_code,404)

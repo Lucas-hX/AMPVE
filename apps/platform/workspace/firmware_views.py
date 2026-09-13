@@ -10,8 +10,9 @@ from django.views.decorators.http import require_GET
 from .release_contract import read_release
 
 
-def release_data():
-    root=Path(settings.FIRMWARE_RELEASE_ROOT)
+def release_data(recovery=False):
+    recovery_root=settings.FIRMWARE_RECOVERY_ROOT if recovery else ''
+    root=Path(recovery_root or settings.FIRMWARE_RELEASE_ROOT)
     if (root/'approved-release.json').exists():
         try:
             policy,release_id,key,envelope,floor=read_release(root,Path(settings.FIRMWARE_PUBLISHER_TRUST))
@@ -22,6 +23,8 @@ def release_data():
         except Exception:
             # Missing trust, revocation and corrupt provenance all disable new operations.
             return {'status':'release-verification-failed','installable':False},None
+    if recovery_root:
+        return {'status':'release-verification-failed','installable':False},None
     try:
         review=Path(settings.FIRMWARE_REVIEW_ROOT)
         manifest=json.loads((review/'review-manifest.json').read_text())
@@ -39,7 +42,7 @@ def release_data():
 @login_required
 @require_GET
 def release(request):
-    data,_=release_data()
+    data,_=release_data(recovery=request.GET.get('recovery')=='1')
     return JsonResponse(data)
 
 
@@ -47,7 +50,7 @@ def release(request):
 @login_required
 @require_GET
 def artifact(request, digest):
-    data,root=release_data()
+    data,root=release_data(recovery=request.GET.get('recovery')=='1')
     app=data.get('app') or data.get('release',{}).get('app',{})
     if root is None or digest!=app.get('sha256'):raise Http404()
     # Only the app is deliverable here. No arbitrary path or private audit upload/download.
