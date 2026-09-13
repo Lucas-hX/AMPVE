@@ -124,3 +124,7 @@ The comparison rehashes both full backups and proposed artifact files, checks th
 - Forty-two Django tests passed against the isolated test database. The public web runtime-concept test passed its five screens, three viewport widths and explicitly simulated controls. A separate browser fixture test of the actual patched provisioning HTML passed escaped SSID rendering, required API headers and cleared password input. This does not validate ESP-Hosted, Wi-Fi radio or the on-board HTTP server.
 - The upstream patch transformations reproduced against a fresh pinned checkout/original resolved Wi-Fi component. Build environments, upstream repositories, artifacts and logs remain outside Git. Existing AMPVE and NEUROSIS services remained active; no platform migration or service reconfiguration was needed.
 - **Not tested:** the current physical board's flash/security/layout, backup/restoration, C6 ABI, native screen/touch, speaker, on-board HTTPS enrollment, reboot/revocation behavior, power interruption or rollback. No firmware was installed and no hardware security settings changed.
+
+## Native verification foundation
+
+See [NATIVE_OTA.md](NATIVE_OTA.md) for the `0.1.3-ota-verify-dev` candidate: native signed-policy verification, complete-image hashing and checked startup identity reports. Deployment download/write execution and physical OTA/rollback remain pending.

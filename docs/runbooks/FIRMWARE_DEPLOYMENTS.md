@@ -54,3 +54,7 @@ AMPVE_TESTING=1 .venv/bin/python apps/platform/manage.py test workspace --noinpu
 The PostgreSQL runner creates a temporary cluster with peer authentication and a private Unix socket, no TCP listener, and removes it afterward. It tests concurrent identical/conflicting requests, cancel/claim races, confirmation replay and fresh-process reconciliation. It never changes the deployed database or its roles. Lifecycle tests use temporary signed synthetic app fixtures. Physical Wi-Fi OTA, power interruption and rollback remain separate acceptance gates.
 
 VPS validation (2026-09-13): migration 0006 applied after the private database backup completed; the reconciliation timer is enabled and its first invocation succeeded. The platform and audio services stayed available, and public HTTPS health passed. The Django suite passed 65 tests with five PostgreSQL-only cases skipped; the isolated PostgreSQL run passed all 19 lifecycle/concurrency cases. A temporary browser device fixture exercised the new empty-state update page at 390, 768 and 1440 pixels and was removed. No production release, deployment or publisher key was created. Deployment checks retain the two existing HSTS subdomain/preload warnings.
+
+## Native verification foundation
+
+See [NATIVE_OTA.md](NATIVE_OTA.md) for the `0.1.3-ota-verify-dev` candidate: native signed-policy verification, complete-image hashing and checked startup identity reports. Deployment download/write execution and physical OTA/rollback remain pending.

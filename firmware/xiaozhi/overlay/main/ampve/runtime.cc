@@ -1,5 +1,6 @@
 // AMPVE native development shell. No cloud audio or firmware-write endpoint.
 #include "runtime.h"
+#include "image_identity.h"
 #include "board.h"
 #include "boards/waveshare/esp32-p4-wifi6-touch-lcd/config.h"
 #include "profile.h"
@@ -43,7 +44,7 @@ static std::atomic<bool> wifi_requested{false}, pair_requested{false}, tone_requ
 static std::atomic<bool> local_muted{true}, heard_tone{false}, tone_played{false};
 static std::atomic<int> local_volume{-1};
 static std::atomic<uint32_t> ui_ticks{0};
-static std::atomic<bool> management_started{false};
+static std::atomic<bool> management_started{false}, boot_confirmed{false}, image_verified{false};
 static std::mutex ui_mutex;
 static std::string network_text="Starting Wi-Fi", management_text="Not paired", pair_code;
 static std::string device_name="My AMPVE", about_text;
@@ -275,14 +276,13 @@ static bool identifier(const std::string& value, size_t size, bool uuid=false) {
 }
 static void startup_check(void*) {
     vTaskDelay(pdMS_TO_TICKS(60000));
-    if(ui_ticks>100 && ampve_touch_ready && storage_ok && management_started &&
+    bool healthy = ui_ticks>100 && ampve_touch_ready && storage_ok && management_started && image_verified;
+    // Never advertise a confirmed startup after a failed otadata write.
+    if(healthy && esp_ota_mark_app_valid_cancel_rollback()==ESP_OK &&
        nvs_set_u32(store_handle,"boots",0)==ESP_OK && nvs_commit(store_handle)==ESP_OK) {
-        esp_ota_img_states_t ota;
-        auto running=esp_ota_get_running_partition();
-        if(esp_ota_get_state_partition(running,&ota)==ESP_OK && ota==ESP_OTA_IMG_PENDING_VERIFY)
-            esp_ota_mark_app_valid_cancel_rollback();
+        boot_confirmed=true;
     } else {
-        printf("AMPVE startup diagnostics failed. Attempting app rollback, otherwise bounded restart.\n");
+        printf("AMPVE startup diagnostics or confirmation failed. Attempting app rollback, otherwise bounded restart.\n");
         // This can only roll back if an earlier valid OTA app and compatible bootloader exist.
         esp_ota_mark_app_invalid_rollback_and_reboot();
         esp_restart();
@@ -290,6 +290,9 @@ static void startup_check(void*) {
     vTaskDelete(nullptr);
 }
 static void worker(void*) {
+    std::string running_hash; size_t running_size=0;
+    image_verified=ampve::running_image_identity(running_hash,running_size);
+    bool identity_reported=false;
     std::string stored=read_state();
     auto state=cJSON_Parse(stored.c_str());
     if(!state || !cJSON_IsObject(state)){storage_ok=false;message("Stored state is invalid. Data preserved.");}
@@ -401,7 +404,7 @@ static void worker(void*) {
                         cJSON_DeleteItemFromObject(state,"device_id");cJSON_AddStringToObject(state,"device_id",received.c_str());
                         for(const char* key:{"enrollment","proof","code","expiry"})cJSON_DeleteItemFromObject(state,key);
                         if(save(encode(state))){
-                            device=received;enrollment.clear();proof.clear();expiry=0;
+                            device=received;identity_reported=false;enrollment.clear();proof.clear();expiry=0;
                             {std::lock_guard<std::mutex> lock(ui_mutex);pair_code.clear();}
                             message("Paired. Connecting to your dashboard.");show_pair_page();
                         }
@@ -439,10 +442,18 @@ static void worker(void*) {
                     }else message("Invalid configuration. Previous settings kept.");
                 } else if(status==401){
                     // Retain the credential until a physical user starts fresh pairing.
-                    device.clear();cJSON_DeleteItemFromObject(state,"device_id");save(encode(state));
+                    device.clear();identity_reported=false;cJSON_DeleteItemFromObject(state,"device_id");save(encode(state));
                     message("Device revoked. Start pairing locally to reconnect.");
                 } else message("Dashboard unavailable. Local controls still work.");
                 cJSON_Delete(response);
+                if(status==200 && boot_confirmed && !identity_reported) {
+                    auto identity=cJSON_CreateObject();cJSON_AddNumberToObject(identity,"protocol",1);
+                    cJSON_AddStringToObject(identity,"app_sha256",running_hash.c_str());
+                    cJSON_AddBoolToObject(identity,"boot_confirmed",true);
+                    std::string identity_reply;
+                    identity_reported=post(device+"/firmware/identity/",token,identity,identity_reply)==200;
+                    cJSON_Delete(identity);
+                }
                 if(status==429)next_request=now+60000000;
             }
         }

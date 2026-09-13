@@ -77,8 +77,21 @@ def prepare(work):
         replace(cmake,'set(PROJECT_VER "0.1.0-dev")','set(PROJECT_VER "0.1.1-stock-dev")')
     if 'set(PROJECT_VER "0.1.1-stock-dev")' in cmake.read_text():
         replace(cmake,'set(PROJECT_VER "0.1.1-stock-dev")',f'set(PROJECT_VER "{UPSTREAM["candidate_version"]}")')
+    if 'set(PROJECT_VER "0.1.2-profile-dev")' in cmake.read_text():
+        replace(cmake,'set(PROJECT_VER "0.1.2-profile-dev")',f'set(PROJECT_VER "{UPSTREAM["candidate_version"]}")')
     if f'set(PROJECT_VER "{UPSTREAM["candidate_version"]}")' not in cmake.read_text():
         raise RuntimeError('Prepared project version differs from the candidate version')
+    component=work/'main/idf_component.yml'
+    if 'espressif/libsodium:' not in component.read_text():
+        replace(component,'dependencies:\n','dependencies:\n  espressif/libsodium: "==1.0.22~1"\n')
+    component_cmake=work/'main/CMakeLists.txt'
+    if '"ampve/ota_policy.cc"' not in component_cmake.read_text():
+        replace(component_cmake,'set(SOURCES "ampve/runtime.cc"',
+                'set(SOURCES "ampve/image_identity.cc" "ampve/ota_policy.cc" "ampve/runtime.cc"')
+        replace(component_cmake,'PRIV_REQUIRES\n','PRIV_REQUIRES\n                        espressif__libsodium\n')
+    if '"ampve/image_identity.cc"' not in component_cmake.read_text():
+        replace(component_cmake,'set(SOURCES "ampve/ota_policy.cc"',
+                'set(SOURCES "ampve/image_identity.cc" "ampve/ota_policy.cc"')
     shutil.copytree(overlay,work,dirs_exist_ok=True)
     (work/'main/ampve/profile.h').write_text(native_header())
     shutil.copyfile(ROOT/'firmware/xiaozhi/sdkconfig.ampve',work/'sdkconfig.ampve')
