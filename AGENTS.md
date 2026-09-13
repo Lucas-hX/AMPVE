@@ -1,8 +1,9 @@
 # Working on AMPVE
 
+Current device milestone: browser USB/ROM inspection and the pairing/heartbeat/settings backend are implemented. Physical tests, the embedded XiaoZhi client, firmware installation and board audio/OTA remain pending. See [docs/runbooks/DEVICES.md](docs/runbooks/DEVICES.md).
 ## Read this first
 
-This repository starts as a product/implementation handoff with graphic assets. The Django platform foundation is implemented; consult docs/runbooks/PLATFORM.md for verified delivery status. Encrypted provider connections and an experimental FastAPI/Pipecat browser preview are implemented; live provider validation, the XiaoZhi device adapter and firmware remain future work. Inspect the current checkout before making claims; later sessions may have added implementation.
+This repository starts as a product/implementation handoff with graphic assets. The Django platform foundation is implemented; consult docs/runbooks/PLATFORM.md for verified delivery status. Encrypted provider connections and an experimental FastAPI/Pipecat browser preview are implemented; Gemini validation, the XiaoZhi device adapter and firmware remain future work. Lucas reports successful OpenAI browser voice. Inspect the current checkout before making claims; later sessions may have added implementation.
 
 Read in this order, then load more detail only as needed:
 
@@ -27,7 +28,7 @@ The first application is AMPVE Companion on a Waveshare ESP32-P4-WIFI6-Touch-LCD
 - ESP Web Tools: browser-based USB installer, curated manifests, and release artifacts. It does not implement AMPVE ownership or automatic Wi-Fi provisioning by itself.
 - Pipecat: backend AI sessions and provider integrations. The XiaoZhi protocol adapter is work we must implement and validate.
 - ESP-IDF: embedded build and OTA primitives, including explicitly configured rollback.
-- Accepted stack: Django/templates for the platform, future FastAPI/Pipecat for audio, PostgreSQL, and the existing Cloudflare HTTPS/WSS tunnel. See docs/decisions/0001-platform-architecture.md for deployment decisions. Confirm the environment and keep the design appropriate for a single VPS.
+- Accepted stack: Django/templates for the platform, FastAPI/Pipecat for audio, PostgreSQL, and the existing Cloudflare HTTPS/WSS tunnel. See docs/decisions/0001-platform-architecture.md for deployment decisions. Confirm the environment and keep the design appropriate for a single VPS.
 
 Do not add ThingsBoard, ElatoAI, Supabase, MeshCentral, openBalena, Kubernetes, or a message broker as an assumed dependency. Reconsider only for a concrete requirement or explicit change of direction. Preserve upstream license notices when source is incorporated; the third-party links here do not mean their code is already vendored.
 

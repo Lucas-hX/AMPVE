@@ -52,7 +52,7 @@ The [visual guide](../images/ampve-brand-kit-v1/README.md) explains how to inter
 - Build the AMPVE account, ownership, pairing, configuration, application assignment, release/deployment tracking, and diagnostic experience.
 - Implement and test the **XiaoZhi–Pipecat protocol adapter**. Both using WebSockets does not make them directly compatible.
 
-The accepted implementation uses Django with templates for the platform, future FastAPI/Pipecat for audio, and PostgreSQL. Reuse the existing server with a dedicated database/role and the ampve.com Cloudflare Tunnel. See [ADR 0001](decisions/0001-platform-architecture.md) for deployment and tradeoffs. Keep them simple; do not add enterprise IoT stacks solely to prepare for hypothetical scale.
+The accepted implementation uses Django with templates for the platform, FastAPI/Pipecat for audio, and PostgreSQL. Reuse the existing server with a dedicated database/role and the ampve.com Cloudflare Tunnel. See [ADR 0001](decisions/0001-platform-architecture.md) for deployment and tradeoffs. Keep them simple; do not add enterprise IoT stacks solely to prepare for hypothetical scale.
 
 ## Product rules for the first release
 

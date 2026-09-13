@@ -93,3 +93,52 @@ class AudioSession(models.Model):
     result_code = models.CharField(max_length=40, blank=True)
     started_at = models.DateTimeField(auto_now_add=True)
     ended_at = models.DateTimeField(null=True)
+
+
+class Device(models.Model):
+    import uuid
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    owner = models.ForeignKey(User, on_delete=models.CASCADE, related_name='devices')
+    name = models.CharField(max_length=80)
+    hardware_profile = models.CharField(max_length=80)
+    credential_hash = models.CharField(max_length=64, blank=True, editable=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    revoked_at = models.DateTimeField(null=True, editable=False)
+    last_seen = models.DateTimeField(null=True, editable=False)
+    firmware_version = models.CharField(max_length=80, blank=True)
+    chip_revision = models.CharField(max_length=20, blank=True)
+    transport = models.CharField(max_length=16, blank=True)
+    config_version = models.PositiveIntegerField(default=1)
+    acknowledged_version = models.PositiveIntegerField(default=0)
+    volume = models.PositiveSmallIntegerField(default=40)
+    microphone_muted = models.BooleanField(default=True)
+
+    @property
+    def connection_state(self):
+        from django.utils import timezone
+        from datetime import timedelta
+        if self.revoked_at:
+            return 'Revoked'
+        if not self.last_seen:
+            return 'Awaiting device'
+        return 'Online' if self.last_seen > timezone.now() - timedelta(seconds=90) else 'Offline'
+
+    class Meta:
+        ordering = ['-created_at']
+
+
+class DeviceEnrollment(models.Model):
+    import uuid
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    code_hash = models.CharField(max_length=64, unique=True)
+    proof_hash = models.CharField(max_length=64)
+    hardware_profile = models.CharField(max_length=80)
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField()
+    device = models.OneToOneField(Device, null=True, on_delete=models.CASCADE)
+
+
+class DeviceRateBucket(models.Model):
+    key = models.CharField(max_length=64, primary_key=True)
+    started_at = models.DateTimeField()
+    count = models.PositiveIntegerField(default=0)

@@ -6,7 +6,7 @@ from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_GET
 from django.http import JsonResponse
 from .forms import ProfileForm, SignInForm
-from .models import Application
+from .models import Application, Device
 
 
 class SignInView(LoginView):
@@ -27,7 +27,7 @@ def page(request, section='home'):
               'apps': 'Find a little possibility.', 'connections': 'Your AI connections.',
               'onboarding': 'A new home for your ideas.'}
     return render(request, f'workspace/{section}.html', {'section': section,
-        'title': titles[section], 'applications': Application.objects.all()})
+        'title': titles[section], 'applications': Application.objects.all(), 'device_count': Device.objects.filter(owner=request.user).count()})
 
 
 @never_cache

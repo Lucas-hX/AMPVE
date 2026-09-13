@@ -39,3 +39,5 @@ Thumbs.db
 staticfiles/
 .browser-tests/
 .venv-audio/
+apps/platform/static/workspace/inspect.bundle.js
+apps/platform/static/workspace/inspect.bundle.js.LEGAL.txt
