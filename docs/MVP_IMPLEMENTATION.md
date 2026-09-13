@@ -2,7 +2,7 @@
 
 Date: 2026-09-12
 
-Status: Approved product direction; implementation and hardware validation pending
+Status: Django platform foundation delivered; provider integration and hardware validation pending
 
 Audience: Developers and coding agents building AMPVE on a Debian VPS
 
@@ -59,20 +59,20 @@ OVH Debian VPS
   Credentials supplied by the device owner's AMPVE account
 ```
 
-Recommended implementation stack:
+Accepted implementation stack (2026-09-13; see [ADR 0001](decisions/0001-platform-architecture.md)):
 
-- **Next.js/React** for the web interface and embedded ESP Web Tools component.
-- **FastAPI/Python** for the management API and the initial device/session service, using Pipecat as a library. Keep management and session modules separable; they can start in one backend container for the private MVP.
-- **PostgreSQL** for durable application state. Use migrations from the beginning.
-- **Docker Compose** for reproducible deployment on Debian. No Kubernetes requirement.
-- **Caddy** as the default HTTPS ingress, routing web, API, and WebSocket traffic. An existing Cloudflare Tunnel may replace the public ingress route if preferred; its WSS connection behavior must be tested. Do not assume a tunnel provides generic WebRTC/UDP transport.
+- **Django/templates** for the web interface, accounts, management API and future embedded ESP Web Tools component.
+- **FastAPI/Python + Pipecat** for the future audio/session service and XiaoZhi adapter, separate from Django management.
+- **PostgreSQL** for durable application state, reusing the VPS server with a dedicated AMPVE database and login role. Use migrations from the beginning.
+- **Docker Compose** remains the portable deployment direction. The initial delivery uses a dedicated virtual environment and systemd to reuse the existing Unix-socket PostgreSQL and tunnel without adding a container daemon.
+- **Existing Cloudflare Tunnel for ampve.com** as HTTPS ingress to the loopback application origin. Test WSS connection behavior before enabling audio; do not assume generic WebRTC/UDP transport.
 - A persistent directory for immutable, versioned firmware artifacts. Object storage can be introduced later.
 
 This is an implementation choice, not an upstream stack requirement. It deliberately avoids operating a full Supabase installation solely for this MVP.
 
 The VPS routes sessions; it does not host the large AI models. Its available CPU, RAM, disk, and existing workloads must be inventoried before deployment. Capacity must be measured with actual audio sessions. Do not promise a device or concurrency limit from server specifications alone.
 
-Only HTTPS/WSS ingress should be publicly accessible. Database and internal services stay on the private Compose network. Back up the database, artifact metadata, and the separately protected encryption key required to restore provider credentials.
+Only HTTPS/WSS ingress should be publicly accessible. Database and internal services stay private, using the existing Unix socket initially. Back up the database, artifact metadata, and the separately protected encryption key required to restore provider credentials.
 
 ## 4. Supported first device and known constraints
 
@@ -211,7 +211,7 @@ Persist the following concepts:
 | Deployment | Device, target release, state, progress, result and timestamps |
 | Session/event | Owner/device, provider, lifecycle, timing, sanitized error details |
 
-Start with five user-facing areas: **Overview, Devices, Applications, Providers, and Settings**. Put release publishing and test-account administration behind the administrator role. One useful catalog card is sufficient; do not populate a fictional marketplace.
+Start with five user-facing areas: **Home, My devices, Explore apps, Connections, and Settings**. Put release publishing and test-account administration behind the administrator role. One useful catalog card is sufficient; do not populate a fictional marketplace.
 
 Management API contracts should cover accounts, provider credentials, enrollment, devices, assignments, releases, deployments, sessions, and events. Device endpoints should cover enrollment, heartbeat/configuration acknowledgement, update status, artifacts, and the XiaoZhi voice WebSocket. Final route names may follow the implementation's conventions.
 
@@ -277,7 +277,7 @@ The product value should appear in the completed workflow: a person connects sup
 
 This file is self-contained for planning and implementation on the VPS. Existing AMPVE hardware backups and audit artifacts remain on the development computer; copying this brief does not copy those files or prove the board is accessible from the VPS. Hardware work requires a local session or a deliberately implemented bridge.
 
-This repository contains the current product direction and its first implementation brief. Use [PRODUCT_DIRECTION.md](PRODUCT_DIRECTION.md) for positioning and [../AGENTS.md](../AGENTS.md) for contributor instructions. Older local experiments are outside this repository and are not prerequisites for building the platform. No executable application or verified firmware release is included yet.
+This repository contains the current product direction and its first implementation brief. Use [PRODUCT_DIRECTION.md](PRODUCT_DIRECTION.md) for positioning and [../AGENTS.md](../AGENTS.md) for contributor instructions. Older local experiments are outside this repository and are not prerequisites for building the platform. The Django foundation is tracked in [the platform runbook](runbooks/PLATFORM.md); no verified firmware release is included yet.
 
 Sources reviewed for the selected approach; upstream content may change, so pin the versions chosen during implementation:
 

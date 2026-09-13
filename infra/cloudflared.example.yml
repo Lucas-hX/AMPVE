@@ -1,0 +1,7 @@
+# Adapt the existing user's tunnel; keep tunnel credentials outside Git.
+tunnel: REPLACE_WITH_TUNNEL_ID
+credentials-file: /home/ampve/.cloudflared/REPLACE_WITH_TUNNEL_ID.json
+ingress:
+  - hostname: ampve.com
+    service: http://127.0.0.1:3000
+  - service: http_status:404

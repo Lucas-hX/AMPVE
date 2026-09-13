@@ -2,7 +2,7 @@
 
 ## Read this first
 
-This repository starts as a product/implementation handoff with graphic assets. There is no working web app, API, device adapter, deployment, or verified firmware release here yet. Inspect the current checkout before making claims; later sessions may have added implementation.
+This repository starts as a product/implementation handoff with graphic assets. The Django platform foundation is implemented; consult docs/runbooks/PLATFORM.md for verified delivery status. Provider sessions, the device adapter and firmware remain future work. Inspect the current checkout before making claims; later sessions may have added implementation.
 
 Read in this order, then load more detail only as needed:
 
@@ -27,7 +27,7 @@ The first application is AMPVE Companion on a Waveshare ESP32-P4-WIFI6-Touch-LCD
 - ESP Web Tools: browser-based USB installer, curated manifests, and release artifacts. It does not implement AMPVE ownership or automatic Wi-Fi provisioning by itself.
 - Pipecat: backend AI sessions and provider integrations. The XiaoZhi protocol adapter is work we must implement and validate.
 - ESP-IDF: embedded build and OTA primitives, including explicitly configured rollback.
-- Proposed web/backend stack: Next.js/React, FastAPI/Python, PostgreSQL, Docker Compose, and HTTPS/WSS ingress. Confirm the environment and keep the design appropriate for a single VPS.
+- Accepted stack: Django/templates for the platform, future FastAPI/Pipecat for audio, PostgreSQL, and the existing Cloudflare HTTPS/WSS tunnel. See docs/decisions/0001-platform-architecture.md for deployment decisions. Confirm the environment and keep the design appropriate for a single VPS.
 
 Do not add ThingsBoard, ElatoAI, Supabase, MeshCentral, openBalena, Kubernetes, or a message broker as an assumed dependency. Reconsider only for a concrete requirement or explicit change of direction. Preserve upstream license notices when source is incorporated; the third-party links here do not mean their code is already vendored.
 
@@ -37,7 +37,7 @@ When asked to build, inspect repository state and the host's available runtimes,
 
 Keep web UI, management logic, protocol adaptation, and firmware responsibilities identifiable. Record chosen dependency/toolchain versions. A release artifact must be reproducible and traceable to its source. Do not create fake production devices or report mocked sessions as working integrations; test fixtures should be clearly identified.
 
-Use maintained authentication and cryptographic libraries. Avoid custom protocols or frameworks where the chosen foundations already solve the problem. Keep changes scoped to the requested milestone, update affected docs, and run checks appropriate to the implementation that actually exists. There are no application build/test commands yet; document them when introduced.
+Use maintained authentication and cryptographic libraries. Avoid custom protocols or frameworks where the chosen foundations already solve the problem. Keep changes scoped to the requested milestone, update affected docs, and run checks appropriate to the implementation that actually exists. Use the application commands documented in docs/runbooks/PLATFORM.md.
 
 Work autonomously on authorized code, documentation, read-only investigation, and reversible local preparation. Ask only for genuinely missing information or actions outside the authorization already provided. Finish reviewable artifacts before requesting any required final approval.
 
@@ -74,7 +74,7 @@ Write repository documentation and code comments in English. Match the user's la
 
 Keep private backups, firmware dumps, credentials, generated build output, dependencies, local state, and logs out of Git. Preserve original selected assets; use versioned siblings for revisions. Do not commit unrelated local experiments or entire upstream repositories accidentally.
 
-The initial scope is documentation and eight final PNG images with a gallery, prompts, and CSS tokens. No project-wide software license has been selected here; do not invent one without the owner's decision. Third-party source retains its own licensing obligations when incorporated.
+The repository now includes the Django platform foundation alongside documentation and eight original PNG images, a gallery, prompts, and CSS tokens. No project-wide software license has been selected here; do not invent one without the owner's decision. Third-party source retains its own licensing obligations when incorporated.
 
 ## Windows GitHub authentication (host-specific)
 

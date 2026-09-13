@@ -1,0 +1,21 @@
+[Unit]
+Description=AMPVE existing Cloudflare Tunnel
+Wants=network-online.target
+After=network-online.target ampve-platform.service
+
+[Service]
+Type=simple
+User=ampve
+Group=ampve
+ExecStart=/usr/local/bin/cloudflared --no-autoupdate tunnel --config /home/ampve/.cloudflared/config.yml run 6d42089c-0f0c-409e-b829-91bcdf2272aa
+Restart=always
+RestartSec=5
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+
+[Install]
+WantedBy=multi-user.target

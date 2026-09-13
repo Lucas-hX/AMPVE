@@ -1,0 +1,10 @@
+[Unit]
+Description=Daily AMPVE metadata cleanup
+
+[Timer]
+OnCalendar=*-*-* 04:40:00 UTC
+Persistent=true
+RandomizedDelaySec=300
+
+[Install]
+WantedBy=timers.target

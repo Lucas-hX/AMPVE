@@ -1,0 +1,18 @@
+[Unit]
+Description=AMPVE session and authentication metadata cleanup
+After=neurosis-postgresql.service
+Requires=neurosis-postgresql.service
+
+[Service]
+Type=oneshot
+User=ampve
+Group=ampve
+WorkingDirectory=/home/ampve/projects/AMPVE/apps/platform
+ExecStart=/home/ampve/projects/AMPVE/.venv/bin/python manage.py clearsessions
+ExecStart=/home/ampve/projects/AMPVE/.venv/bin/python manage.py axes_reset_logs --age 30
+ExecStart=/home/ampve/projects/AMPVE/.venv/bin/python manage.py axes_reset_failure_logs --age 30
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only

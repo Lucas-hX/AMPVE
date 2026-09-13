@@ -1,0 +1,25 @@
+[Unit]
+Description=AMPVE Django platform
+After=network.target neurosis-postgresql.service
+Requires=neurosis-postgresql.service
+
+[Service]
+Type=simple
+User=ampve
+Group=ampve
+WorkingDirectory=/home/ampve/projects/AMPVE/apps/platform
+Environment=AMPVE_CONFIG=/home/ampve/.config/ampve/platform.json
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/home/ampve/projects/AMPVE/.venv/bin/gunicorn config.wsgi:application --bind 127.0.0.1:3000 --workers 2 --timeout 30 --max-requests 1000 --max-requests-jitter 100 --error-logfile - --capture-output
+Restart=on-failure
+RestartSec=3
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadOnlyPaths=/home/ampve/projects/AMPVE /home/ampve/.config/ampve
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+
+[Install]
+WantedBy=multi-user.target
