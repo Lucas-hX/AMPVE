@@ -163,7 +163,16 @@ public:
         return -1;
     }
 
-    bool target_failed(uint32_t address) override {auto slot=slot_at(address);esp_ota_img_states_t state;return slot && esp_ota_get_state_partition(slot,&state)==ESP_OK && (state==ESP_OTA_IMG_ABORTED||state==ESP_OTA_IMG_INVALID);}
+    ampve::OtaRecovery recovery(uint32_t address) override {
+        auto slot=slot_at(address);auto running=esp_ota_get_running_partition();auto boot=esp_ota_get_boot_partition();
+        if(!slot || !running || slot==running || boot!=running)return ampve::OtaRecovery::Unknown;
+        esp_ota_img_states_t state;
+        if(esp_ota_get_state_partition(slot,&state)!=ESP_OK)return ampve::OtaRecovery::Unknown;
+        if(state==ESP_OTA_IMG_ABORTED || state==ESP_OTA_IMG_INVALID)return ampve::OtaRecovery::TargetFailed;
+        if(state==ESP_OTA_IMG_NEW || state==ESP_OTA_IMG_UNDEFINED || state==ESP_OTA_IMG_VALID)return ampve::OtaRecovery::PreviousSelected;
+        return ampve::OtaRecovery::Unknown;
+    }
+
     void restart() override {esp_restart();}
     void status(const char* message) override {ampve_ota_status(message);}
 };

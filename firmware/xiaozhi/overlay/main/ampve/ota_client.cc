@@ -55,13 +55,17 @@ void string(cJSON* root,const char* key,const std::string& value) {cJSON_DeleteI
 void integer(cJSON* root,const char* key,uint32_t value) {cJSON_DeleteItemFromObject(root,key);cJSON_AddNumberToObject(root,key,value);}
 bool valid_journal(cJSON* root) {
     uint32_t seq,size,bytes,slot,target_sequence;
-    if(!cJSON_IsObject(root)||num(root,"schema")!=1||!identifier(text(root,"device"),true)||!identifier(text(root,"job"),true)||
+    if(!cJSON_IsObject(root)||(num(root,"schema")!=1&&num(root,"schema")!=2)||!identifier(text(root,"device"),true)||!identifier(text(root,"job"),true)||
        !identifier(text(root,"release"))||!identifier(text(root,"previous"))||!identifier(text(root,"target"))||
        !number(root,"sequence",128,seq)||!number(root,"size",4194304,size)||size<24||
        !number(root,"bytes",size,bytes)||!number(root,"slot",33554432,slot)||!slot||
        !number(root,"target_sequence",2147483647,target_sequence)||!target_sequence)return false;
     auto pending=cJSON_GetObjectItemCaseSensitive(root,"pending");
-    if(cJSON_GetArraySize(root)!=(pending?13:12))return false;
+    const bool modern=num(root,"schema")==2;
+    if(cJSON_GetArraySize(root)!=(pending?13:12)+(modern?1:0))return false;
+    if(modern && !cJSON_IsBool(cJSON_GetObjectItemCaseSensitive(root,"selection_committed")))return false;
+    if(modern && cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(root,"selection_committed")) &&
+       (text(root,"state")=="queued"||text(root,"state")=="downloading"||text(root,"state")=="verifying"))return false;
     if(pending && (!cJSON_IsObject(pending)||cJSON_GetArraySize(pending)!=7||num(pending,"sequence")!=seq||
        num(pending,"bytes_written")!=bytes||text(pending,"release_id")!=text(root,"release")||
        text(pending,"state")!=text(root,"state")||!cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(pending,"boot_confirmed"))||
@@ -143,10 +147,11 @@ void OtaClient::tick(const std::string& device) {
     device_=device;
     if(!initialized_){
         if(!port_.load(journal_)){stopped_=true;port_.status("Update journal unavailable. Local recovery required.");return;}
-        initialized_=true;interrupted_=!journal_.empty();
+        initialized_=true;interrupted_=!journal_.empty();recovering_boot_=interrupted_;
     }
     OtaContext context;if(!port_.context(context))return;
     if(journal_.empty()) {
+        recovering_boot_=false;interrupted_=false;
         if(context.publishers.empty()||!context.confirmed_sequence)return;
         auto payload=Json(cJSON_CreateObject(),cJSON_Delete);
         cJSON_AddNumberToObject(payload.get(),"protocol",1);cJSON_AddBoolToObject(payload.get(),"boot_confirmed",true);
@@ -160,11 +165,17 @@ void OtaClient::tick(const std::string& device) {
         auto root=Json(cJSON_CreateObject(),cJSON_Delete);
         for(auto item: {std::pair<const char*,std::string>{"device",device},{"job",text(job,"deployment_id")},{"release",policy.release_id},
             {"previous",context.running_app_sha256},{"target",policy.app_sha256},{"state","queued"}})string(root.get(),item.first,item.second);
-        integer(root.get(),"schema",1);integer(root.get(),"slot",slot);integer(root.get(),"size",policy.app_size);integer(root.get(),"target_sequence",policy.sequence);
+        integer(root.get(),"schema",2);cJSON_AddBoolToObject(root.get(),"selection_committed",false);integer(root.get(),"slot",slot);integer(root.get(),"size",policy.app_size);integer(root.get(),"target_sequence",policy.sequence);
         integer(root.get(),"sequence",0);integer(root.get(),"bytes",0);journal_=encode(root.get());if(!persist())return;
     }
     auto root=parse(journal_,2048);
     if(!root||!valid_journal(root.get())||text(root.get(),"device")!=device){stopped_=true;port_.status("Update journal mismatch. Local recovery required.");return;}
+    if(num(root.get(),"schema")==1){
+        // Older journals did not record actual boot selection. Preserve their exact pending
+        // report, but never invent the missing evidence when recovering a predecessor.
+        integer(root.get(),"schema",2);cJSON_AddBoolToObject(root.get(),"selection_committed",false);
+        journal_=encode(root.get());if(!persist())return;
+    }
     auto state=text(root.get(),"state");
     if(context.running_app_sha256!=text(root.get(),"previous")&&context.running_app_sha256!=text(root.get(),"target")){
         stopped_=true;port_.status("Running firmware differs from the update journal.");return;}
@@ -173,12 +184,22 @@ void OtaClient::tick(const std::string& device) {
     root=parse(journal_,2048);state=text(root.get(),"state");
     if(terminal(state)) {
         if(state=="confirmed"&&!port_.advance_sequence(num(root.get(),"target_sequence"))){stopped_=true;return;}
-        journal_.clear();persist();interrupted_=false;port_.status("Firmware outcome reported to your dashboard.");return;
+        journal_.clear();persist();interrupted_=false;recovering_boot_=false;port_.status("Firmware outcome reported to your dashboard.");return;
     }
     if(state=="rebooting" && (interrupted_||context.running_app_sha256==text(root.get(),"target"))) {
         if(context.running_app_sha256==text(root.get(),"target"))report("confirmed",num(root.get(),"size"));
-        else if(port_.target_failed(num(root.get(),"slot")))report("rolled_back",num(root.get(),"size"),"boot_failed");
-        else report("failed",num(root.get(),"size"),"storage");
+        else if(!recovering_boot_ && !cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(root.get(),"selection_committed"))) {
+            // This process received a rejection before selecting anything. An old aborted
+            // slot is unrelated; no physical boot recovery needs to be inferred here.
+            report("failed",num(root.get(),"size"),"approval_unavailable");
+        }
+        else {
+            auto recovery=port_.recovery(num(root.get(),"slot"));
+            if(recovery==OtaRecovery::TargetFailed && cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(root.get(),"selection_committed")))
+                report("rolled_back",num(root.get(),"size"),"boot_failed");
+            else if(recovery==OtaRecovery::PreviousSelected)report("failed",num(root.get(),"size"),"storage");
+            else {stopped_=true;port_.status("Update outcome uncertain. Keep recovery files and inspect the board locally.");}
+        }
         return;
     }
     if(interrupted_) {report("failed",num(root.get(),"bytes"),"network");return;}
@@ -197,12 +218,19 @@ void OtaClient::tick(const std::string& device) {
     port_.status("Download complete. Verifying firmware before restart.");
     if(!approved(policy)){report("failed",num(root.get(),"bytes"),"approval_unavailable");return;}
     if(!port_.verify_target(num(root.get(),"slot"),policy.app_sha256,policy.app_size)){
-        report("failed",policy.app_size,"hash_mismatch");return;}
+        report("failed",policy.app_size,state=="rebooting"?"image_rejected":"hash_mismatch");return;}
     if(state!="rebooting" && !report("rebooting",policy.app_size))return;
     // Authorization acknowledgement is persisted before selecting a different boot slot.
     int selection=port_.select(num(root.get(),"slot"),policy.expires_at);
     if(selection<0){stopped_=true;port_.status("Boot selection uncertain. Retain power and recovery files; inspect locally.");return;}
     if(selection==0){report("failed",policy.app_size,port_.failure());return;}
+    // Commit evidence only after the hardware adapter verified selection. A power loss
+    // before this commit may leave an uncertain predecessor outcome, never a guessed rollback.
+    auto selected=parse(journal_,2048);
+    if(!selected || !cJSON_ReplaceItemInObjectCaseSensitive(selected.get(),"selection_committed",cJSON_CreateBool(true))){
+        stopped_=true;port_.status("Boot selection could not be recorded. Keep recovery files.");return;
+    }
+    journal_=encode(selected.get());if(!persist())return;
     port_.status("Firmware verified. Restarting; keep power connected.");port_.restart();
 }
 }

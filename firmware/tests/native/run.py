@@ -104,5 +104,6 @@ with tempfile.TemporaryDirectory(prefix='ampve-native-policy-') as directory:
         'signature':base64.b64encode(key.sign(payload)).decode()}))
     (tmp/'context.json').write_bytes(canonical(context))
     for scenario in ['success','claim_ack_lost','progress_ack_lost','verify_ack_lost','reboot_ack_lost','outcome_ack_lost',
-                     'network','cancel','hash','select','save_fail','save_ack_fail','power_download','power_before_select','rollback','reauthorization_denied','revoked_after_lost_ack','owner_cancel_race','select_uncertain','corrupt_journal','deep_journal']:
+                     'network','cancel','hash','select','save_fail','save_ack_fail','power_download','power_before_select','rollback','reauthorization_denied','revoked_after_lost_ack','owner_cancel_race','select_uncertain','corrupt_journal','deep_journal','stale_failed_slot','recovery_unreadable','selection_save_fail_target',
+                     'selection_save_fail_rollback','legacy_target','legacy_predecessor','legacy_pending','denied_stale_slot']:
         subprocess.run([str(tmp/'client'),str(tmp/'envelope.json'),str(tmp/'context.json'),hashlib.sha256(payload).hexdigest(),scenario],check=True)

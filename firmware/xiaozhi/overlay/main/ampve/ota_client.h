@@ -3,6 +3,7 @@
 #include <string>
 
 namespace ampve {
+enum class OtaRecovery { Unknown, PreviousSelected, TargetFailed };
 // Hardware/transport boundary. Implementations must keep credentials out of replies/logs.
 class OtaPort {
 public:
@@ -19,7 +20,7 @@ public:
     virtual bool verify_target(uint32_t slot, const std::string& hash, size_t size) = 0;
     // 1: selected; 0: previous boot selection verified; -1: outcome uncertain.
     virtual int select(uint32_t slot, int64_t expires_at) = 0;
-    virtual bool target_failed(uint32_t slot) = 0;
+    virtual OtaRecovery recovery(uint32_t slot) = 0;
     virtual void restart() = 0;
     virtual void status(const char*) = 0;
 };
@@ -32,7 +33,7 @@ public:
     bool progress(size_t bytes);
 private:
     OtaPort& port_;
-    bool initialized_ = false, interrupted_ = false, stopped_ = false;
+    bool initialized_ = false, interrupted_ = false, recovering_boot_ = false, stopped_ = false;
     std::string device_, journal_;
     bool report(const char* state, size_t bytes, const char* error = "");
     bool flush();
