@@ -135,8 +135,9 @@ export function bootFailureDetails(raw){
 
 // Read-only symbol labels never authorize installation or replace the live identity check.
 export function resolveStartupInitializers(expected,prefixes,failures){
-  const matches=expected.sha256===startupSymbols.app_sha256&&prefixes.length===1&&
-    /^[a-f0-9]{8,64}$/.test(prefixes[0])&&startupSymbols.elf_sha256.startsWith(prefixes[0]);
-  return failures.map(failure=>({...failure,...(matches&&Object.hasOwn(startupSymbols.functions,failure.function_address)?
-    {matched_build_function:startupSymbols.functions[failure.function_address]}:{})}));
+  const symbols=startupSymbols.find(build=>build.app_sha256===expected.sha256);
+  const matches=symbols&&prefixes.length===1&&
+    /^[a-f0-9]{8,64}$/.test(prefixes[0])&&symbols.elf_sha256.startsWith(prefixes[0]);
+  return failures.map(failure=>({...failure,...(matches&&Object.hasOwn(symbols.functions,failure.function_address)?
+    {matched_build_function:symbols.functions[failure.function_address]}:{})}));
 }
