@@ -73,7 +73,8 @@ class ReleaseGateTests(unittest.TestCase):
                 'CONFIG_LANGUAGE_EN_US': 'y', 'CONFIG_APP_REPRODUCIBLE_BUILD': 'y'}
         validate_config(good)
         for key in ['CONFIG_SECURE_BOOT', 'CONFIG_SECURE_FLASH_ENC_ENABLED',
-                    'CONFIG_BOOTLOADER_APP_ANTI_ROLLBACK', 'CONFIG_APP_COMPILE_TIME_DATE']:
+                    'CONFIG_BOOTLOADER_APP_ANTI_ROLLBACK', 'CONFIG_APP_COMPILE_TIME_DATE',
+                      'CONFIG_LIBSODIUM_USE_MBEDTLS_SHA']:
             with self.subTest(key=key), self.assertRaises(ValueError): validate_config({**good, key: 'y'})
         with self.assertRaises(ValueError): validate_config({**good, 'CONFIG_FLASH_NONE_ASSETS': 'n'})
 

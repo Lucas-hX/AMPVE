@@ -32,9 +32,10 @@ def validate_config(values):
     if any(values.get(key) != value for key, value in required.items()):
         raise ValueError('Build configuration does not match the reviewed profile')
     for forbidden in ['CONFIG_SECURE_BOOT', 'CONFIG_SECURE_FLASH_ENC_ENABLED',
-                      'CONFIG_BOOTLOADER_APP_ANTI_ROLLBACK', 'CONFIG_APP_COMPILE_TIME_DATE']:
+                      'CONFIG_BOOTLOADER_APP_ANTI_ROLLBACK', 'CONFIG_APP_COMPILE_TIME_DATE',
+                      'CONFIG_LIBSODIUM_USE_MBEDTLS_SHA']:
         if values.get(forbidden) == 'y':
-            raise ValueError('Unexpected irreversible/security/time-dependent build option: '+forbidden)
+            raise ValueError('Unexpected security, reproducibility or crypto build option: '+forbidden)
 
 
 def package(work, idf, destination, comparison=None):
@@ -110,6 +111,8 @@ def package(work, idf, destination, comparison=None):
     shutil.copyfile(work/'main/ampve/profile.h', destination/'generated-profile.h')
     for notice in work.glob('LICENSE*'):
         if notice.is_file():shutil.copyfile(notice,destination/(notice.name+'.xiaozhi'))
+    shutil.copyfile(work/'managed_components/espressif__libsodium/LICENSE', destination/'LICENSE.libsodium')
+    shutil.copyfile(idf/'LICENSE', destination/'LICENSE.esp-idf')
     patch = subprocess.check_output(['git', '-C', str(work), 'diff', '--no-ext-diff', '--binary'])
     (destination/'xiaozhi-integration.patch').write_bytes(patch)
     # Keep the modified third-party component and its original license reproducible outside Git.
