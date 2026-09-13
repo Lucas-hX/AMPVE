@@ -79,3 +79,9 @@ Raspberry Pi, additional ESP32 boards, a permanent PC bridge, more applications,
 The first milestone is a functional private product, not a landing page or a set of attractive screenshots. A normal test user must complete setup, activate the companion, converse, change a provider, and observe truthful device state. Later MVP milestones demonstrate update recovery and experimental vision separately.
 
 Follow the [implementation brief](MVP_IMPLEMENTATION.md) for the concrete architecture and acceptance criteria. The Django platform foundation is implemented; the full provider and hardware criteria are not yet satisfied. See [the platform runbook](runbooks/PLATFORM.md).
+
+## Browser onboarding interaction — owner direction, 2026-09-13
+
+The ordinary user journey is connect/check, confirm the displayed board name, save a private copy or select an existing one, choose a supported installation, then configure Wi-Fi and pair into the dashboard. Users must not interpret partitions, bootloaders, hashes or engineering summaries. Keep engineering evidence in optional support details; it is not an ordinary onboarding deliverable.
+
+Explain what each supported installation preserves or replaces before consent. If a profile supports only replacement, explain the loss of the previous software; never offer a replacement path merely as a fallback for failed compatibility checks. The current 7B installer supports only the reviewed preservation path. Reusing an existing verified backup skips new capture, not compatibility/current-unit checks. Detecting a chip suggests a supported board but does not establish its printed model; obtain that confirmation explicitly. Installation progress, physical startup and authenticated dashboard connection are distinct outcomes.

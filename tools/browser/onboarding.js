@@ -8,6 +8,16 @@ const root=document.querySelector('#firmware-setup');
 if(root) {
   const get=id=>document.getElementById(id),status=get('setup-status'),meter=get('setup-progress'),detail=get('setup-progress-detail');
   let wifi;
+  const downloadUrls=new Map();
+  function downloadLink(id,summary){
+    const old=downloadUrls.get(id);if(old)URL.revokeObjectURL(old);
+    const url=URL.createObjectURL(new Blob([JSON.stringify(summary,null,2)+"\n"],{type:"application/json"}));
+    downloadUrls.set(id,url);get(id).href=url;get(id).hidden=false;
+  }
+  function show(id){get(id).hidden=false;}
+  function continueTo(id){show(id);get(id).scrollIntoView({behavior:"smooth",block:"start"});}
+  get("wifi-step").hidden=true;
+  get("pairing-step").hidden=!get("pairing-step").querySelector(".errorlist");
   let reportSource;
   let port,reader,report,backup,plan,policy,busy=false,controller,writing=false,phaseStart=0,lastPhase='',lastPaint=0;
   const actions=[...root.querySelectorAll('button[data-action]')];
@@ -27,9 +37,11 @@ if(root) {
     get('inspect-chip').disabled=busy||!port;
     get('capture-backup').disabled=busy||!port||!window.showDirectoryPicker;
     get('prepare-install').disabled=busy||!report;
-    get('export-review').disabled=busy||!report;
+    get('export-review').hidden=!report||!downloadUrls.has('export-review');
+    get('export-plan-review').hidden=!plan||!downloadUrls.has('export-plan-review');
+    get('export-review').setAttribute('aria-disabled',String(busy||!report));
     get('save-recovery').disabled=busy||!plan||!window.showDirectoryPicker;
-    get('export-plan-review').disabled=busy||!plan;
+    get('export-plan-review').setAttribute('aria-disabled',String(busy||!plan));
     get('approve-plan').disabled=busy||!policy||plan?.review_only===true;
     get('install-ampve').disabled=busy||!policy||plan?.review_only===true||!plan?.recovery_saved||!port||
       !get('approve-plan').checked||!get('separate-copy').checked||!get('rom-recovery').checked;
@@ -69,26 +81,37 @@ if(root) {
     return parent.getDirectoryHandle(name,{create:true});
   }
   function showReport() {
-    get('backup-result').textContent=`Two matching 32 MiB files · SHA-256 ${report.sha256}. `+
-      (report.stock_layout_matches?'Stock partition profile matches. ':'Partition profile differs; installation blocked. ')+
-      (report.ota_1_erased?'Target OTA slot is empty. ':'Target OTA slot is not empty; installation blocked. ')+
-      'Backups remain local. Copy this folder to separate private storage.';
+    const compatible=report.stock_layout_matches&&report.ota_1_erased;
+    get('backup-result').textContent='Your saved copies match and have been checked. They stay on your computer.';
+    get('installation-choice').textContent=compatible?'Available for review: add AMPVE while keeping your previous software.':'No compatible installation is available for this device’s current software. Your device has not been changed.';
+    downloadLink('export-review',reviewSummary(report,reportSource));
+    continueTo('installation-step');
   }
-  get('select-usb').onclick=()=>run(async()=>{
-    await close();port=await navigator.serial.requestPort();plan=null;
-    const info=port.getInfo();get('usb-status').textContent=`Port selected · USB vendor ${info.usbVendorId?.toString(16)||'unknown'}, product ${info.usbProductId?.toString(16)||'unknown'}. Confirm the printed 7B label.`;
-    status.textContent='Port selected. Ready for a read-only audit.';
-  });
-  get('inspect-chip').onclick=()=>run(async signal=>{
-    boardConsent();status.textContent='Checking chip, security and flash capacity…';
+  async function inspect(signal){
+    ensure(port,'Connect your device first.');get('read-consent').checked=true;
+    status.textContent='Checking your device. Its software will not be changed…';
     await freshReader();
-    status.textContent='Reading and verifying the partition table…';
     const table=await parseTable(await readChunk(reader,0x8000,4096,signal));
-    status.textContent='ESP32-P4 revision 1.3 · 32 MiB flash · Secure Boot and encryption disabled. '+
-      (matchesStock(table)?'Stock partition profile matches.':'Different partition profile; stop for review.');
-    detail.textContent='Display, touch, audio, PSRAM and C6 compatibility are not proven by this audit. Nothing flashed or paired.';
+    ensure(matchesStock(table),'This device does not have a supported installation layout. Nothing was changed.');
+    get('usb-status').textContent='Device check complete.';
+    get('model-evidence').textContent='The chip and saved software match this supported model. Confirm the printed name on your board.';
+    show('device-confirmation');status.textContent='Confirm your board to continue.';
+    detail.textContent='The check does not test the screen, audio or Wi-Fi.';
     await close();
+  }
+  get('select-usb').onclick=()=>run(async signal=>{
+    await close();port=await navigator.serial.requestPort();plan=null;
+    get('board-confirm').checked=false;get('device-confirmation').hidden=true;
+    await inspect(signal);
   });
+  get('inspect-chip').onclick=()=>run(inspect);
+  get('resume-backups').onclick=()=>{
+    show('device-confirmation');
+    get('model-evidence').textContent='Resuming from saved files does not check the connected device. Confirm the printed name; AMPVE will check the board again before installation.';
+  };
+  get('confirm-device').onclick=()=>run(async()=>{ensure(get('board-confirm').checked,'Confirm the board name first.');continueTo('backup-step');});
+  get('use-existing').onclick=()=>{show('existing-backups');get('import-backups').focus();};
+  get('already-installed').onclick=()=>{show('wifi-step');continueTo('pairing-step');};
   get('capture-backup').onclick=()=>run(async signal=>{
     boardConsent();report=null;plan=null;get('backup-result').textContent='No completed backup in this session.';
     // Choose storage before any long operation, while the click grants user activation.
@@ -124,21 +147,18 @@ if(root) {
     reportSource='imported-capture-record';
     showReport();status.textContent='Local files verified. A live comparison is still required before installation.';
   });
-  get('export-review').onclick=()=>run(async()=>{
-    const summary=reviewSummary(report,reportSource);
-    const url=URL.createObjectURL(new Blob([JSON.stringify(summary,null,2)+'\n'],{type:'application/json'}));
-    const link=document.createElement('a');link.href=url;link.download='ampve-review-summary.json';
-    document.body.append(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),10000);
-    status.textContent='Review summary prepared for download. Inspect it before sharing it manually.';
-    detail.textContent='This summary contains hashes and bounded layout/image metadata. It does not contain flash bytes, MAC addresses, Wi-Fi details or file paths. Nothing was uploaded; it does not approve installation.';
-  });
+  for(const id of ['export-review','export-plan-review'])get(id).onclick=event=>{
+    if(busy||!downloadUrls.has(id)){event.preventDefault();return;}
+    status.textContent='Your support summary is ready. If the browser blocks the download, use Save link as on this link.';
+  };
   get('prepare-install').onclick=()=>run(async()=>{
-    plan=null;policy=null;get('plan-panel').hidden=true;status.textContent='Checking the curated AMPVE release…';
+    plan=null;policy=null;get('release-status').textContent='Checking availability…';get('candidate-download').hidden=true;get('export-plan-review').hidden=true;get('plan-panel').hidden=true;status.textContent='Checking the curated AMPVE release…';
     const response=await fetch(root.dataset.release,{cache:'no-store'});ensure(response.ok,'Release unavailable.');
     const data=await response.json();
     const approved=data.status==='reviewed-development-release';
     if(!approved && data.status!=='development-review') {
       status.textContent='Backups are ready. Installation is waiting for a reviewed release.';
+      get('release-status').textContent='No approved installation is available yet. Your device has not been changed.';
       detail.textContent=(data.remaining||['No publisher-approved package is available.']).join(' · ');
       return;
     }
@@ -156,8 +176,10 @@ if(root) {
     const list=get('write-regions');list.replaceChildren();
     for(const item of plan.writes) {const li=document.createElement('li');li.textContent=`${item.name}: 0x${item.offset.toString(16)} · ${item.bytes.length} bytes · SHA-256 ${item.sha256}`;list.append(li);}
     get('plan-panel').hidden=false;get('approve-plan').checked=false;
-    status.textContent=approved?'Exact write plan prepared. Save its private recovery files before installing.':'Candidate compared with your backups. Save recovery files and download the plan summary for review.';
-    detail.textContent=approved?'': 'Everything is prepared locally in this browser. Installation is waiting for stock bootloader/C6 review and a signed release.';
+    downloadLink('export-plan-review',planReviewSummary(plan));
+    get('release-status').textContent=approved?'Ready to install after you save your return-to-original files.':'This board’s first AMPVE release is still being validated. Installation is not available yet. Your device has not been changed.';
+    status.textContent=approved?'Installation prepared. Save your return-to-original files to continue.':'Candidate compared with your backups. The installation option is prepared for review.';
+    detail.textContent=approved?'': 'You do not need to run commands or interpret technical details. The development review must finish before installation becomes available.';
   });
   get('save-recovery').onclick=()=>run(async()=>{
     ensure(plan,'Prepare a plan first.');const directory=await folder();
@@ -169,14 +191,7 @@ if(root) {
         'Restore original otadata to return to stock selection; after AMPVE boot NVS may also need restoration.',
         'Restoring original NVS discards new Wi-Fi/AMPVE identity. Review every recovery write separately.']};
     await save(directory,'recovery-plan-private.json',JSON.stringify(summary,null,2)+'\n');
-    plan.recovery_saved=true;status.textContent='Recovery files saved and rehashed locally. Review the exact write plan.';
-  });
-  get('export-plan-review').onclick=()=>run(async()=>{
-    const summary=planReviewSummary(plan);
-    const url=URL.createObjectURL(new Blob([JSON.stringify(summary,null,2)+'\n'],{type:'application/json'}));
-    const link=document.createElement('a');link.href=url;link.download='ampve-plan-review-summary.json';
-    document.body.append(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),10000);
-    status.textContent='Plan summary prepared for download. Private recovery files stay on your computer.';
+    plan.recovery_saved=true;downloadLink('export-plan-review',planReviewSummary(plan));status.textContent='Recovery files saved and checked on your computer.';
   });
   get('install-ampve').onclick=()=>run(async signal=>{
     boardConsent();ensure(policy&&plan?.review_only!==true,'A reviewed signed release is required before installation.');ensure(plan?.recovery_saved&&port,'Save recovery files and select the same board first.');
@@ -192,9 +207,9 @@ if(root) {
       const latest=await verifyRelease(await response.json());
       ensure(JSON.stringify(latest)===JSON.stringify(policy),'Release or publisher trust changed; prepare a new plan.');
     });await close();plan=null;
-    status.textContent='Firmware written and read back. Check the board screen to confirm startup.';
+    status.textContent='AMPVE was installed and checked. Confirm that its home screen appears on your board, then connect Wi-Fi below.';
     detail.textContent='Open Wi-Fi on the board and use USB Wi-Fi setup below or its temporary protected network. Then enter the AMPVE pairing code. USB write success does not prove physical startup or pairing.';
-    get('pairing-step').scrollIntoView({behavior:'smooth'});
+    show('wifi-step');show('pairing-step');get('wifi-step').scrollIntoView({behavior:'smooth'});
   });
   function wifiState(state){
     const labels={1:'Open Wi-Fi on the board to allow setup for five minutes.',2:'The board allows Wi-Fi setup. Enter your 2.4 GHz network.',3:'Checking and saving Wi-Fi. Keep the board connected.',4:'The board reports a Wi-Fi connection. Continue with its AMPVE pairing code.'};

@@ -64,10 +64,18 @@ with tempfile.TemporaryDirectory(prefix='ampve-browser-fixture-') as directory,s
         else:r.fulfill(status=404,body='')
     page.route('https://ampve.test/**',route)
     page.goto('https://ampve.test/devices/add/')
-    page.locator('details summary').click()
+    assert page.locator('#backup-step').is_hidden()
+    assert page.locator('#device-confirmation').is_hidden()
+    assert page.locator('#wifi-step').is_hidden()
+    assert page.locator('#pairing-step').is_hidden()
+    assert 'bootloader' not in page.locator('body').inner_text().lower()
+    page.locator('#resume-backups').click()
+    page.locator('#board-confirm').check()
+    page.locator('#confirm-device').click()
+    page.locator('#use-existing').click()
     page.locator('#import-backups').set_input_files([str(root/name) for name in ['backup-a.bin','backup-b.bin','audit-private.json']])
-    page.wait_for_function('document.querySelector("#backup-result").textContent.includes("Two matching")',timeout=30000)
-    assert digest in page.locator('#backup-result').inner_text()
+    page.wait_for_function('document.querySelector("#backup-result").textContent.includes("saved copies match")',timeout=30000)
+    page.locator('#technical-review summary').click()
     with page.expect_download() as download_event:
         page.locator('#export-review').click()
     exported=Path(download_event.value.path()).read_text()
@@ -105,7 +113,12 @@ with tempfile.TemporaryDirectory(prefix='ampve-browser-fixture-') as directory,s
     assert page.evaluate('window.fixtureRecoveryFiles["restore-otadata.bin"].size')==8192
     with page.expect_download() as event:
         page.locator('#export-plan-review').click()
+    assert page.locator('#export-plan-review').get_attribute('href').startswith('blob:')
+    assert event.value.suggested_filename=='ampve-plan-review-summary.json'
     exported_plan=Path(event.value.path()).read_text(); plan_review=json.loads(exported_plan)
+    with page.expect_download() as repeated:
+        page.locator('#export-plan-review').click()
+    assert Path(repeated.value.path()).read_text()==exported_plan
     assert plan_review['kind']=='ampve-browser-plan-review' and plan_review['installable'] is False
     assert plan_review['candidate_sha256']==app_hash and plan_review['backup_sha256']==digest
     assert plan_review['current_selection'] is None and plan_review['recovery_files_saved'] is True
@@ -127,6 +140,7 @@ with tempfile.TemporaryDirectory(prefix='ampve-browser-fixture-') as directory,s
       Object.defineProperty(navigator,'serial',{configurable:true,value:{requestPort:async()=>port,addEventListener(){}}});
     }""")
     # The existing page initially had Web Serial disabled in headless Chromium.
+    page.locator('#already-installed').click()
     page.locator('#connect-wifi').evaluate('(button)=>button.disabled=false')
     page.locator('#connect-wifi').click()
     page.wait_for_function('!document.querySelector("#send-wifi").disabled')
