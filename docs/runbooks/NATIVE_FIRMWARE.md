@@ -160,3 +160,5 @@ python3 firmware/tests/native/boot_run.py
 ```
 
 The host scenarios cover fresh/missing counters, normal increments, the recovery threshold and maximum integer, read/type errors, write/commit errors, a held input at entry, the exact five-second boundary, repeated samples, interrupted holds and a backwards timer input. ASan/UBSan checks this software behavior; physical BOOT behavior, NVS power loss and repeated cold boots remain unvalidated.
+
+Software evidence (2026-09-13): **20 boot-counter/physical-retry scenarios** passed under ASan/UBSan and **31 firmware-tool tests** passed. P4 revision-1.x fixture compilation completed without compiler warnings: **2,841,072 bytes**, SHA-256 `f01e048f38475532619cf4efca0842694363e168543ae9432062aa12e185cbb8`, with 31% remaining in each OTA slot. Built overlay bytes matched repository inputs. Private `firmware-boot-guard-software-fixture` is traced to source `cd5a6ea`, testing-only and non-installable. This revision has one build and no two-build reproduction claim. No hardware write, public installer selection, production key or service configuration changed.
