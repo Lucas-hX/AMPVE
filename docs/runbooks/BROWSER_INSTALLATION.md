@@ -38,7 +38,7 @@ Use the existing pinned external toolchain and `firmware/tools/build.sh` from th
 
 `release.py` verifies the actual P4 image and produces the review directory plus a private ZIP sibling. The bundle includes generated bootloader/table/initial-otadata files for comparison only. Their presence does not authorize writing them. `proposed_regions_not_approved_writes` names only the app at `0xE00000`; exact otadata is generated locally from the owner's original selection.
 
-The platform defaults to `/home/ampve/.local/state/ampve/firmware-review-stock-v1` for the candidate. Its app and ZIP are accessible only to signed-in users. No upload endpoint exists for device backups. No candidate flag can enable installation.
+The code default is `/home/ampve/.local/state/ampve/firmware-review-stock-v1`; this VPS now explicitly selects `firmware-first-install-review-02`, the current real-key unsigned candidate documented in [FIRST_INSTALLATION.md](FIRST_INSTALLATION.md). Its app and ZIP are accessible only to signed-in users. No upload endpoint exists for device backups. No candidate flag can enable installation.
 
 ## Publisher administration after review
 

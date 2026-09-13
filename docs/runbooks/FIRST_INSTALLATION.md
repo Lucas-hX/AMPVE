@@ -31,7 +31,12 @@ The earlier `0.1.10-improv-dev` reproduced artifact used testing trust and canno
 
 Builds use the same pinned source, IDF and dependencies in two separate previously compiled source/build directories, with newly compiled integration/trust objects. Retain `first-install-build-a.log` and `first-install-build-b.log` in the private external firmware cache. This is incremental reproduction on one VPS with shared toolchain/cache, not two new clean builds or cross-machine evidence. The previous clean baseline is documented in [FIRMWARE_REPRODUCIBILITY.md](FIRMWARE_REPRODUCIBILITY.md).
 
-Exact candidate hashes and download verification will be recorded after packaging. No approval JSON with placeholder review evidence, signed release or active publication is created during this preparation. Follow [FIRMWARE_RELEASES.md](FIRMWARE_RELEASES.md) only after the exact bootloader/C6/recovery review passes, then present the exact local writes for owner approval.
+Prepared review: `/home/ampve/.local/state/ampve/firmware-first-install-review-02`, source `4dd730cc33fb50fec88f49d2f2479535eea17f55`, version `0.1.10-improv-dev`, sequence 1, `testing_only=false`, `installable=false`. Both builds finished successfully and all four packaged artifacts matched. The first packaging attempt lacked the external IDF-tools environment path and left an unselected incomplete `review-01` directory; the successful fresh `review-02` used the recorded toolchain environment.
+
+- Application: **2,877,344 bytes**, SHA-256 `b142b31b9c16ff200e7fd24ca392b711616db63042cfd09751d35399c0569b49`.
+- Review ZIP: **1,883,537 bytes**, SHA-256 `1b66c254dc4f4c5d79c7af0b368850f6776acd291491f020a928ba443931d2e1`.
+- The platform now selects this unsigned review bundle. The prior private platform configuration is retained locally. Authenticated app/ZIP downloads are checked against these hashes; anonymous access and installation remain blocked.
+- Validation: 43 firmware-tool tests, 28 Node tests and 28 Django firmware/deployment tests passed. The production configuration check passed. No physical board operation or provider request was performed. No approval JSON with placeholder review evidence, signed release or active publication is created during this preparation. Follow [FIRMWARE_RELEASES.md](FIRMWARE_RELEASES.md) only after the exact bootloader/C6/recovery review passes, then present the exact local writes for owner approval.
 
 ## First physical acceptance
 
