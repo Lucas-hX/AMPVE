@@ -1,3 +1,4 @@
+import {inspectPreparedInstallation} from './installation-preflight.js';
 import {resetApplication} from './reset.js';
 // AMPVE's guarded integration uses ESP Web Tools manifest conventions and its
 // pinned esptool-js writer. Its generic install dialog cannot keep our audited
@@ -115,41 +116,72 @@ export function planReviewSummary(plan) {
     remaining:['Review exact stock bootloader and C6 compatibility','Publisher approval and current-unit comparison','Owner approval of exact physical writes']};
 }
 
-export async function executePlan(reader, plan, policy, consent, progress=()=>{}, signal, revalidate=async()=>{}) {
+async function executePlanRun(reader, plan, policy, consent, progress, signal, revalidate, trace) {
   ensure(plan?.review_only!==true,'An unsigned review plan cannot write hardware.');
   ensure(consent?.exact_plan===true && consent?.separate_copy===true && consent?.rom_recovery===true,'Explicit plan and recovery confirmation required.');
   ensure(matchesContract(policy?.compatibility),'Prepare a matching versioned release.','profile_contract_mismatch');
   ensure(plan.profile===PROFILE && policy?.installable===true && Date.parse(policy.expires_at)>Date.now() && plan.app_sha256===policy.app.sha256,'Invalid or expired plan.');
   ensure(plan.writes.length===2 && plan.writes[0].offset===SLOT.offset && plan.writes[0].bytes.length<=SLOT.size &&
     [OTA.offset,(OTA.offset+4096)].includes(plan.writes[1].offset) && plan.writes[1].bytes.length===4096,'Unexpected write regions.');
-  const hash=await createSHA256();hash.init();
-  // Re-read the whole physical flash on this SAME connection before the first write.
-  // This rejects stale backups and any swapped device. No MAC-based ownership claim.
-  for(let at=0;at<FLASH_BYTES;at+=BLOCK) {
-    hash.update(await readChunk(reader,at,BLOCK,signal));progress('Final device/backup comparison',at+BLOCK,FLASH_BYTES);
+  trace.phase='preflight';
+  if(!await inspectPreparedInstallation(reader,plan,policy,progress,signal)){
+    const hash=await createSHA256();hash.init();
+    for(let at=0;at<FLASH_BYTES;at+=BLOCK){
+      hash.update(await readChunk(reader,at,BLOCK,signal,n=>progress('Final device/backup comparison',at+n,FLASH_BYTES)));
+      progress('Final device/backup comparison',at+BLOCK,FLASH_BYTES);
+    }
+    ensure(hash.digest('hex')===plan.backup_sha256,'The connected flash changed. Make new backups before installing.');
   }
-  ensure(hash.digest('hex')===plan.backup_sha256,'The connected flash changed. Make new backups before installing.');
   for(const item of plan.writes) ensure(await sha256(item.bytes)===item.sha256,'Plan bytes changed.');
   // Recheck revocation/trust after a potentially long full-flash comparison.
+  trace.phase='release_revalidation';
   await revalidate();
   if(signal?.aborted) throw new DOMException('Cancelled','AbortError');
   ensure(Date.parse(policy.expires_at)>Date.now(),'Release approval expired during preflight. Prepare a new approved plan.');
   // After this point do not cancel/disconnect automatically. App first, readback,
   // then one boot-selection sector. No full erase, bootloader/table or C6 writes.
   for(const item of plan.writes) {
+    trace.phase=item.offset===SLOT.offset?'app_write':'selection_write';trace.write_attempted=true;
     progress('Writing '+item.name,0,item.bytes.length);
     await reader.loader.writeFlash({fileArray:[{data:item.bytes,address:item.offset}],flashSize:'keep',flashMode:'keep',flashFreq:'keep',eraseAll:false,compress:true,
       reportProgress:(_,written,total)=>progress('Writing '+item.name,written,total)});
+    trace.phase=item.offset===SLOT.offset?'app_readback':'selection_readback';
     const verify=await createSHA256();verify.init();
     for(let at=0;at<item.bytes.length;at+=BLOCK) {
       const size=Math.min(BLOCK,item.bytes.length-at);
       verify.update(await readChunk(reader,item.offset+at,size));progress('Verifying '+item.name,at+size,item.bytes.length);
     }
     ensure(verify.digest('hex')===item.sha256,'Write verification failed. Keep power stable and use the saved recovery plan.');
+    trace[item.offset===SLOT.offset?'app_readback_verified':'selection_readback_verified']=true;
   }
+  trace.phase='restart';
   await resetApplication(reader);
+  trace.reset_completed=true;trace.phase='complete';
   return {written_and_read_back:true,physical_startup_verified:false};
 }
 
 // Only signed policy metadata can defer the pre-install C6 query.
 export function allowsUsbCommissioning(policy){return policy?.purpose==='initial-install' && policy.commissioning==='usb-assisted-v1';}
+
+export async function executePlan(reader,plan,policy,consent,progress=()=>{},signal,revalidate=async()=>{}){
+  const started=performance.now();
+  const trace={schema:1,kind:'ampve-installation-result',expected_version:policy?.firmware_version,
+    expected_app_sha256:policy?.app?.sha256,phase:'validation',preflight_bytes:0,write_attempted:false,
+    app_readback_verified:false,selection_readback_verified:false,reset_completed:false,physical_startup_verified:false};
+  try{
+    const result=await executePlanRun(reader,plan,policy,consent,(phase,done,total)=>{
+      if(trace.phase==='preflight')trace.preflight_bytes=done;
+      progress(phase,done,total);
+    },signal,revalidate,trace);
+    return {...result,installation_summary:{...trace,outcome:'written_and_verified',elapsed_ms:Math.round(performance.now()-started)}};
+  }catch(error){
+    const category=['AbortError','TimeoutError','TypeError'].includes(error.name)?error.name:'operation_failed';
+    error.installationSummary={...trace,outcome:'failed',error_category:category,elapsed_ms:Math.round(performance.now()-started)};
+    if(trace.app_readback_verified&&trace.selection_readback_verified){
+      error.userMessage='AMPVE and its startup selection were written and verified. The automatic restart did not complete. Reconnect USB and check AMPVE startup.';
+    }else if(!error.userMessage){
+      error.userMessage=`Installation stopped during ${trace.phase.replaceAll('_',' ')}. ${trace.write_attempted?'The write may be incomplete.':'No flash write was attempted.'}`;
+    }
+    throw error;
+  }
+}
