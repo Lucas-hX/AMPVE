@@ -41,7 +41,7 @@ extern "C" {
 extern const lv_image_dsc_t ampve_symbol;
 extern const lv_image_dsc_t ampve_companion;
 }
-std::atomic<bool> ampve_touch_ready{false}, ampve_codec_present{false}, ampve_codec_failed{false};
+std::atomic<bool> ampve_wifi_initialized{false}, ampve_touch_ready{false}, ampve_codec_present{false}, ampve_codec_failed{false};
 static std::atomic<bool> wifi_requested{false}, pair_requested{false}, tone_requested{false};
 static std::atomic<bool> local_muted{true}, heard_tone{false}, tone_played{false};
 static std::atomic<int> local_volume{-1};
@@ -161,7 +161,7 @@ static cJSON* hardware_report() {
     cJSON_AddStringToObject(caps,"touch",ampve_touch_ready?"initialized":"failed");
     cJSON_AddStringToObject(caps,"speaker",ampve_codec_failed?"failed":heard_tone?"passed":codec_initialized?"initialized":"configured");
     cJSON_AddStringToObject(caps,"microphone",ampve_codec_present?"configured":"unknown");
-    cJSON_AddStringToObject(caps,"wifi",WifiManager::GetInstance().IsConnected()?"passed":"initialized");
+    cJSON_AddStringToObject(caps,"wifi",!ampve_wifi_initialized?"failed":WifiManager::GetInstance().IsConnected()?"passed":"initialized");
     return report;
 }
 static lv_obj_t* label(lv_obj_t* parent,const char* text,const lv_font_t* font=&lv_font_montserrat_20) {
@@ -280,7 +280,7 @@ static bool identifier(const std::string& value, size_t size, bool uuid=false) {
 }
 static void startup_check(void*) {
     vTaskDelay(pdMS_TO_TICKS(60000));
-    bool healthy = ui_ticks>100 && ampve_touch_ready && storage_ok && management_started && image_verified;
+    bool healthy = ui_ticks>100 && ampve_wifi_initialized && ampve_touch_ready && storage_ok && management_started && image_verified;
     // Never advertise a confirmed startup after a failed otadata write.
     if(healthy && esp_ota_mark_app_valid_cancel_rollback()==ESP_OK &&
        ampve::reset_boot_attempts(store_handle)) {
@@ -332,7 +332,7 @@ static void worker(void*) {
             if(now-ap_started>300000000){wifi.StopConfigAp();wifi.StartStation();ap_started=0;message("Wi-Fi setup closed after five minutes. Open it locally to retry.");}
         }else ap_started=0;
         {std::lock_guard<std::mutex> lock(ui_mutex);
-            network_text=connected?"Wi-Fi connected":wifi.IsConfigMode()?"Wi-Fi setup open":"Wi-Fi offline";}
+            network_text=!ampve_wifi_initialized?"Wi-Fi driver unavailable":connected?"Wi-Fi connected":wifi.IsConfigMode()?"Wi-Fi setup open":"Wi-Fi offline";}
         if(connected && !clock_started){
             esp_sntp_setoperatingmode(SNTP_OPMODE_POLL);
             esp_sntp_setservername(0,"pool.ntp.org");esp_sntp_init();clock_started=true;

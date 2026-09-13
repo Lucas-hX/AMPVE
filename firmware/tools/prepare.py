@@ -1,6 +1,7 @@
 """Apply the reviewed integration to an isolated pinned XiaoZhi checkout; never flash."""
 import argparse
 import os
+from wifi_guard import prepare as prepare_wifi
 from board_guard import prepare as prepare_board
 from audio_guard import prepare as prepare_audio
 from native_trust import generate as generate_native_trust
@@ -80,6 +81,8 @@ def prepare(work):
         replace(cmake,'set(PROJECT_VER "0.1.6-audio-guard-dev")',f'set(PROJECT_VER "{UPSTREAM["candidate_version"]}")')
     if 'set(PROJECT_VER "0.1.7-boot-guard-dev")' in cmake.read_text():
         replace(cmake,'set(PROJECT_VER "0.1.7-boot-guard-dev")',f'set(PROJECT_VER "{UPSTREAM["candidate_version"]}")')
+    if 'set(PROJECT_VER "0.1.8-display-guard-dev")' in cmake.read_text():
+        replace(cmake,'set(PROJECT_VER "0.1.8-display-guard-dev")',f'set(PROJECT_VER "{UPSTREAM["candidate_version"]}")')
     if f'set(PROJECT_VER "{UPSTREAM["candidate_version"]}")' not in cmake.read_text():
         raise RuntimeError('Prepared project version differs from the candidate version')
     component=work/'main/idf_component.yml'
@@ -97,6 +100,13 @@ def prepare(work):
         replace(component_cmake,'set(SOURCES ', 'set(SOURCES "ampve/ota_client.cc" "ampve/ota_platform.cc" ')
     if '"ampve/boot_guard.cc"' not in component_cmake.read_text():
         replace(component_cmake,'set(SOURCES ', 'set(SOURCES "ampve/boot_guard.cc" ')
+    wifi_board=work/'main/boards/common/wifi_board.cc'
+    if '#include "ampve/runtime.h"' not in wifi_board.read_text():
+        replace(wifi_board,'#include "wifi_board.h"','#include "wifi_board.h"\n#include "ampve/runtime.h"')
+    if '    wifi_manager.Initialize(config);' in wifi_board.read_text():
+        replace(wifi_board,'    wifi_manager.Initialize(config);',
+            '    ampve_wifi_initialized = wifi_manager.Initialize(config);\n    if (!ampve_wifi_initialized) { ESP_LOGE(TAG, "Wi-Fi driver initialization failed; startup remains unconfirmed"); return; }')
+    prepare_wifi(work)
     prepare_board(work, PIN)
     prepare_audio(work, PIN)
     shutil.copytree(overlay,work,dirs_exist_ok=True)
