@@ -52,7 +52,7 @@ The [visual guide](../images/ampve-brand-kit-v1/README.md) explains how to inter
 - Build the AMPVE account, ownership, pairing, configuration, application assignment, release/deployment tracking, and diagnostic experience.
 - Implement and test the **XiaoZhi–Pipecat protocol adapter**. Both using WebSockets does not make them directly compatible.
 
-The proposed implementation uses Next.js/React, FastAPI/Python, PostgreSQL, and Docker Compose. These are implementation choices aimed at one maintainable VPS deployment. Keep them simple; do not add enterprise IoT stacks solely to prepare for hypothetical scale.
+The accepted implementation uses Django with templates for the platform, future FastAPI/Pipecat for audio, and PostgreSQL. Reuse the existing server with a dedicated database/role and the ampve.com Cloudflare Tunnel. See [ADR 0001](decisions/0001-platform-architecture.md) for deployment and tradeoffs. Keep them simple; do not add enterprise IoT stacks solely to prepare for hypothetical scale.
 
 ## Product rules for the first release
 
@@ -78,4 +78,4 @@ Raspberry Pi, additional ESP32 boards, a permanent PC bridge, more applications,
 
 The first milestone is a functional private product, not a landing page or a set of attractive screenshots. A normal test user must complete setup, activate the companion, converse, change a provider, and observe truthful device state. Later MVP milestones demonstrate update recovery and experimental vision separately.
 
-Follow the [implementation brief](MVP_IMPLEMENTATION.md) for the concrete architecture and acceptance criteria. This repository starts with documentation and assets; those criteria are not yet satisfied.
+Follow the [implementation brief](MVP_IMPLEMENTATION.md) for the concrete architecture and acceptance criteria. The Django platform foundation is implemented; the full provider and hardware criteria are not yet satisfied. See [the platform runbook](runbooks/PLATFORM.md).

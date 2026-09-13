@@ -1,0 +1,16 @@
+[Unit]
+Description=AMPVE private local database backup
+After=neurosis-postgresql.service
+Requires=neurosis-postgresql.service
+
+[Service]
+Type=oneshot
+User=ampve
+Group=ampve
+ExecStart=/usr/bin/python3 /home/ampve/projects/AMPVE/infra/backup.py
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/home/ampve/.local/state/ampve

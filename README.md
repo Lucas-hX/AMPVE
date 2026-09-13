@@ -6,7 +6,7 @@ AMPVE gives the devices you already own new ways to help, create, and connect. S
 
 Our first experience is **AMPVE Companion**: an expressive AI companion that listens, speaks, and lives on a small screen. It is the first application in a broader vision of bringing useful software and AI to everyday hardware.
 
-**Current status:** product and implementation documentation, frontend design references, and visual assets. The application, installer integration, and firmware are not implemented in this repository yet.
+**Current status:** Django platform foundation with an English frontend, private accounts, profile/password settings, administration, and a Companion preview catalog. Provider sessions, device installation, and firmware remain unimplemented. See the [platform runbook](docs/runbooks/PLATFORM.md) for commands and delivery limits.
 
 ## The first experience
 
@@ -32,6 +32,10 @@ The first backend will run on the owner's Debian VPS at OVH. Provider API keys s
 
 ## Start here
 
+- [Accepted architecture](docs/decisions/0001-platform-architecture.md)
+- [Platform setup, operations, and current limits](docs/runbooks/PLATFORM.md)
+
+
 | Document | Purpose |
 |---|---|
 | [Product direction](docs/PRODUCT_DIRECTION.md) | What AMPVE is, who the first experience serves, and how to present it |
@@ -51,6 +55,6 @@ The images are design concepts. Illustrated enclosures are not exact hardware ph
 
 ## Repository scope
 
-This initial commit contains only the current approach, contributor guidance, and selected graphic assets. No production deployment, credentials, firmware binaries, private hardware backups, or older experiments are included.
+The repository contains the Django platform, migrations and tests, deployment definitions, architecture decisions, contributor guidance, and selected graphic assets. Credentials, dependencies, generated assets, firmware binaries, and private hardware backups stay outside Git.
 
 Begin implementation with the milestones in the [MVP brief](docs/MVP_IMPLEMENTATION.md#11-implementation-sequence-and-completion-criteria). Do not treat mockups or roadmap items as already working features.

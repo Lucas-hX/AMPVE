@@ -36,3 +36,5 @@ private/
 tmp/
 .DS_Store
 Thumbs.db
+staticfiles/
+.browser-tests/

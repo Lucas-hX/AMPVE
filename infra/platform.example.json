@@ -1,0 +1,7 @@
+{
+  "secret_key": "REPLACE_WITH_A_RANDOM_SECRET_OUTSIDE_GIT",
+  "db_name": "ampve",
+  "db_user": "ampve",
+  "db_host": "/run/postgresql-neurosis",
+  "db_port": "5433"
+}
