@@ -74,7 +74,7 @@ export AMPVE_TOOL_PYTHON="$HOME/.cache/ampve-firmware/tooling/bin/python"
 firmware/tools/build.sh
 "$AMPVE_TOOL_PYTHON" firmware/tools/release.py --work "$AMPVE_WORK" \
   --idf "$AMPVE_IDF_PATH" --output "$HOME/.local/state/ampve/firmware-review-01"
-python3 -m unittest discover -s firmware/tests -v
+"$AMPVE_TOOL_PYTHON" -m unittest discover -s firmware/tests -v
 ```
 
 Use a new isolated work directory when changing the integration scripts. `prepare.py` intentionally refuses a checkout at another upstream revision or an initially modified checkout. A prepared directory is for repeated overlay builds; it is not an arbitrary upstream working copy. The build resolves the pinned baseline, creates the protected local provisioning override and rejects registry version/hash drift after reconfiguration. Compilation uses two jobs with reduced priority for this shared VPS.

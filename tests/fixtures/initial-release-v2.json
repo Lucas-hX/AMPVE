@@ -1,0 +1,38 @@
+{
+  "schema": 2,
+  "key_id": "fixture-key",
+  "sequence": 7,
+  "channel": "development",
+  "purpose": "initial-install",
+  "installable": true,
+  "profile": "waveshare-7b-stock-v1",
+  "compatibility": {
+    "profile_id": "waveshare-esp32-p4-wifi6-touch-lcd-7b",
+    "profile_version": 1,
+    "layout_id": "waveshare-7b-stock-v1",
+    "firmware_lineage": "ampve-xiaozhi-stock-v1"
+  },
+  "chip_revision": 103,
+  "flash_bytes": 33554432,
+  "expires_at": "2099-01-01T00:00:00Z",
+  "repository_commit": "1111111111111111111111111111111111111111",
+  "firmware_version": "fixture-0.1",
+  "app": {
+    "size": 4096,
+    "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+    "offset": 14680064
+  },
+  "bootloader_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "table_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "bootloader_review": "Software fixture only",
+  "c6_review": "Software fixture only",
+  "recovery_review": "Software fixture only",
+  "provenance": {
+    "review_manifest_sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+    "archive_sha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+    "sdkconfig_sha256": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+    "dependency_lock_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+    "xiaozhi_commit": "2222222222222222222222222222222222222222",
+    "esp_idf_commit": "3333333333333333333333333333333333333333"
+  }
+}

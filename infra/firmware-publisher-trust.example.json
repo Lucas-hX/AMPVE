@@ -1,0 +1,13 @@
+{
+  "schema": 1,
+  "keys": {
+    "development-01": {
+      "public_key": "REPLACE_WITH_INDEPENDENTLY_VERIFIED_32_BYTE_PUBLIC_KEY_HEX",
+      "channels": ["development"],
+      "purposes": ["initial-install", "ota"],
+      "revoked": false
+    }
+  },
+  "revoked_releases": [],
+  "minimum_sequence": 1
+}

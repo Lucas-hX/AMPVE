@@ -54,12 +54,19 @@ test('boot selection targets inactive metadata sector with Espressif CRC and pre
   for(const data of [record(2),record(1,0),record(1,1),record(1,9),new Uint8Array(8192)])assert.throws(()=>selectBoot(data));
 });
 
-async function signed(policy){const key=await crypto.subtle.generateKey('Ed25519',true,['sign','verify']),payload=new TextEncoder().encode(JSON.stringify(policy));return {status:'reviewed-development-release',publisher_key:Buffer.from(await crypto.subtle.exportKey('raw',key.publicKey)).toString('hex'),envelope:{payload:Buffer.from(payload).toString('base64'),signature:Buffer.from(await crypto.subtle.sign('Ed25519',key.privateKey,payload)).toString('base64')}};}
-const policy={installable:true,compatibility:contract,profile:'waveshare-7b-stock-v1',chip_revision:103,flash_bytes:FLASH_BYTES,expires_at:'2099-01-01T00:00:00Z',bootloader_review:'fixture',c6_review:'fixture',recovery_review:'fixture',bootloader_sha256:'a'.repeat(64),table_sha256:'b'.repeat(64),app:{size:4096,offset:0xe00000,sha256:'c'.repeat(64)}};
+async function signed(policy){const key=await crypto.subtle.generateKey('Ed25519',true,['sign','verify']),payload=new TextEncoder().encode(JSON.stringify(policy));return {status:'reviewed-development-release',minimum_sequence:1,release_id:await sha256(payload),publisher_key:Buffer.from(await crypto.subtle.exportKey('raw',key.publicKey)).toString('hex'),envelope:{payload:Buffer.from(payload).toString('base64'),signature:Buffer.from(await crypto.subtle.sign('Ed25519',key.privateKey,payload)).toString('base64')}};}
+const policy=JSON.parse(readFileSync('../../tests/fixtures/initial-release-v2.json'));
 test('only signed, unexpired and complete release policies pass',async()=>{
   const good=await signed(policy);assert.equal((await verifyRelease(good)).profile,policy.profile);
   good.envelope.payload=Buffer.from('{}').toString('base64');await assert.rejects(verifyRelease(good));
   for(const change of [{compatibility:undefined},{compatibility:{...contract,profile_id:'waveshare-p4-4b'}},{compatibility:{...contract,profile_version:2}},{compatibility:{...contract,layout_id:'other-layout'}},{compatibility:{...contract,firmware_lineage:'other-firmware'}},{installable:false},{expires_at:'2000-01-01'},{c6_review:''},{app:{...policy.app,offset:0x110000}}])await assert.rejects(verifyRelease(await signed({...policy,...change})));
+});
+
+test('USB verifier rejects OTA purpose, stale sequence, changed identity and missing provenance',async()=>{
+  for(const change of [{purpose:'ota',installable:false},{sequence:true},{sequence:0},{schema:1},{provenance:{}},{extra:'unknown'}])
+    await assert.rejects(verifyRelease(await signed({...policy,...change})));
+  const stale=await signed(policy);stale.minimum_sequence=policy.sequence+1;await assert.rejects(verifyRelease(stale));
+  const changed=await signed(policy);changed.release_id='0'.repeat(64);await assert.rejects(verifyRelease(changed));
 });
 
 test('installer refuses missing consent or invalid regions before any serial command',async()=>{
@@ -107,6 +114,20 @@ test('changed physical flash blocks writes even with a matching release',async()
   const plan={profile:policy.profile,backup_sha256:'0'.repeat(64),app_sha256:policy.app.sha256,writes:[{offset:0xe00000,bytes:app,sha256:await sha256(app)},{offset:selection.offset,bytes:selection.bytes,sha256:await sha256(selection.bytes)}]};
   const {reader,writes}=flashFixture(flash);
   await assert.rejects(executePlan(reader,plan,policy,{exact_plan:true,separate_copy:true,rom_recovery:true}));assert.deepEqual(writes,[]);
+});
+
+test('revocation during full comparison prevents the first flash write',async()=>{
+  const flash=new Uint8Array(FLASH_BYTES).fill(255),app=new Uint8Array(4096).fill(42);
+  const selection=selectBoot(flash.slice(0x10d000,0x10f000));
+  const plan={profile:policy.profile,backup_sha256:await sha256(flash),app_sha256:policy.app.sha256,
+    writes:[{offset:0xe00000,bytes:app,sha256:await sha256(app)},
+      {offset:selection.offset,bytes:selection.bytes,sha256:await sha256(selection.bytes)}]};
+  const {reader,writes}=flashFixture(flash);let compared=false,rechecked=false;
+  await assert.rejects(executePlan(reader,plan,policy,{exact_plan:true,separate_copy:true,rom_recovery:true},
+    (_,n,total)=>{if(n===total)compared=true;},undefined,async()=>{
+      rechecked=true;assert.equal(compared,true);throw new Error('Revoked fixture release');
+    }),/Revoked fixture/);
+  assert.equal(rechecked,true);assert.deepEqual(writes,[]);
 });
 
 test('approval expiry during preflight prevents writes but never interrupts a started installation',async(t)=>{

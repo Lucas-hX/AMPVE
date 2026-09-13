@@ -21,7 +21,7 @@ Treat a released profile version as immutable. Pin a new version/layout/lineage 
 
 ## Checks
 
-Run firmware unittest discovery, the Django workspace tests, and `npm test && npm run build` in `tools/browser`, then the documented native build and package commands. Fixtures cover a different P4 board, wrong contract version/layout/lineage, altered table entries, bounded reports and insufficient resources. They do not claim physical detection, installation, C6 compatibility or rollback success. See [browser installation](BROWSER_INSTALLATION.md) for those gates.
+Run firmware unittest discovery using the pinned firmware-tools Python, the Django workspace tests, and `npm test && npm run build` in `tools/browser`, then the documented native build and package commands. Fixtures cover a different P4 board, wrong contract version/layout/lineage, altered table entries, bounded reports and insufficient resources. They do not claim physical detection, installation, C6 compatibility or rollback success. See [browser installation](BROWSER_INSTALLATION.md) for those gates.
 
 ## Build evidence — 2026-09-13
 
@@ -30,3 +30,5 @@ Two independently compiled external project directories with the shared pinned I
 The updated workspace suite passed 50 tests, offline firmware suite 19 tests, and browser logic 15 tests. The existing rendered-template onboarding fixture passed local backup import, no-upload checks and three viewport widths. No publisher key, approved release or hardware-write operation was used.
 
 The private review bundle was packaged from source `bef3eaa`, with verified reproduction against the second directory. Actual app bytes passed the browser image checksum/digest/version parser; the actual candidate plus explicitly synthetic stock passed offline plan/recovery extraction. The deployed instance now selects `/home/ampve/.local/state/ampve/firmware-review-profile-v1` through private configuration. Authenticated public ZIP/app downloads were rehashed, anonymous access was refused, and `installable: false` remained enforced. The live software fixture passed schema-2 heartbeat, compatibility messages, ownership/pairing, pending settings, revocation and responsive layouts; temporary records were removed. Physical hardware was not accessed.
+
+Release publication now follows the [schema-2 trust and ordering contract](FIRMWARE_RELEASES.md). The profile tuple alone never grants initial-install or OTA eligibility.

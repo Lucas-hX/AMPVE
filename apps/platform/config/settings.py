@@ -10,7 +10,7 @@ CONFIG_PATH = Path(os.environ.get('AMPVE_CONFIG', '/home/ampve/.config/ampve/pla
 CONFIG = json.loads(CONFIG_PATH.read_text()) if CONFIG_PATH.exists() else {}
 FIRMWARE_REVIEW_ROOT = CONFIG.get('firmware_review_root', '/home/ampve/.local/state/ampve/firmware-review-stock-v1')
 FIRMWARE_RELEASE_ROOT = CONFIG.get('firmware_release_root', '/home/ampve/.local/state/ampve/firmware-releases')
-FIRMWARE_PUBLISHER_PUBLIC_KEY = CONFIG.get('firmware_publisher_public_key', '/home/ampve/.config/ampve/firmware-publisher-public.key')
+FIRMWARE_PUBLISHER_TRUST = CONFIG.get('firmware_publisher_trust', '/home/ampve/.config/ampve/firmware-publisher-trust.json')
 SECRET_KEY = CONFIG.get('secret_key', '')
 if TESTING:
     SECRET_KEY = 'test-only-not-a-deployment-secret-key-000000000000000000'

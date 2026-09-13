@@ -153,7 +153,11 @@ if(root) {
     const current=await verifyRelease(await response.json());
     ensure(JSON.stringify(current)===JSON.stringify(policy),'Release changed; prepare a new plan.');
     if(!reader)await freshReader();
-    await executePlan(reader,plan,policy,consent,progress,signal);await close();plan=null;
+    await executePlan(reader,plan,policy,consent,progress,signal,async()=>{
+      const response=await fetch(root.dataset.release,{cache:'no-store'});ensure(response.ok,'Release unavailable.');
+      const latest=await verifyRelease(await response.json());
+      ensure(JSON.stringify(latest)===JSON.stringify(policy),'Release or publisher trust changed; prepare a new plan.');
+    });await close();plan=null;
     status.textContent='Firmware written and read back. Check the board screen to confirm startup.';
     detail.textContent='Open Wi-Fi on the board, join its temporary protected network, then return here and enter the AMPVE pairing code. USB write success does not prove physical startup or pairing.';
     get('pairing-step').scrollIntoView({behavior:'smooth'});

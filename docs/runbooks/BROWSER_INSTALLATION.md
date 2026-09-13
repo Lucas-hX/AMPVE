@@ -40,23 +40,15 @@ The platform defaults to `/home/ampve/.local/state/ampve/firmware-review-stock-v
 
 ## Publisher administration after review
 
-Use the platform `.venv` (cryptography) for `firmware/tools/publish_release.py`. Do not run publication until compatibility and recovery reviews are documented. The tool does not infer approval, and no signing key is generated automatically during a build.
+Use the [schema-2 publication/trust runbook](FIRMWARE_RELEASES.md) and the pinned firmware-tools Python. It documents immutable release IDs, the monotonic publisher ledger, independent key trust and revocation, separate USB/OTA purposes, provenance archives and the exact promotion/verification commands. No production key, trust registry or approved release is created automatically. The platform and browser reject legacy signed policies.
 
-- `init-key --directory NEW_PRIVATE_DIRECTORY` creates an Ed25519 private/public key pair outside Git, with private permissions. Back up the private key separately; never print it or copy it into the release directory.
-- Prepare a private review JSON containing exactly `bootloader_sha256`, `table_sha256`, `app_sha256`, `bootloader_review`, `c6_review`, `recovery_review`, `expires_at`. Hashes must identify actual reviewed bytes. The three review strings reference completed documented engineering review, including limitations of a development first installation. Expiry must be within 31 days. This file must not contain raw device data.
-- `publish --approve-reviewed-development-release --candidate REVIEW_DIRECTORY --review REVIEW_JSON --key PRIVATE_KEY --output NEW_RELEASE_DIRECTORY` signs the exact app/profile/fingerprints/reviews. It refuses placeholders, mismatched hashes and existing output directories. It performs no hardware or service operation.
-- After reviewing the result, select the immutable directory with private platform configuration `firmware_release_root` and the separately trusted public key file with `firmware_publisher_public_key`, then use the platform's ordinary check/restart procedure. Do not embed a public key chosen by a release itself. No approved release is active by default.
-- Removing the active approved policy disables new installations; keep immutable artifacts for review. Revocation during an already started hardware write must not interrupt the write. OTA signing-key rotation/anti-downgrade and fleet deployment remain separate work.
-
-Expired or timezone-less approvals are rejected by the server for metadata and app downloads. The browser checks expiry again after the full flash comparison and plan hashing, immediately before the first write. Once writing starts, expiry does not interrupt app verification or boot-selection completion. Software tests cover expiry during preflight and after writing starts; physical timing/recovery validation remains pending.
-
-The generated `esp-web-tools-reference.json` is deliberately not served as a generic install button: it lacks dynamic per-device boot selection and recovery gates. Use the guarded AMPVE flow.
+The generated `esp-web-tools-reference.json` remains a tooling reference, not a generic install button: it lacks dynamic per-device boot selection and recovery gates. OTA releases never include it or an app flash offset. Use the guarded AMPVE flow.
 
 ## Checks and evidence categories
 
 ```bash
 # From tools/browser: npm ci --ignore-scripts; npm run build; npm test
-python3 -m unittest discover -s firmware/tests -v
+"$AMPVE_TOOL_PYTHON" -m unittest discover -s firmware/tests -v
 AMPVE_TESTING=1 .venv/bin/python apps/platform/manage.py test workspace --noinput
 .venv/bin/python tests/browser/onboarding.py
 ```
