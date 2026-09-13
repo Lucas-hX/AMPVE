@@ -33,3 +33,7 @@ Overlay staging now writes destination files with fresh timestamps. A regression
 The clean clone `xiaozhi-improv-clean` compiled all 2,433 build steps without compiler warnings. Restaging/rebuilding `xiaozhi-ota` with the timestamp fix then produced identical app, bootloader, partition-table and initial-otadata artifacts. The improved packager accepted all four distinct files. Retained local logs: `improv-clean-build.log`, `improv-restaged-build.log`, and `improv-reproduced-package.log` under the external firmware cache.
 
 Corrected app: **2,877,360 bytes**, SHA-256 `9a324bc489c80db4f110ea7775f13b8aeef75dcf517f7b64d8b10a6e17427570`, with 30% slot space remaining. Private `firmware-improv-reproduced-fixture` records source `5eee517`, four matched artifacts, public-only testing trust and `installable=false`. The 38 firmware-tool tests passed, including the seven new comparison/staging tests. This was same-VPS reproduction with shared pinned toolchain/registry cache, not cross-machine or hardware validation. The selected public installer bundle remains unchanged.
+
+## Real-key first-install candidate
+
+The next preparation rebuilt the integration and public trust in both existing distinct build directories with sequence 1 and `testing_only=false`. All four artifacts matched; this was incremental reproduction against the earlier clean baseline. The current app/ZIP hashes, source, retained logs and unsigned review selection are in [FIRST_INSTALLATION.md](FIRST_INSTALLATION.md). It is not physical compatibility or installation approval.

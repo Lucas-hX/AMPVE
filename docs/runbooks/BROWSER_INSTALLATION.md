@@ -2,6 +2,8 @@
 
 Implementation: browser audit, local backup/import, signed-release gate, exact plan/recovery preparation, bounded app-first writer and pairing handoff. **Physical browser reads/writes are not yet tested. No release is approved for this unit.** See [ADR 0004](../decisions/0004-stock-preserving-browser-installation.md).
 
+Current preparation and remaining exact-unit evidence: [FIRST_INSTALLATION.md](FIRST_INSTALLATION.md).
+
 ## Owner test flow
 
 1. Sign in at `https://ampve.com/devices/add/` in desktop Chrome or Edge. Confirm the printed Waveshare 7B label, use its programming port and close other serial tools.
@@ -36,7 +38,7 @@ Use the existing pinned external toolchain and `firmware/tools/build.sh` from th
 
 `release.py` verifies the actual P4 image and produces the review directory plus a private ZIP sibling. The bundle includes generated bootloader/table/initial-otadata files for comparison only. Their presence does not authorize writing them. `proposed_regions_not_approved_writes` names only the app at `0xE00000`; exact otadata is generated locally from the owner's original selection.
 
-The platform defaults to `/home/ampve/.local/state/ampve/firmware-review-stock-v1` for the candidate. Its app and ZIP are accessible only to signed-in users. No upload endpoint exists for device backups. No candidate flag can enable installation.
+The code default is `/home/ampve/.local/state/ampve/firmware-review-stock-v1`; this VPS now explicitly selects `firmware-first-install-review-02`, the current real-key unsigned candidate documented in [FIRST_INSTALLATION.md](FIRST_INSTALLATION.md). Its app and ZIP are accessible only to signed-in users. No upload endpoint exists for device backups. No candidate flag can enable installation.
 
 ## Publisher administration after review
 
