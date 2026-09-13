@@ -144,3 +144,65 @@ class DeviceRateBucket(models.Model):
     key = models.CharField(max_length=64, primary_key=True)
     started_at = models.DateTimeField()
     count = models.PositiveIntegerField(default=0)
+
+
+class FirmwareRelease(models.Model):
+    """Immutable imported signed policy; signing keys never enter the database."""
+    id = models.CharField(primary_key=True, max_length=64)
+    scope = models.CharField(max_length=64)
+    channel = models.CharField(max_length=32)
+    sequence = models.PositiveIntegerField()
+    policy = models.JSONField()
+    directory = models.CharField(max_length=512)
+    created_at = models.DateTimeField(auto_now_add=True)
+    revoked_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=['scope','channel','sequence'], name='firmware_release_sequence_unique')]
+
+
+class DeviceFirmware(models.Model):
+    device = models.OneToOneField(Device, primary_key=True, on_delete=models.CASCADE, related_name='firmware_state')
+    release = models.ForeignKey(FirmwareRelease, on_delete=models.PROTECT)
+    app_sha256 = models.CharField(max_length=64)
+    confirmed_sequence = models.PositiveIntegerField()
+    confirmed_at = models.DateTimeField()
+
+
+class FirmwareDeployment(models.Model):
+    import uuid
+    ACTIVE = ['queued','downloading','verifying','rebooting']
+    STATES = [(value,value.replace('_',' ').capitalize()) for value in ACTIVE + ['confirmed','failed','rolled_back','cancelled']]
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    device = models.ForeignKey(Device, on_delete=models.CASCADE, related_name='firmware_deployments')
+    release = models.ForeignKey(FirmwareRelease, on_delete=models.PROTECT)
+    previous_release = models.ForeignKey(FirmwareRelease, on_delete=models.PROTECT, related_name='+')
+    previous_app_sha256 = models.CharField(max_length=64)
+    idempotency_key = models.UUIDField()
+    state = models.CharField(max_length=16, choices=STATES, default='queued')
+    report_sequence = models.PositiveIntegerField(default=0)
+    bytes_written = models.PositiveIntegerField(default=0)
+    last_report = models.JSONField(default=dict)
+    error_code = models.CharField(max_length=32, blank=True)
+    needs_attention = models.BooleanField(default=False)
+    checked_at = models.DateTimeField(null=True, editable=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    expires_at = models.DateTimeField()
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=['device','idempotency_key'], name='firmware_request_idempotent'),
+            models.UniqueConstraint(fields=['device'], condition=models.Q(state__in=['queued','downloading','verifying','rebooting']), name='one_active_firmware_deployment'),
+        ]
+        ordering = ['-created_at']
+
+
+class FirmwareDeploymentEvent(models.Model):
+    deployment = models.ForeignKey(FirmwareDeployment, on_delete=models.CASCADE, related_name='events')
+    sequence = models.PositiveIntegerField()
+    report = models.JSONField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=['deployment','sequence'], name='firmware_event_sequence_unique')]

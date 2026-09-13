@@ -82,6 +82,8 @@ def revoke(request, pk):
         device.revoked_at = timezone.now()
         device.credential_hash = ''
         device.save(update_fields=['revoked_at', 'credential_hash'])
+        from .deployment_services import device_revoked
+        device_revoked(device)
     messages.success(request, 'Device access revoked. It can no longer authenticate to AMPVE.')
     return redirect('device_detail', pk=pk)
 
@@ -174,7 +176,7 @@ def heartbeat(request, data, pk):
         return JsonResponse({'protocol': 1, 'heartbeat_interval': 30,
             'configuration': {'version': device.config_version, 'name': device.name,
                 'volume': device.volume, 'microphone_muted': device.microphone_muted},
-            'audio_available': False, 'ota_available': False})
+            'audio_available': False, 'ota_available': hasattr(device,'firmware_state')})
 
 
 @never_cache
