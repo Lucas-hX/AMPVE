@@ -1,6 +1,6 @@
 # Signed firmware publication and trust
 
-The publisher supports schema-2 signed **initial-install** and **OTA** policies. There is no approved release, production signing key or active trust registry created by this implementation. Device deployment APIs and the native OTA downloader remain subsequent work (#25/#26); preparing an OTA policy does not enable them or establish physical rollback.
+The publisher supports schema-2 signed **initial-install** and **OTA** policies. There is no approved release, production signing key or active trust registry created by this implementation. Device deployment APIs and the native OTA client are implemented as development work; see [FIRMWARE_DEPLOYMENTS.md](FIRMWARE_DEPLOYMENTS.md) and [NATIVE_OTA.md](NATIVE_OTA.md). Physical OTA/rollback remains unvalidated, and preparing a policy does not authorize installation.
 
 ## Identity, ordering and evidence
 
@@ -56,3 +56,14 @@ See [FIRMWARE_DEPLOYMENTS.md](FIRMWARE_DEPLOYMENTS.md) for owner requests, relea
 ## Native client build inputs
 
 Newly promoted candidates must include the independently provisioned native publisher trust and a build sequence matching the signed review sequence. See [NATIVE_OTA.md](NATIVE_OTA.md) for `AMPVE_NATIVE_TRUST`, public-key rotation, archived input/header hashes and the explicit testing marker. Sequence-zero builds and enabled software fixtures cannot be promoted. Earlier unsigned review bundles without these inputs must be rebuilt before release approval. This does not replace reproduction, local stock/C6/recovery review or owner hardware-write authorization.
+
+
+## Release notes protected by the signed archive
+
+Before candidate review, supply `--release-notes PATH_TO_NOTES.txt` to `firmware/tools/release.py`, alongside its normal build/comparison/output arguments. The optional file must contain nonempty plain UTF-8 text, at most 8,192 bytes. The packager copies it as the fixed top-level `release-notes.txt`, records its byte size/hash in the review manifest, and includes it in the deterministic review ZIP. Review changes, limitations and recovery requirements before publication.
+
+The existing schema-2 policy signs the complete archive's SHA-256. Notes are therefore authenticated through that signed digest, without changing the native OTA policy or introducing a separate trust source. The publisher checks the notes against candidate provenance and rejects malformed/missing/ambiguous notes before reserving a sequence. Altering notes after publication changes the archive hash and invalidates the release. Use a new reviewed publication; never edit a published ZIP in place.
+
+The dashboard verifies release signature, independent trust/revocation/expiry and app/archive hashes before reading notes. It reads at most 8 KiB from the exact archive member, never extracts paths, and renders plain escaped text with line breaks. Duplicate/oversized/invalid note members are not shown. Older packages without notes remain compatible and show an explicit unavailable message; the signed recovery review remains separately labelled. Invalid optional notes do not establish update permission or bypass any existing gate.
+
+Software evidence (2026-09-13): 43 firmware-tool tests and 77 Django tests (five existing PostgreSQL-only skips) passed. Fixtures cover UTF-8/byte/control limits, duplicate/path cases, invalid-note rejection before ledger reservation, archive modification, key revocation, HTML escaping and releases without notes. Chromium exercised expanded notes across all eight update states and three viewport widths. Test signing keys are temporary fixtures; no production signing material or release was created.

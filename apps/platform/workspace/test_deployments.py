@@ -4,6 +4,8 @@ import json
 import secrets
 import tempfile
 import uuid
+import zipfile
+from io import BytesIO
 from datetime import timedelta
 from pathlib import Path
 from django.conf import settings
@@ -47,10 +49,14 @@ class DeploymentTests(TestCase):
         self.client.force_login(self.owner)
         self.assertEqual(self.api('firmware/identity/',self.running()).status_code,200)
 
-    def release(self,sequence,purpose):
+    def release(self,sequence,purpose,notes=None):
         policy=json.loads((settings.REPO_DIR/'tests/fixtures/initial-release-v2.json').read_text())
         content=('firmware-fixture-'+str(sequence)).encode().ljust(131072,b'!')
         archive=b'fixture-only-archive'
+        if notes is not None:
+            buffer=BytesIO()
+            with zipfile.ZipFile(buffer,'w') as bundle:bundle.writestr('release-notes.txt',notes)
+            archive=buffer.getvalue()
         policy.update(sequence=sequence,purpose=purpose,installable=purpose=='initial-install',firmware_version='fixture-'+str(sequence),
             expires_at=(timezone.now()+timedelta(days=1)).strftime('%Y-%m-%dT%H:%M:%SZ'))
         policy['app'].update(size=len(content),sha256=sha256(content))
@@ -92,6 +98,18 @@ class DeploymentTests(TestCase):
         (Path(self.target.directory)/'xiaozhi.bin').write_bytes(b'changed')
         with self.assertRaises(service.DeploymentError):self.queue()
         self.assertEqual(FirmwareDeployment.objects.count(),0)
+
+    def test_verified_notes_are_escaped_and_archive_changes_hide_the_release(self):
+        release=self.release(3,'ota',notes='Fixture change\n<script>alert(1)</script>')
+        url=reverse('device_updates',args=[self.device.pk])
+        response=self.client.get(url)
+        self.assertContains(response,'Fixture change<br>')
+        self.assertContains(response,'&lt;script&gt;alert(1)&lt;/script&gt;')
+        self.assertNotContains(response,'<script>alert(1)</script>')
+        (Path(release.directory)/'review.zip').write_bytes(b'tampered notes archive')
+        response=self.client.get(url)
+        self.assertNotContains(response,'Fixture change')
+        self.assertNotContains(response,release.pk)
 
     def test_update_page_shows_verified_release_details(self):
         response=self.client.get(reverse('device_updates',args=[self.device.pk]))

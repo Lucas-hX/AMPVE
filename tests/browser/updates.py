@@ -21,7 +21,7 @@ from playwright.sync_api import sync_playwright
 request=RequestFactory().get('/fixture/',secure=True)
 request.user=NS(first_name='Fixture',email='fixture@example.test',is_staff=False)
 device=NS(pk=uuid.uuid4(),name='Synthetic update fixture',connection_state='Offline')
-release=NS(pk='a'*64,sequence=2,policy={'firmware_version':'fixture-2','app':{'size':131072,'sha256':'b'*64},'ota_review':'Fixture recovery review <literal text>','expires_at':'2030-01-01T00:00:00Z'})
+release=NS(release_notes='Fixture improvements\n<script>literal notes only</script>',pk='a'*64,sequence=2,policy={'firmware_version':'fixture-2','app':{'size':131072,'sha256':'b'*64},'ota_review':'Fixture recovery review <literal text>','expires_at':'2030-01-01T00:00:00Z'})
 with sync_playwright() as p:
     browser=p.chromium.launch();page=browser.new_page();errors=[];page.on('pageerror',lambda error:errors.append(str(error)))
     def route(r):
@@ -43,6 +43,8 @@ with sync_playwright() as p:
         assert page.get_by_role('button',name='Cancel queued update').count()==(1 if state=='queued' else 0)
         page.locator('details summary').click()
         assert '<literal text>' in page.locator('details').inner_text()
+        assert '<script>literal notes only</script>' in page.locator('details').inner_text()
+        assert page.locator('details script').count()==0
         for width in [390,768,1440]:
             page.set_viewport_size({'width':width,'height':950})
             assert page.evaluate('document.documentElement.scrollWidth<=innerWidth'),(state,width)

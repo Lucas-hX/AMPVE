@@ -146,7 +146,7 @@ def read_bounded(path, maximum):
     return content
 
 
-def read_release(root, trust_path):
+def read_release(root, trust_path, *, include_notes=False):
     trust = strict_json(read_bounded(trust_path, MAX_METADATA))
     envelope = strict_json(read_bounded(root/'approved-release.json', MAX_METADATA))
     policy, release_id, public_key = verify_envelope(envelope, trust)
@@ -154,4 +154,14 @@ def read_release(root, trust_path):
     archive = read_bounded(root/'review.zip', 64*1024*1024)
     if len(app) != policy['app']['size'] or sha256(app) != policy['app']['sha256'] or sha256(archive) != policy['provenance']['archive_sha256']:
         raise ValueError('Published artifact or provenance was changed')
-    return policy, release_id, public_key, envelope, trust['minimum_sequence']
+    result=(policy, release_id, public_key, envelope, trust['minimum_sequence'])
+    if include_notes:
+        from zipfile import BadZipFile, LargeZipFile
+        from zlib import error as CompressionError
+        from .release_notes import archived_notes
+        try:
+            notes=archived_notes(archive)
+        except (ValueError, OSError, RuntimeError, EOFError, BadZipFile, LargeZipFile, CompressionError):
+            notes=None
+        return (*result, notes)
+    return result

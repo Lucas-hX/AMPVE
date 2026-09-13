@@ -40,7 +40,12 @@ def validate_config(values):
             raise ValueError('Unexpected security, reproducibility or crypto build option: '+forbidden)
 
 
-def package(work, idf, destination, comparison=None):
+def package(work, idf, destination, comparison=None, notes_file=None):
+    notes_bytes=None
+    if notes_file is not None:
+        from workspace.release_notes import MAX_BYTES, decode_notes
+        with notes_file.open('rb') as stream:notes_bytes=stream.read(MAX_BYTES+1)
+        decode_notes(notes_bytes)
     upstream = json.loads((ROOT/'firmware/xiaozhi/upstream.json').read_text())
     for checkout, pin in [(work, upstream['commit']), (idf, IDF_PIN)]:
         if subprocess.check_output(['git', '-C', str(checkout), 'rev-parse', 'HEAD']).decode().strip() != pin:
@@ -160,6 +165,9 @@ def package(work, idf, destination, comparison=None):
                     'Stock bootloader and C6 ESP-Hosted compatibility', 'Partition/data preservation and exact USB restore route',
                     'Explicit owner approval for the reviewed write plan', 'Physical startup/display/touch/Wi-Fi/audio/recovery tests'],
                 'bit_reproducibility': reproducibility}
+    if notes_bytes is not None:
+        (destination/'release-notes.txt').write_bytes(notes_bytes)
+        manifest['release_notes']={'file':'release-notes.txt','size':len(notes_bytes),'sha256':hashlib.sha256(notes_bytes).hexdigest()}
     (destination/'review-manifest.json').write_text(json.dumps(manifest, indent=2)+'\n')
     archive=Path(str(destination)+'.zip')
     archive_tree(destination,archive)
@@ -171,4 +179,5 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     for name in ['work', 'idf', 'output']: parser.add_argument('--'+name, type=Path, required=True)
     parser.add_argument('--comparison-work', type=Path)
-    args = parser.parse_args(); package(args.work.resolve(), args.idf.resolve(), args.output, args.comparison_work)
+    parser.add_argument('--release-notes',type=Path,help='Optional reviewed plain UTF-8 notes, at most 8192 bytes')
+    args = parser.parse_args(); package(args.work.resolve(), args.idf.resolve(), args.output, args.comparison_work,args.release_notes)
