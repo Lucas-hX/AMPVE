@@ -40,7 +40,7 @@ extern "C" {
 extern const lv_image_dsc_t ampve_symbol;
 extern const lv_image_dsc_t ampve_companion;
 }
-std::atomic<bool> ampve_touch_ready{false}, ampve_codec_present{false};
+std::atomic<bool> ampve_touch_ready{false}, ampve_codec_present{false}, ampve_codec_failed{false};
 static std::atomic<bool> wifi_requested{false}, pair_requested{false}, tone_requested{false};
 static std::atomic<bool> local_muted{true}, heard_tone{false}, tone_played{false};
 static std::atomic<int> local_volume{-1};
@@ -158,7 +158,7 @@ static cJSON* hardware_report() {
     auto caps=cJSON_AddObjectToObject(report,"capabilities");
     cJSON_AddStringToObject(caps,"display","initialized");
     cJSON_AddStringToObject(caps,"touch",ampve_touch_ready?"initialized":"failed");
-    cJSON_AddStringToObject(caps,"speaker",heard_tone?"passed":codec_initialized?"initialized":"configured");
+    cJSON_AddStringToObject(caps,"speaker",ampve_codec_failed?"failed":heard_tone?"passed":codec_initialized?"initialized":"configured");
     cJSON_AddStringToObject(caps,"microphone",ampve_codec_present?"configured":"unknown");
     cJSON_AddStringToObject(caps,"wifi",WifiManager::GetInstance().IsConnected()?"passed":"initialized");
     return report;
@@ -213,9 +213,9 @@ static void page(int id) {
         label(body,"My device",&lv_font_montserrat_36);
         label(body,about_text.c_str());
         label(body,ampve_touch_ready?"Touch driver initialized":"Touch not initialized");
-        label(body,heard_tone?"Speaker: you confirmed the test":ampve_codec_present?"Audio codecs responded; speaker test pending":"Audio codecs not confirmed");
+        label(body,ampve_codec_failed?"Audio unavailable. Navigation and recovery remain available.":heard_tone?"Speaker: you confirmed the test":ampve_codec_present?"Audio codecs responded; speaker test pending":"Audio codecs not confirmed");
         button(body,"Play a quiet speaker test",[](lv_event_t*){tone_requested=true;});
-        if(tone_played)button(body,"I heard the tone",[](lv_event_t*){heard_tone=true;page(2);});
+        if(tone_played && !ampve_codec_failed)button(body,"I heard the tone",[](lv_event_t*){if(tone_played && !ampve_codec_failed)heard_tone=true;page(2);});
     } else if(id==3) {
         label(body,"Comfort comes first.",&lv_font_montserrat_36);
         label(body,"Microphone capture is disabled in this first shell.");
@@ -337,17 +337,20 @@ static void worker(void*) {
             esp_sntp_setservername(0,"pool.ntp.org");esp_sntp_init();clock_started=true;
         }
         if(tone_requested.exchange(false)){
-            if(!ampve_codec_present){message("Audio codecs not confirmed. No tone played.");}
+            if(ampve_codec_failed){message("Audio unavailable. Restart the board before retrying diagnostics.");}
+            else if(!ampve_codec_present){message("Audio codecs not confirmed. No tone played.");}
             else {
                 auto codec=Board::GetInstance().GetAudioCodec();
-                if(codec){
+                if(codec && !ampve_codec_failed){
                     codec_initialized=true;codec->EnableInput(false);codec->SetOutputVolume(10);codec->EnableOutput(true);
                     std::vector<int16_t> tone(codec->output_sample_rate()/4);
                     for(size_t i=0;i<tone.size();i++)tone[i]=static_cast<int16_t>(900*sin(2*3.14159265*440*i/codec->output_sample_rate()));
                     codec->OutputData(tone);codec->EnableOutput(false);codec->SetOutputVolume(volume);
-                    tone_played=true;message("Did you hear the tone? Confirm on My device.");
+                    tone_played=!ampve_codec_failed;
+                    if(ampve_codec_failed){codec_initialized=false;heard_tone=false;message("Speaker test failed. Navigation and recovery remain available.");}
+                    else message("Did you hear the tone? Confirm on My device.");
                     lvgl_port_lock(0);if(current_page==2)page(2);lvgl_port_unlock();
-                }
+                }else message("Audio initialization failed. Navigation and recovery remain available.");
             }
         }
         int requested_volume=local_volume.exchange(-1);

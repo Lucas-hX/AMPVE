@@ -103,7 +103,7 @@ The comparison rehashes both full backups and proposed artifact files, checks th
 ## Next implementation after this candidate
 
 - Finish the owner's local audit and C6 compatibility review; then prepare a specific first USB write/restore plan for approval.
-- Validate and harden the native drivers, screen legibility, provisioning and management on this physical board. Replace remaining fatal optional-codec paths with degraded UI errors before calling the runtime production ready.
+- Validate and harden the native drivers, screen legibility, provisioning and management on this physical board. The optional BoxAudioCodec diagnostic now degrades on checked failures; essential LCD/C6 initialization, allocation limits and actual driver failure behavior still require review and physical validation before calling the runtime production ready.
 - Implement the XiaoZhi Opus/audio adapter to FastAPI/Pipecat and explicit local Companion start/stop, echo behavior and interruption. Browser voice success does not prove this adapter.
 - Add a permissioned local microphone meter before enabling network capture; keep local mute authoritative.
 - Validate the implemented native inactive-slot OTA candidate and complete physical rollback tests; see [NATIVE_OTA.md](NATIVE_OTA.md). ESP-IDF rollback configuration alone is not an update service.
@@ -128,3 +128,20 @@ The comparison rehashes both full backups and proposed artifact files, checks th
 ## Native verification foundation
 
 See [NATIVE_OTA.md](NATIVE_OTA.md) for the `0.1.3-ota-verify-dev` candidate: native signed-policy verification, complete-image hashing and checked startup identity reports. The integrated client follows in `0.1.4-ota-client-dev`; physical OTA/rollback remain pending.
+
+
+## Optional audio failure handling
+
+Candidate `0.1.6-audio-guard-dev` patches the pinned upstream `BoxAudioCodec` through `firmware/tools/audio_guard.py`, retaining a reviewable integration diff instead of vendoring another codec implementation. Construction checks allocation and I2S results. Output open, volume, write and close errors stop audio, release acquired resources on a best-effort basis, and retain a failed state until restart. Repeated test presses cannot create a hardware retry loop. Microphone read/enable operations remain unavailable and RX DMA is never enabled.
+
+The shell reports the speaker capability as `failed`, shows an audio-unavailable message and suppresses tone confirmation after a failure. Codec response alone still does not establish audible output. The optional diagnostic does not gate local startup confirmation. These changes do not prove responsiveness of real I2C/I2S drivers, full low-memory safety or resilience of essential LCD/C6 startup paths.
+
+Run the transformed codec with simulated allocation/driver failures:
+
+```bash
+python3 firmware/tests/native/audio_run.py --work "$HOME/.cache/ampve-firmware/xiaozhi-ota"
+```
+
+The runner reads the exact pinned source, applies the same production transformation and compiles it under ASan/UBSan. Its inherited audio interface and ESP-IDF calls are simulated. It covers every checked initialization/playback call, partial channel creation, invalid sample-rate configuration, non-aborting cleanup, retry suppression and absence of microphone capture. The independent ESP-IDF build checks the real API types/linking. Physical cold boots and speaker-driver failures remain acceptance work in #11–#12.
+
+Software evidence (2026-09-13): **21 audio failure/cleanup scenarios** passed under ASan/UBSan and **31 firmware-tool tests** passed. The enabled P4 revision-1.x fixture compiled without compiler warnings and passed slot capacity checks: **2,840,544 bytes**, SHA-256 `362ff10c21782464d920888a728e83422c3b6242a04277083c5fb2de929b04ce`, 31% slot space remaining. The built codec transformation and overlay bytes matched the repository inputs. Private package `firmware-audio-guard-software-fixture` is traced to `d7f14cc`, explicitly testing-only and non-installable. This revision has one build, so it does not inherit the prior OTA revision's two-directory reproduction evidence. No public installer selection, production key, service configuration or hardware was changed.
