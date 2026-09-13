@@ -1,6 +1,7 @@
 """Apply the reviewed integration to an isolated pinned XiaoZhi checkout; never flash."""
 import argparse
 import os
+from credential_guard import prepare as prepare_credentials
 from wifi_guard import prepare as prepare_wifi
 from board_guard import prepare as prepare_board
 from audio_guard import prepare as prepare_audio
@@ -83,6 +84,8 @@ def prepare(work):
         replace(cmake,'set(PROJECT_VER "0.1.7-boot-guard-dev")',f'set(PROJECT_VER "{UPSTREAM["candidate_version"]}")')
     if 'set(PROJECT_VER "0.1.8-display-guard-dev")' in cmake.read_text():
         replace(cmake,'set(PROJECT_VER "0.1.8-display-guard-dev")',f'set(PROJECT_VER "{UPSTREAM["candidate_version"]}")')
+    if 'set(PROJECT_VER "0.1.8-startup-guard-dev")' in cmake.read_text():
+        replace(cmake,'set(PROJECT_VER "0.1.8-startup-guard-dev")',f'set(PROJECT_VER "{UPSTREAM["candidate_version"]}")')
     if f'set(PROJECT_VER "{UPSTREAM["candidate_version"]}")' not in cmake.read_text():
         raise RuntimeError('Prepared project version differs from the candidate version')
     component=work/'main/idf_component.yml'
@@ -107,6 +110,10 @@ def prepare(work):
         replace(wifi_board,'    wifi_manager.Initialize(config);',
             '    ampve_wifi_initialized = wifi_manager.Initialize(config);\n    if (!ampve_wifi_initialized) { ESP_LOGE(TAG, "Wi-Fi driver initialization failed; startup remains unconfirmed"); return; }')
     prepare_wifi(work)
+    prepare_credentials(work)
+    if 'SsidManager::GetInstance().IsStorageReady()' not in wifi_board.read_text():
+        replace(wifi_board,'    // Set unified event callback',
+            '    if (!SsidManager::GetInstance().IsStorageReady()) { ampve_wifi_initialized = false; ESP_LOGE(TAG, "Wi-Fi credentials unavailable; data preserved"); return; }\n\n    // Set unified event callback')
     prepare_board(work, PIN)
     prepare_audio(work, PIN)
     shutil.copytree(overlay,work,dirs_exist_ok=True)
