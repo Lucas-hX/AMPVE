@@ -1,22 +1,18 @@
-# XiaoZhi integration baseline
+# XiaoZhi native AMPVE shell
 
-`upstream.json` pins the source review baseline, not a buildable AMPVE release or validated binary. No upstream source is vendored and no firmware has been flashed. The management backend is implemented; the embedded AMPVE client and XiaoZhi audio adapter are still to be written and validated against this baseline.
+This directory contains a small native integration on a pinned upstream revision, not a vendored XiaoZhi repository. See [the native firmware runbook](../../docs/runbooks/NATIVE_FIRMWARE.md) for build commands, local audit instructions, verified delivery evidence and the hardware acceptance checklist.
 
-At commit `563a4f0a70d34eea5547977f2a39efa401c2ea35`, `main/boards/waveshare/esp32-p4-wifi6-touch-lcd/config.json` contains separate `esp32-p4-wifi6-touch-lcd-7b` and `esp32-p4x-wifi6-touch-lcd-7b` builds. The former explicitly sets `CONFIG_ESP32P4_SELECTS_REV_LESS_V3=y`, `CONFIG_ESP32P4_REV_MIN_100=y`, 32 MB flash and `partitions/v2/32m.csv`. This aligns with the *historical* owner report of revision 1.3 but does not certify the connected unit or an upstream binary. The profile also enables OV5647 camera options; that is not Kiyo support and camera options need review for the voice-first build.
+- `upstream.json`: reviewed upstream commit, exact first hardware profile and candidate status.
+- `sdkconfig.ampve`: legacy P4 7B, English, IDF reproducible-build mode, rollback, minimum in-app assets and muted development configuration.
+- `dependencies.lock`: registry versions/hashes, before the explicitly tracked local provisioning override.
+- `overlay/main/`: native entry point, LVGL shell and authenticated HTTPS management worker. The upstream application/voice/OTA state machine is not started.
+- `../tools/prepare.py` and `provisioning.py`: checked source transformations and a protected local copy of the resolved Wi-Fi component, retaining its upstream license outside Git.
+- `../tools/audit.py`, `build.sh`, `release.py`, `compare.py`: read-only local backup, build, non-installable review bundle and comparison workflow.
 
-## Next firmware work
+At the pinned commit, the upstream `esp32-p4-wifi6-touch-lcd-7b` profile targets P4 revisions 1.x, 32 MiB flash and `partitions/v2/32m.csv`. The similarly named `p4x` profile is not selected. The AMPVE runtime adds an exact revision-1.3/32-MiB guard, and deliberately skips camera initialization. None of these facts certify the owner's current partitions, security state, C6 firmware or a successful recovery.
 
-1. Obtain a local chip/flash/partition audit and preserve the owner's existing full backup outside Git. Compare the pinned partition CSV to the actual device. Record the exact ESP-IDF/toolchain and component lock; no toolchain is accepted by this baseline alone.
-2. Prepare a tracked fork or small patch series with original license notices. Replace upstream activation/OTA/voice destinations with AMPVE endpoints. Do not leave third-party fallback registration enabled.
-3. Add the AMPVE management client as a task inside XiaoZhi firmware, using ESP-IDF HTTPS, certificate validation, cJSON and NVS. It is separate from the conversational model and never executes model-generated shell/management commands.
-4. Generate pairing proof/credential state as specified in [the device contract](../../docs/runbooks/DEVICES.md). Show the server's expiring code locally. Save the client-generated 32-byte credential in NVS *before* exchanging it, so retry after a lost HTTP response is safe. After expiry without a usable credential, require local pairing restart.
-5. Poll every 30 seconds with backoff/jitter; apply settings locally then acknowledge the exact version. Local microphone mute wins over remote configuration. A device credential authenticates a client, not its reported board identity. Never send provider keys to firmware.
-6. Implement the selected XiaoZhi WebSocket/Opus adapter and bounded cancellation. The current heartbeat explicitly advertises audio and OTA as unavailable.
-7. Build reproducible artifacts and an ESP Web Tools manifest only after exact write regions, digests, authenticated release metadata and USB recovery are reviewable. Configure and test OTA slots/rollback/startup confirmation. Obtain hardware-write approval before flashing.
+The shell implements real enrollment/heartbeat calls against [the management contract](../../docs/runbooks/DEVICES.md); it has been compiled, not validated on physical hardware. Display/touch, provisioning, speaker output and recovery remain local acceptance work. Microphone capture, on-board provider sessions, the XiaoZhi Opus adapter and remote OTA are not delivered in this milestone.
 
-The public web UI currently performs optional ROM chip inspection only. It does not read the original flash backup, upload a stub, install an application, modify eFuses, or publish a firmware manifest. Raspberry Pi and a permanent USB bridge remain separate future runtimes.
+No firmware was flashed, eFuse changed or public installer manifest published. Private backups, credentials, build output and whole upstream checkouts remain outside Git. The review bundle is a development artifact with `installable: false`; it is not a release approval. Raspberry Pi and a permanent USB bridge remain future runtimes.
 
-Sources: [pinned board configuration](https://github.com/78/xiaozhi-esp32/blob/563a4f0a70d34eea5547977f2a39efa401c2ea35/main/boards/waveshare/esp32-p4-wifi6-touch-lcd/config.json), [pinned WebSocket protocol](https://github.com/78/xiaozhi-esp32/blob/563a4f0a70d34eea5547977f2a39efa401c2ea35/docs/websocket.md).
-
-
-Device-shell update (2026-09-13): Lucas reports a successful physical ROM inspection: ESP32-P4 v1.3 via USB 0x1a86:0x55d3. This validates chip inspection only. The runtime/UI/recovery design is recorded in [ADR 0003](../../docs/decisions/0003-device-runtime-and-recovery.md). A browser interface concept and bounded capability-report storage are implemented; native firmware and functional peripheral tests remain pending.
+References: [pinned board configuration](https://github.com/78/xiaozhi-esp32/blob/563a4f0a70d34eea5547977f2a39efa401c2ea35/main/boards/waveshare/esp32-p4-wifi6-touch-lcd/config.json), [official esptool scripting API](https://docs.espressif.com/projects/esptool/en/latest/esp32p4/esptool/scripting.html), [ESP-IDF v6.1 P4 OTA API](https://docs.espressif.com/projects/esp-idf/en/v6.1/esp32p4/api-reference/system/ota.html).

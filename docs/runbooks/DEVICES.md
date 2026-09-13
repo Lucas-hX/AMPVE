@@ -1,11 +1,11 @@
 # Device inspection, pairing and management
 
-Date: 2026-09-13. This delivery implements browser ROM inspection and the management server. The embedded client, verified firmware/installer, XiaoZhi audio adapter and OTA are not yet implemented. No physical board is reachable from this VPS. Tests use explicitly named software fixtures.
+Date: 2026-09-13. This delivery implements browser ROM inspection and the management server. The [native XiaoZhi shell](NATIVE_FIRMWARE.md) now implements enrollment/heartbeat as a development candidate. A verified installer, physical validation, XiaoZhi audio adapter and OTA remain pending. No physical board is reachable from this VPS. Tests use explicitly named software fixtures.
 
 ## What works now
 
 - **My devices → Add a device:** select a local serial port with Web Serial. Browser permission is explicit; no network/USB scan runs on page load. USB VID/PID are local hints, not board identity.
-- **Inspect ESP chip:** after a separate reset notice, the locally bundled esptool-js 0.6.1 synchronizes with the ROM, reads chip identity and P4 revision, attempts a reset, then releases the port. No stub, flash write/erase, bootloader/partition change or eFuse programming is requested. Results stay in the page, not browser storage or the server. Physical verification is still pending. Failure may require BOOT/RESET or power reconnection.
+- **Inspect ESP chip:** after a separate reset notice, the locally bundled esptool-js 0.6.1 synchronizes with the ROM, reads chip identity and P4 revision, attempts a reset, then releases the port. No stub, flash write/erase, bootloader/partition change or eFuse programming is requested. Results stay in the page, not browser storage or the server. Lucas confirmed ESP32-P4 v1.3 through this inspection; flash/layout/security and exact board model still need the local audit. Failure may require BOOT/RESET or power reconnection.
 - Authenticated owners can claim an AMPVE pairing code, view their devices, rename/change desired volume/mute, inspect device-reported software/network state and revoke credentials. Administrators do not bypass owner checks on these routes.
 - Device endpoints implement expiring pairing, credential exchange and authenticated heartbeat/configuration acknowledgement. Stock XiaoZhi does not call them yet. Selecting a port does not create a production device or prove manageability.
 - Online requires a heartbeat within 90 seconds. Desired settings are pending until the device explicitly acknowledges their version. Device-reported metadata is not hardware attestation. Refresh pages to see new state.
