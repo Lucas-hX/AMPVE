@@ -176,7 +176,7 @@ export async function executePlan(reader,plan,policy,consent,progress=()=>{},sig
     return {...result,installation_summary:{...trace,...readTransferDiagnostics(reader),outcome:'written_and_verified',elapsed_ms:Math.round(performance.now()-started)}};
   }catch(error){
     const category=error.readFailure?.code||(['AbortError','TimeoutError','TypeError'].includes(error.name)?error.name:'operation_failed');
-    error.installationSummary={...trace,...readTransferDiagnostics(reader),...(error.readFailure?{read_failure:error.readFailure}:{}),outcome:'failed',error_category:category,elapsed_ms:Math.round(performance.now()-started)};
+    error.installationSummary={...trace,...(trace.phase==='validation'?{}:readTransferDiagnostics(reader)),...(error.readFailure?{read_failure:error.readFailure}:{}),outcome:'failed',error_category:category,elapsed_ms:Math.round(performance.now()-started)};
     if(trace.app_readback_verified&&trace.selection_readback_verified){
       error.userMessage='AMPVE and its startup selection were written and verified. The automatic restart did not complete. Reconnect USB and check AMPVE startup.';
     }else if(!error.userMessage){

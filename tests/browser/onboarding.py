@@ -159,7 +159,7 @@ with tempfile.TemporaryDirectory(prefix='ampve-browser-fixture-') as directory,s
     assert page.locator('#restore-panel').is_visible()
     assert page.locator('#restore-original').is_enabled()
     assert page.locator('#install-ampve').is_disabled()
-    assert page.locator('#wifi-step').is_hidden()
+    assert page.locator('#wifi-step').is_visible()
     page.locator('#save-recovery').click()
     page.wait_for_function('document.querySelector("#setup-status").textContent.includes("Recovery files saved")')
     for checkbox in ['separate-copy','rom-recovery','approve-plan']:page.locator('#'+checkbox).check()
@@ -204,16 +204,25 @@ with tempfile.TemporaryDirectory(prefix='ampve-browser-fixture-') as directory,s
       port.getInfo=()=>({usbVendorId:0x1a86,usbProductId:0x55d3});port.setSignals=async()=>{};
       port.open=async()=>{
         port.readable=new ReadableStream({start:c=>port.input=c});let sent=false;
-        port.writable=new WritableStream({write:()=>{if(!sent){sent=true;port.input.enqueue(new TextEncoder().encode('abort() was called at PC 0x480019e9 on core 0\nELF file SHA256: 6ea09dd6d\n'));}}});
+        port.writable=new WritableStream({write:()=>{if(!sent){sent=true;port.input.enqueue(new TextEncoder().encode('assert failed: fixture_init /private/fixture.c:42 (private-expression)\nabort() was called at PC 0x480019e9 on core 0\nELF file SHA256: 6ea09dd6d\n'));}}});
       };
     }""")
     page.locator('#check-startup').click()
     page.wait_for_function('!document.querySelector("#export-install-result").hidden && !document.querySelector("#import-backups").disabled')
-    assert page.locator('#wifi-step').is_hidden()
+    assert page.locator('#wifi-step').is_visible()
+    assert page.locator('#check-startup').is_enabled()
+    assert page.locator('#connect-wifi').is_disabled()
+    assert page.locator('#install-ampve').is_disabled()
+    assert 'same version is paused' in page.locator('#setup-status').inner_text()
     failure_status=page.locator('#setup-status').inner_text()
     with page.expect_download() as result_download:page.locator('#export-install-result').click()
     failure=json.loads(Path(result_download.value.path()).read_text())
     assert failure['kind']=='ampve-usb-startup-failure' and failure['capture_stop']=='panic_captured'
+    assert failure['assertion_locations']==[{'function':'fixture_init','file':'fixture.c','line':42}]
+    assert 'private' not in json.dumps(failure)
+    page.locator('#check-startup').click()
+    page.wait_for_function('!document.querySelector("#check-startup").disabled')
+    assert page.locator('#wifi-step').is_visible()
     assert page.locator('#setup-status').inner_text()==failure_status
     assert not any(method!='GET' for method,_ in requests),requests
     Path('.browser-tests').mkdir(exist_ok=True)
