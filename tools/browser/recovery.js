@@ -1,3 +1,4 @@
+import {resetApplication} from './reset.js';
 // Exact return-to-stock preparation. Never restore arbitrary uploaded region files.
 import {FLASH_BYTES,BLOCK,ensure,sha256,readChunk} from './audit.js';
 import {PARTITIONS,CONTRACT} from './profile.js';
@@ -79,6 +80,6 @@ export async function executeRecovery(reader,plan,review,consent,progress=()=>{}
   }
   const restored=await validateRecovery(reader,plan,progress);
   ensure(restored.current_sha256===plan.backup_sha256,'Full recovery comparison failed.');
-  await reader.loader.after('hard_reset');
+  await resetApplication(reader);
   return {written:!current.already_original,full_backup_readback_verified:true,physical_stock_startup_verified:false};
 }

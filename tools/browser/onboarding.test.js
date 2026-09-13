@@ -8,7 +8,7 @@ import {readFileSync} from 'node:fs';
 const profile=JSON.parse(readFileSync('../../firmware/profiles/waveshare-7b-stock-v1.json'));
 const contract={profile_id:profile.id,profile_version:profile.version,layout_id:profile.layout.id,firmware_lineage:profile.firmware_lineage};
 if(!globalThis.crypto)globalThis.crypto=webcrypto;
-await build({stdin:{contents:'export {Transport} from "esptool-js"; export * from "./audit.js"; export * from "./install.js"; export * from "./review.js"; export * from "./baselines.js"; export * from "./recovery.js"; export * from "./c6-probe.js"; export * from "./commissioning.js";',resolveDir:process.cwd()},bundle:true,platform:'node',format:'esm',outfile:'build/test-api.mjs'});
+await build({stdin:{contents:'export {Transport, ESPLoader} from "esptool-js"; export * from "./reset.js"; export * from "./audit.js"; export * from "./install.js"; export * from "./review.js"; export * from "./baselines.js"; export * from "./recovery.js"; export * from "./c6-probe.js"; export * from "./commissioning.js";',resolveDir:process.cwd()},bundle:true,platform:'node',format:'esm',outfile:'build/test-api.mjs'});
 const api=await import('./build/test-api.mjs');
 const {parseTable,STOCK,matchesStock,decodeSecurity,readChunk,openReader,selectBoot,verifyRelease,executePlan,sha256,FLASH_BYTES}=api;
 function record(seq,state=2,index=0){const b=new Uint8Array(8192).fill(255),v=new DataView(b.buffer);v.setUint32(index*4096,seq,true);v.setUint32(index*4096+24,state,true);v.setUint32(index*4096+28,crc32(-1,b,4,index*4096)>>>0,true);return b;}
@@ -327,4 +327,36 @@ test('USB setup waits for core confirmation even when earlier status replies are
   const port=runtimePort((request,c)=>{const nonce=request.trim().split(' ')[1];c.enqueue(new TextEncoder().encode(runtimeFrame(nonce,{core_confirmed:++requests>1})+'\n'));});
   const result=await api.checkRuntime(port,runtimeExpected,()=>++reports,undefined,3000);
   assert.equal(result.core_confirmed,true);assert.equal(reports,2);assert.equal(port.closed,true);
+});
+test('failed USB startup exports bounded categories rather than private UART text',async()=>{
+  const port=runtimePort((request,c)=>{c.enqueue(new TextEncoder().encode('SSID private-network password private-secret\nGuru Meditation Error: Core 0 panic\nwaiting for download\n'));});
+  let failure;
+  try{await api.checkRuntime(port,runtimeExpected,()=>{},undefined,30);}catch(error){failure=error.startupSummary;}
+  assert.equal(failure.kind,'ampve-usb-startup-failure');assert.equal(failure.timed_out,true);
+  assert.deepEqual(failure.observations,['download_mode','panic']);assert.equal(failure.physical_startup_verified,false);
+  assert.equal(JSON.stringify(failure).includes('private-'),false);assert.equal(port.closed,true);
+});
+test('startup categories do not expose diagnostic lines or accept oversized lines',()=>{
+  assert.deepEqual(api.bootObservations('invalid header: 0xffffffff'),['invalid_image']);
+  assert.deepEqual(api.bootObservations('Task watchdog got triggered'),['watchdog']);
+  assert.deepEqual(api.bootObservations('PSRAM ID read error'),['memory_initialization']);
+  assert.deepEqual(api.bootObservations('private SSID and password'),[]);
+  assert.deepEqual(api.bootObservations('invalid header:'+'x'.repeat(768)),[]);
+});
+test('application reset uses the actual pinned loader to assert and release EN without asserting BOOT',async()=>{
+  const signals=[];const port={setSignals:async value=>signals.push(value),getInfo:()=>({usbVendorId:0x1a86,usbProductId:0x55d3})};
+  const loader=new api.ESPLoader({transport:new api.Transport(port),baudrate:115200,terminal:{write(){},writeLine(){},clean(){}}});
+  await api.resetApplication({loader});
+  assert.deepEqual(signals.filter(s=>Object.hasOwn(s,'requestToSend')).map(s=>s.requestToSend),[true,false]);
+  assert.ok(signals.filter(s=>Object.hasOwn(s,'dataTerminalReady')).every(s=>s.dataTerminalReady===false));
+});
+test('startup retries a lost early request using one nonce and performs reset after opening its reader',async()=>{
+  const signals=[];let requests=0,nonce;
+  const port=runtimePort((request,c)=>{const current=request.trim().split(' ')[1];if(nonce)assert.equal(current,nonce);nonce=current;
+    if(++requests===2)c.enqueue(new TextEncoder().encode(runtimeFrame(nonce)+'\n'));});
+  port.getInfo=()=>({usbVendorId:0x1a86,usbProductId:0x55d3});
+  port.setSignals=async value=>{assert.equal(port.readable.locked,true);signals.push(value);};
+  const result=await api.checkRuntime(port,runtimeExpected,()=>{},undefined,3000,true);
+  assert.equal(result.core_confirmed,true);assert.equal(requests,2);assert.equal(port.closed,true);
+  assert.deepEqual(signals.filter(s=>Object.hasOwn(s,'requestToSend')).map(s=>s.requestToSend),[true,false]);
 });
