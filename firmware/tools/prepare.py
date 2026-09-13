@@ -1,6 +1,8 @@
 """Apply the reviewed integration to an isolated pinned XiaoZhi checkout; never flash."""
 import argparse
 import os
+from wifi_guard import prepare as prepare_wifi
+from board_guard import prepare as prepare_board
 from audio_guard import prepare as prepare_audio
 from native_trust import generate as generate_native_trust
 import json
@@ -41,19 +43,6 @@ def prepare(work):
         replace(work/'main/CMakeLists.txt','set(SOURCES "audio/audio_codec.cc"',
             'set(SOURCES "ampve/runtime.cc" "ampve/brand_assets.c" "audio/audio_codec.cc"')
         replace(work/'main/CMakeLists.txt','PRIV_REQUIRES\n','PRIV_REQUIRES\n                        esp_http_client esp-tls espressif__cjson esp_timer esp_psram\n')
-        board=work/'main/boards/waveshare/esp32-p4-wifi6-touch-lcd/esp32-p4-wifi6-touch-lcd.cc'
-        replace(board,'#include "wifi_board.h"','#include "wifi_board.h"\n#include "ampve/runtime.h"')
-        replace(board,'        InitializeCamera();','        // AMPVE: camera is deliberately not initialized.')
-        start=board.read_text();a=start.index('        boot_button_.OnClick(');b=start.index('\n    }',a)
-        start=start[:a]+'        boot_button_.OnClick([]() { ampve_request_wifi(); });'+start[b:]
-        board.write_text(start)
-        replace(board,'ESP_ERROR_CHECK(esp_lcd_new_panel_io_i2c(i2c_bus_, &tp_io_config, &tp_io_handle));',
-            'if (esp_lcd_new_panel_io_i2c(i2c_bus_, &tp_io_config, &tp_io_handle) != ESP_OK) return;')
-        replace(board,'ESP_ERROR_CHECK(esp_lcd_touch_new_i2c_gt911(tp_io_handle, &tp_cfg, &tp));',
-            'if (esp_lcd_touch_new_i2c_gt911(tp_io_handle, &tp_cfg, &tp) != ESP_OK) return;')
-        replace(board,'        lvgl_port_add_touch(&touch_cfg);','        ampve_touch_ready = lvgl_port_add_touch(&touch_cfg) != nullptr;')
-        replace(board,'        InitializeTouch();','        InitializeTouch();\n        ampve_codec_present = i2c_device_probe(AUDIO_CODEC_ES8311_ADDR >> 1) == ESP_OK && i2c_device_probe(AUDIO_CODEC_ES7210_ADDR >> 1) == ESP_OK;')
-        replace(board,'        static BoxAudioCodec audio_codec(','        if (!ampve_codec_present) return nullptr;\n        static BoxAudioCodec audio_codec(')
         replace(work/'main/audio/codecs/box_audio_codec.cc',
             '    ESP_ERROR_CHECK(i2s_channel_enable(rx_handle_));',
             '    // AMPVE shell: leave the RX DMA channel disabled; no microphone capture.')
@@ -90,6 +79,10 @@ def prepare(work):
         replace(cmake,'set(PROJECT_VER "0.1.5-ota-recovery-dev")',f'set(PROJECT_VER "{UPSTREAM["candidate_version"]}")')
     if 'set(PROJECT_VER "0.1.6-audio-guard-dev")' in cmake.read_text():
         replace(cmake,'set(PROJECT_VER "0.1.6-audio-guard-dev")',f'set(PROJECT_VER "{UPSTREAM["candidate_version"]}")')
+    if 'set(PROJECT_VER "0.1.7-boot-guard-dev")' in cmake.read_text():
+        replace(cmake,'set(PROJECT_VER "0.1.7-boot-guard-dev")',f'set(PROJECT_VER "{UPSTREAM["candidate_version"]}")')
+    if 'set(PROJECT_VER "0.1.8-display-guard-dev")' in cmake.read_text():
+        replace(cmake,'set(PROJECT_VER "0.1.8-display-guard-dev")',f'set(PROJECT_VER "{UPSTREAM["candidate_version"]}")')
     if f'set(PROJECT_VER "{UPSTREAM["candidate_version"]}")' not in cmake.read_text():
         raise RuntimeError('Prepared project version differs from the candidate version')
     component=work/'main/idf_component.yml'
@@ -107,6 +100,14 @@ def prepare(work):
         replace(component_cmake,'set(SOURCES ', 'set(SOURCES "ampve/ota_client.cc" "ampve/ota_platform.cc" ')
     if '"ampve/boot_guard.cc"' not in component_cmake.read_text():
         replace(component_cmake,'set(SOURCES ', 'set(SOURCES "ampve/boot_guard.cc" ')
+    wifi_board=work/'main/boards/common/wifi_board.cc'
+    if '#include "ampve/runtime.h"' not in wifi_board.read_text():
+        replace(wifi_board,'#include "wifi_board.h"','#include "wifi_board.h"\n#include "ampve/runtime.h"')
+    if '    wifi_manager.Initialize(config);' in wifi_board.read_text():
+        replace(wifi_board,'    wifi_manager.Initialize(config);',
+            '    ampve_wifi_initialized = wifi_manager.Initialize(config);\n    if (!ampve_wifi_initialized) { ESP_LOGE(TAG, "Wi-Fi driver initialization failed; startup remains unconfirmed"); return; }')
+    prepare_wifi(work)
+    prepare_board(work, PIN)
     prepare_audio(work, PIN)
     shutil.copytree(overlay,work,dirs_exist_ok=True)
     (work/'main/ampve/profile.h').write_text(native_header())
