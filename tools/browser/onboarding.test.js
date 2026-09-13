@@ -8,7 +8,7 @@ import {readFileSync} from 'node:fs';
 const profile=JSON.parse(readFileSync('../../firmware/profiles/waveshare-7b-stock-v1.json'));
 const contract={profile_id:profile.id,profile_version:profile.version,layout_id:profile.layout.id,firmware_lineage:profile.firmware_lineage};
 if(!globalThis.crypto)globalThis.crypto=webcrypto;
-await build({stdin:{contents:'export * from "./audit.js"; export * from "./install.js"; export * from "./review.js";',resolveDir:process.cwd()},bundle:true,platform:'node',format:'esm',outfile:'build/test-api.mjs'});
+await build({stdin:{contents:'export * from "./audit.js"; export * from "./install.js"; export * from "./review.js"; export * from "./baselines.js";',resolveDir:process.cwd()},bundle:true,platform:'node',format:'esm',outfile:'build/test-api.mjs'});
 const api=await import('./build/test-api.mjs');
 const {parseTable,STOCK,matchesStock,decodeSecurity,readChunk,openReader,selectBoot,verifyRelease,executePlan,sha256,FLASH_BYTES}=api;
 function record(seq,state=2,index=0){const b=new Uint8Array(8192).fill(255),v=new DataView(b.buffer);v.setUint32(index*4096,seq,true);v.setUint32(index*4096+24,state,true);v.setUint32(index*4096+28,crc32(-1,b,4,index*4096)>>>0,true);return b;}
@@ -177,4 +177,18 @@ test('unsigned candidate review plans cannot reach a serial reader or writer',as
     {status:'development-review',installable:false,profile:'waveshare-7b-stock-v1',app:{offset:0x8000,size:112}}]){
     await assert.rejects(api.makeReviewPlan({}, {},candidate,new Uint8Array()));
   }
+});
+
+
+test('known vendor fingerprints are recognized without approving unknown hardware or releases',()=>{
+  const catalog=JSON.parse(readFileSync('../../firmware/profiles/stock-baselines.json'));
+  const baseline=catalog.baselines[0];
+  const report={stock_layout_matches:true,matching_files:true,partition_table_md5_verified:true,partition_table_offset:0x8000,
+    table_sha256:baseline.regions.find(r=>r.name==='table').sha256,
+    images:[{name:'bootloader',offset:0x2000,region_sha256:baseline.regions.find(r=>r.name==='bootloader').sha256,internal_checksum_verified:true,appended_sha256_verified:true}]};
+  assert.equal(api.recognizeBaseline(report),baseline.id);
+  assert.equal(baseline.installable,false);
+  for(const changed of [{...report,matching_files:false},{...report,stock_layout_matches:false},{...report,partition_table_offset:0},
+    {...report,table_sha256:'0'.repeat(64)},{...report,images:[{...report.images[0],region_sha256:'0'.repeat(64)}]},
+    {...report,images:[{...report.images[0],internal_checksum_verified:false}]}])assert.equal(api.recognizeBaseline(changed),null);
 });
