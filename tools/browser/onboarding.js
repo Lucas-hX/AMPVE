@@ -1,5 +1,5 @@
 import {openReader,readChunk,captureRead,compareBackups,parseTable,matchesStock,ensure,sha256,FLASH_BYTES} from './audit.js';
-import {verifyRelease,makePlan,executePlan} from './install.js';
+import {verifyRelease,makePlan,makeReviewPlan,planReviewSummary,executePlan} from './install.js';
 import {openWifi,validCredentials} from './wifi.js';
 import {CONTRACT} from './profile.js';
 import {reviewSummary} from './review.js';
@@ -28,7 +28,10 @@ if(root) {
     get('capture-backup').disabled=busy||!port||!window.showDirectoryPicker;
     get('prepare-install').disabled=busy||!report;
     get('export-review').disabled=busy||!report;
-    get('install-ampve').disabled=busy||!plan?.recovery_saved||!port||
+    get('save-recovery').disabled=busy||!plan||!window.showDirectoryPicker;
+    get('export-plan-review').disabled=busy||!plan;
+    get('approve-plan').disabled=busy||!policy||plan?.review_only===true;
+    get('install-ampve').disabled=busy||!policy||plan?.review_only===true||!plan?.recovery_saved||!port||
       !get('approve-plan').checked||!get('separate-copy').checked||!get('rom-recovery').checked;
     get('cancel-setup').disabled=!busy||writing||!controller;
     get('import-backups').disabled=busy;
@@ -130,27 +133,31 @@ if(root) {
     detail.textContent='This summary contains hashes and bounded layout/image metadata. It does not contain flash bytes, MAC addresses, Wi-Fi details or file paths. Nothing was uploaded; it does not approve installation.';
   });
   get('prepare-install').onclick=()=>run(async()=>{
-    plan=null;status.textContent='Checking the curated AMPVE release…';
+    plan=null;policy=null;get('plan-panel').hidden=true;status.textContent='Checking the curated AMPVE release…';
     const response=await fetch(root.dataset.release,{cache:'no-store'});ensure(response.ok,'Release unavailable.');
     const data=await response.json();
-    if(data.status!=='reviewed-development-release') {
+    const approved=data.status==='reviewed-development-release';
+    if(!approved && data.status!=='development-review') {
       status.textContent='Backups are ready. Installation is waiting for a reviewed release.';
       detail.textContent=(data.remaining||['No publisher-approved package is available.']).join(' · ');
-      if(data.app){
-        get('candidate-info').textContent=`Stock-preserving candidate · ${(data.app.size/1048576).toFixed(2)} MiB · SHA-256 ${data.app.sha256}`;
-        const link=get('candidate-download');link.href='/devices/firmware/review-bundle/';link.hidden=false;
-      }
       return;
     }
-    policy=await verifyRelease(data);
-    const appResponse=await fetch(`/devices/firmware/artifacts/${policy.app.sha256}.bin`,{cache:'no-store'});
+    if(approved)policy=await verifyRelease(data);
+    const appInfo=approved?policy.app:data.app;
+    ensure(appInfo && /^[a-f0-9]{64}$/.test(appInfo.sha256),'Candidate identity missing.');
+    const appResponse=await fetch(`/devices/firmware/artifacts/${appInfo.sha256}.bin`,{cache:'no-store'});
     ensure(appResponse.ok,'App unavailable.');
     ensure(get('board-confirm').checked,'Confirm the printed board model before preparing an installation.');
-    plan=await makePlan(backup,{...report,owner_confirmed_profile:CONTRACT.profile_id},policy,new Uint8Array(await appResponse.arrayBuffer()));
+    const checkedReport={...report,owner_confirmed_profile:CONTRACT.profile_id};
+    const app=new Uint8Array(await appResponse.arrayBuffer());
+    plan=approved?await makePlan(backup,checkedReport,policy,app):await makeReviewPlan(backup,checkedReport,data,app);
+    get('candidate-info').textContent=`Stock-preserving candidate · ${(appInfo.size/1048576).toFixed(2)} MiB · SHA-256 ${appInfo.sha256}`;
+    const link=get('candidate-download');link.href='/devices/firmware/review-bundle/';link.hidden=approved;
     const list=get('write-regions');list.replaceChildren();
     for(const item of plan.writes) {const li=document.createElement('li');li.textContent=`${item.name}: 0x${item.offset.toString(16)} · ${item.bytes.length} bytes · SHA-256 ${item.sha256}`;list.append(li);}
     get('plan-panel').hidden=false;get('approve-plan').checked=false;
-    status.textContent='Exact write plan prepared. Save its private recovery files before installing.';
+    status.textContent=approved?'Exact write plan prepared. Save its private recovery files before installing.':'Candidate compared with your backups. Save recovery files and download the plan summary for review.';
+    detail.textContent=approved?'': 'Everything is prepared locally in this browser. Installation is waiting for stock bootloader/C6 review and a signed release.';
   });
   get('save-recovery').onclick=()=>run(async()=>{
     ensure(plan,'Prepare a plan first.');const directory=await folder();
@@ -164,8 +171,15 @@ if(root) {
     await save(directory,'recovery-plan-private.json',JSON.stringify(summary,null,2)+'\n');
     plan.recovery_saved=true;status.textContent='Recovery files saved and rehashed locally. Review the exact write plan.';
   });
+  get('export-plan-review').onclick=()=>run(async()=>{
+    const summary=planReviewSummary(plan);
+    const url=URL.createObjectURL(new Blob([JSON.stringify(summary,null,2)+'\n'],{type:'application/json'}));
+    const link=document.createElement('a');link.href=url;link.download='ampve-plan-review-summary.json';
+    document.body.append(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),10000);
+    status.textContent='Plan summary prepared for download. Private recovery files stay on your computer.';
+  });
   get('install-ampve').onclick=()=>run(async signal=>{
-    boardConsent();ensure(plan?.recovery_saved&&port,'Save recovery files and select the same board first.');
+    boardConsent();ensure(policy&&plan?.review_only!==true,'A reviewed signed release is required before installation.');ensure(plan?.recovery_saved&&port,'Save recovery files and select the same board first.');
     const consent={exact_plan:get('approve-plan').checked,separate_copy:get('separate-copy').checked,rom_recovery:get('rom-recovery').checked};
     ensure(Object.values(consent).every(Boolean),'Confirm the exact write/recovery plan first.');
     // Revalidate approval/signature at click time, then hold the same transport through all writes.

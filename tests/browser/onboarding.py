@@ -49,11 +49,14 @@ with tempfile.TemporaryDirectory(prefix='ampve-browser-fixture-') as directory,s
     (root/'audit-private.json').write_text(json.dumps({'independent_reads_match':True,'sha256':digest,'hardware':{'chip':'ESP32-P4','revision':103,'identity':'PRIVATE-FIXTURE-MAC','path':str(root)}}))
     browser=p.chromium.launch();page=browser.new_page();errors=[];requests=[]
     page.on('pageerror',lambda e:errors.append(str(e)))
+    review_candidate=False
+    app=bytes(image()); app_hash=hashlib.sha256(app).hexdigest()
     def route(r):
         req=r.request;requests.append((req.method,req.url))
         path=urlparse(req.url).path
         if path=='/devices/add/':r.fulfill(status=200,content_type='text/html',body=html)
-        elif path=='/devices/firmware/release/':r.fulfill(status=200,content_type='application/json',body=json.dumps({'status':'no-reviewed-release','installable':False}))
+        elif path=='/devices/firmware/release/':r.fulfill(status=200,content_type='application/json',body=json.dumps({'status':'development-review','installable':False,'profile':'waveshare-7b-stock-v1','app':{'offset':0xe00000,'size':len(app),'sha256':app_hash}} if review_candidate else {'status':'no-reviewed-release','installable':False}))
+        elif path=='/devices/firmware/artifacts/'+app_hash+'.bin':r.fulfill(status=200,content_type='application/octet-stream',body=app)
         elif path.startswith('/static/'):
             file=finders.find(path[len('/static/'):])
             if file:r.fulfill(status=200,content_type=mimetypes.guess_type(file)[0] or 'application/octet-stream',body=Path(file).read_bytes())
@@ -80,6 +83,36 @@ with tempfile.TemporaryDirectory(prefix='ampve-browser-fixture-') as directory,s
     page.wait_for_function('document.querySelector("#setup-status").textContent.includes("waiting for a reviewed release")')
     assert page.locator('#install-ampve').is_disabled()
     assert page.locator('#plan-panel').is_hidden()
+    review_candidate=True
+    page.locator('#board-confirm').check()
+    page.evaluate("""() => {
+      window.fixtureRecoveryFiles={};
+      const directory={getDirectoryHandle:async()=>directory,getFileHandle:async name=>({
+        createWritable:async()=>({write:async data=>{window.fixtureRecoveryFiles[name]=new Blob([data]);},close:async()=>{},abort:async()=>{}}),
+        getFile:async()=>window.fixtureRecoveryFiles[name]
+      })};
+      window.showDirectoryPicker=async()=>directory;
+    }""")
+    page.locator('#prepare-install').click()
+    page.wait_for_function('document.querySelector("#setup-status").textContent.includes("Candidate compared")')
+    assert page.locator('#plan-panel').is_visible()
+    assert page.locator('#approve-plan').is_disabled()
+    page.locator('#save-recovery').click()
+    page.wait_for_function('document.querySelector("#setup-status").textContent.includes("Recovery files saved")')
+    saved=page.evaluate('async()=>JSON.parse(await window.fixtureRecoveryFiles["recovery-plan-private.json"].text())')
+    assert saved['installable'] is False
+    assert [r['offset'] for r in saved['writes']]==[0xe00000,0x10d000]
+    assert page.evaluate('window.fixtureRecoveryFiles["restore-otadata.bin"].size')==8192
+    with page.expect_download() as event:
+        page.locator('#export-plan-review').click()
+    exported_plan=Path(event.value.path()).read_text(); plan_review=json.loads(exported_plan)
+    assert plan_review['kind']=='ampve-browser-plan-review' and plan_review['installable'] is False
+    assert plan_review['candidate_sha256']==app_hash and plan_review['backup_sha256']==digest
+    assert plan_review['current_selection'] is None and plan_review['recovery_files_saved'] is True
+    assert plan_review['proposed_regions']==[{'offset':r['offset'],'size':r['size'],'sha256':r['sha256']} for r in saved['writes']]
+    assert 'PRIVATE-FIXTURE-MAC' not in exported_plan and str(root) not in exported_plan
+    page.locator('#separate-copy').check();page.locator('#rom-recovery').check()
+    assert page.locator('#install-ampve').is_disabled()
     page.evaluate(r"""() => {
       const packet=(type,data)=>{const p=[73,77,80,82,79,86,1,type,data.length,...data];p.push(p.reduce((a,b)=>a+b,0)&255);return new Uint8Array([10,...p,10]);};
       const rpc=(command,strings)=>{const data=strings.flatMap(s=>{const b=[...new TextEncoder().encode(s)];return [b.length,...b];});return packet(4,[command,data.length,...data]);};
@@ -116,4 +149,4 @@ with tempfile.TemporaryDirectory(prefix='ampve-browser-fixture-') as directory,s
         page.screenshot(path=f'.browser-tests/stock-onboarding-{width}.png',full_page=True)
     assert not errors,errors
     browser.close()
-print('Rendered browser fixtures passed: local backup import/integrity, sanitized review download, release gate, simulated USB Wi-Fi/password clearing, no uploads and three viewport widths. No physical hardware tested.')
+print('Rendered browser fixtures passed: local backup import/integrity, sanitized backup/plan downloads, candidate comparison and saved recovery, unsigned write gate, simulated USB Wi-Fi/password clearing, no uploads and three viewport widths. No physical hardware tested.')
