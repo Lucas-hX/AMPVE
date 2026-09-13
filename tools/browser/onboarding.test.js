@@ -8,7 +8,7 @@ import {readFileSync} from 'node:fs';
 const profile=JSON.parse(readFileSync('../../firmware/profiles/waveshare-7b-stock-v1.json'));
 const contract={profile_id:profile.id,profile_version:profile.version,layout_id:profile.layout.id,firmware_lineage:profile.firmware_lineage};
 if(!globalThis.crypto)globalThis.crypto=webcrypto;
-await build({stdin:{contents:'export * from "./audit.js"; export * from "./install.js"; export * from "./review.js"; export * from "./baselines.js"; export * from "./recovery.js"; export * from "./c6-probe.js";',resolveDir:process.cwd()},bundle:true,platform:'node',format:'esm',outfile:'build/test-api.mjs'});
+await build({stdin:{contents:'export {Transport} from "esptool-js"; export * from "./audit.js"; export * from "./install.js"; export * from "./review.js"; export * from "./baselines.js"; export * from "./recovery.js"; export * from "./c6-probe.js";',resolveDir:process.cwd()},bundle:true,platform:'node',format:'esm',outfile:'build/test-api.mjs'});
 const api=await import('./build/test-api.mjs');
 const {parseTable,STOCK,matchesStock,decodeSecurity,readChunk,openReader,selectBoot,verifyRelease,executePlan,sha256,FLASH_BYTES}=api;
 function record(seq,state=2,index=0){const b=new Uint8Array(8192).fill(255),v=new DataView(b.buffer);v.setUint32(index*4096,seq,true);v.setUint32(index*4096+24,state,true);v.setUint32(index*4096+28,crc32(-1,b,4,index*4096)>>>0,true);return b;}
@@ -248,27 +248,34 @@ test('RAM diagnostic refuses flash-mapped, overlapping and tampered images',asyn
   v.setUint32(24,0x4ff20000,true);bytes[39]^=1;await assert.rejects(api.ramSegments(bytes,manifest));
 });
 
-test('RAM probe uses ROM memory commands, correlates the response and closes on silent cancellation',async()=>{
+test('RAM probe reuses the real esptool reader and closes on success, cancellation or invalid response',async()=>{
   const bytes=new Uint8Array(40),v=new DataView(bytes.buffer);bytes[0]=0xe9;bytes[1]=1;
   v.setUint32(4,0x4ff20000,true);v.setUint16(12,18,true);v.setUint16(15,100,true);v.setUint16(17,199,true);
   v.setUint32(24,0x4ff20000,true);v.setUint32(28,8,true);
   const manifest={schema:1,kind:'ampve-c6-ram-probe',chip_revision:103,flash_writes:false,size:40,sha256:await sha256(bytes)};
-  for(const cancel of [false,true]){
-    const controller=new AbortController(),commands=[];let receive,disconnected=false,released=false;
-    const port={writable:{getWriter:()=>({write:async data=>{
-      const nonce=new TextDecoder().decode(data).trim();
-      receive(new TextEncoder().encode(JSON.stringify({kind:'ampve-c6-probe',schema:1,nonce,status:'observed',version:[2,12,13]})+'\n'));
-    },releaseLock:()=>{released=true;}})}};
+  for(const mode of ['success','cancel','stale','oversize']){
+    const controller=new AbortController(),commands=[];let input,loop,disconnected=false,released=false;
+    const port={readable:new ReadableStream({start(c){input=c;}}),
+      writable:{getWriter:()=>({write:async data=>{
+        const nonce=mode==='stale'?'b'.repeat(32):new TextDecoder().decode(data).trim();
+        const frame=mode==='oversize'?'x'.repeat(16385):JSON.stringify({kind:'ampve-c6-probe',schema:1,nonce,status:'observed',version:[2,12,13]})+'\n';
+        input.enqueue(new TextEncoder().encode(frame));
+      },releaseLock:()=>{released=true;}})},close:async()=>{assert.equal(port.readable.locked,false);disconnected=true;}};
+    const transport=new api.Transport(port,false);transport.trace=()=>{};
     const connect=async(selected,options)=>{
       assert.equal(selected,port);assert.deepEqual(options,{baud:115200,stub:false});
-      return {loader:{memBegin:async(...args)=>commands.push(['begin',...args]),memBlock:async()=>commands.push(['block']),
-        memFinish:async entry=>commands.push(['finish',entry])},
-        transport:{rawRead:async callback=>{receive=callback;if(cancel)setTimeout(()=>controller.abort(),10);},
-          disconnect:async()=>{disconnected=true;}}};
+      loop=transport.readLoop();assert.equal(port.readable.locked,true);
+      return {hardware:{identity:'PRIVATE-FIXTURE-UNIT'},loader:{memBegin:async(...args)=>commands.push(['begin',...args]),
+        memBlock:async()=>commands.push(['block']),memFinish:async entry=>{
+          commands.push(['finish',entry]);if(mode==='cancel')setTimeout(()=>controller.abort(),10);
+        }},transport};
     };
     const result=api.runProbe(port,bytes,manifest,()=>{},controller.signal,connect);
-    if(cancel)await assert.rejects(result,{name:'AbortError'});else assert.equal((await result).version_matches,true);
-    assert.equal(disconnected,true);assert.equal(released,!cancel);
+    if(mode==='cancel')await assert.rejects(result,{name:'AbortError'});
+    else if(mode==='success'){const observed=await result;assert.equal(observed.version_matches,true);assert.equal(observed.unit_identity,'PRIVATE-FIXTURE-UNIT');}
+    else await assert.rejects(result);
+    await loop;
+    assert.equal(disconnected,true);assert.equal(released,mode!=='cancel');assert.equal(port.readable.locked,false);
     assert.deepEqual(commands,[['begin',8,1,1024,0x4ff20000],['block'],['finish',0x4ff20000]]);
   }
 });

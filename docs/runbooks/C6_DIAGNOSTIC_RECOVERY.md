@@ -64,3 +64,11 @@ The dedicated diagnostic uses size optimization, disabled debug assertions, no C
 Packaging checked staged source, IDF pin, SDK profile/security flags, image checksum/digest/revision, RAM intervals/entrypoint and defined executable symbols. No forbidden flash/NVS/OTA/eFuse write entrypoints were linked. The ELF places the low/high heap starts at `0x4FF28440` and `0x4FF5CA30`; runtime free heap and task behavior still need measurement on the device. One successful build is recorded, not independent reproduction.
 
 Validation: 36 Node tests, eight Django delivery tests and the rendered Chromium onboarding fixture at three viewport widths passed. The ROM memory-transfer fixture also checks silent cancellation and transport closure. Physical results remain unvalidated; selecting this diagnostic cannot authorize an AMPVE installation or a restore.
+
+## Owner trial and serial reader correction (2026-09-13)
+
+Lucas reports a successful Wi-Fi check, accepted backup import and original firmware startup after RESET. Record these as owner observations; the supplied console trace also reports a `ReadableStream` already locked to a reader. It contains no nonce-bound C6 version response, so the exact C6 result remains unconfirmed. Returning to stock after the RAM diagnostic does not establish restoration after AMPVE installation.
+
+The browser previously called `Transport.rawRead()` while the pinned `ESPLoader.connect()` background `readLoop()` still owned the stream. Changing `slipReaderEnabled` does not stop that loop. The corrected probe consumes the existing transport byte buffer with the same bounded output/nonce/version checks, and disconnect cancels the sole reader. The regression test now uses the actual pinned Transport with a real ReadableStream, covering success, silent cancellation, stale nonce and oversized output. The old mock did not model stream locking.
+
+The result and support download now appear beside board confirmation, before backup import or candidate preparation. A passing response explicitly shows ESP32-C6 and its observed firmware version. Repeat only the C6 diagnostic using the corrected browser assets to obtain that result; existing accepted backups and the owner's RESET observation are not invalidated. No firmware rebuild, release promotion or physical write follows from this browser correction.
