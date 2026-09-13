@@ -1,3 +1,4 @@
+import startupSymbols from './startup-symbols.json';
 import {CustomReset,Transport} from 'esptool-js';
 import {APPLICATION_RESET_SEQUENCE} from './reset.js';
 import {ensure} from './audit.js';
@@ -17,7 +18,7 @@ export function runtimeStatus(line,nonce,expected){
 export async function checkRuntime(port,expected,onReport=()=>{},signal,timeout=90000,restart=false){
   ensure(/^[a-f0-9]{64}$/.test(expected.sha256),'Missing installed application identity.');
   let reader,writer,timer,retry,panicTimer,opened=false,cancel,stopped=false,sendError;let expired=false,panicCaptured=false;
-  let observedBytes=0,lastStatus=null;const observations=new Set(),details=new Set(),programCounters=new Set(),elfPrefixes=new Set();
+  let observedBytes=0,lastStatus=null;const observations=new Set(),details=new Set(),programCounters=new Set(),elfPrefixes=new Set(),initFailures=new Map();
   try{
     if(signal?.aborted)throw new DOMException('Cancelled','AbortError');
     if(restart){const info=port.getInfo?.();ensure(info?.usbVendorId===0x1a86 && info?.usbProductId===0x55d3,'Select the 7B USB TO UART port for automatic restart.');}
@@ -55,6 +56,7 @@ export async function checkRuntime(port,expected,onReport=()=>{},signal,timeout=
           for(const detail of evidence.details)details.add(detail);
           for(const pc of evidence.program_counters)if(programCounters.size<8)programCounters.add(pc);
           for(const prefix of evidence.elf_prefixes)if(elfPrefixes.size<4)elfPrefixes.add(prefix);
+          for(const failure of evidence.init_failures)if(initFailures.size<4)initFailures.set(failure.function_address,failure);
           // Preserve a bounded tail for the panic PC/register line, then stop repeated boots.
           if(observations.has('panic')&&!panicTimer)panicTimer=setTimeout(()=>{panicCaptured=true;cancel();},1000);
         }
@@ -66,7 +68,7 @@ export async function checkRuntime(port,expected,onReport=()=>{},signal,timeout=
       expected_app_sha256:expected.sha256,serial_opened:opened,received_bytes:observedBytes,
       timed_out:expired,cancelled:signal?.aborted===true,observations:[...observations].sort(),
       capture_stop:signal?.aborted?'cancelled':panicCaptured?'panic_captured':expired?'timeout':observedBytes>65536?'output_limit':'serial_or_validation_error',
-      failure_details:[...details].sort(),panic_program_counters:[...programCounters],observed_elf_sha256_prefixes:[...elfPrefixes],
+      failure_details:[...details].sort(),panic_program_counters:[...programCounters],observed_elf_sha256_prefixes:[...elfPrefixes],startup_initializer_failures:resolveStartupInitializers(expected,[...elfPrefixes],[...initFailures.values()]),
       last_status:lastStatus,physical_startup_verified:false};
     throw error;
   }finally{
@@ -92,7 +94,7 @@ export function bootObservations(line){
 // Exact fixed tokens and instruction addresses only: no raw line, paths, task names,
 // stack contents, arbitrary register values, Wi-Fi credentials or NVS data.
 export function bootFailureDetails(raw){
-  const result={details:[],program_counters:[],elf_prefixes:[]};if(raw.length>768)return result;
+  const result={details:[],program_counters:[],elf_prefixes:[],init_failures:[]};if(raw.length>768)return result;
   const line=raw.replace(/\x1b\[[0-9;]*m/g,'');
   const patterns=[
     ['psram_id_read_error',/PSRAM ID read error/i],
@@ -119,7 +121,22 @@ export function bootFailureDetails(raw){
   if(match){const pc=Number.parseInt(match[1],16);
     if((pc>=0x48000000&&pc<0x4c000000)||(pc>=0x4ff00000&&pc<0x4ffa0000)||(pc>=0x30100000&&pc<0x30102000))result.program_counters.push('0x'+pc.toString(16));
   }
+  const init=line.match(/\binit function (0x[0-9a-f]{8}) has failed \((0x[0-9a-f]{1,8})\), aborting\s*$/i);
+  if(init){const pc=Number.parseInt(init[1],16);
+    if((pc>=0x48000000&&pc<0x4c000000)||(pc>=0x4ff00000&&pc<0x4ffa0000)||(pc>=0x30100000&&pc<0x30102000)){
+      result.init_failures.push({function_address:'0x'+pc.toString(16),error_code:'0x'+Number.parseInt(init[2],16).toString(16)});
+      result.details.push('system_initializer_failed');
+    }
+  }
   const elf=line.match(/\bELF file SHA256:\s*([a-f0-9]{8,64})(?:\.\.\.)?\s*$/i);
   if(elf)result.elf_prefixes.push(elf[1].toLowerCase());
   return result;
+}
+
+// Read-only symbol labels never authorize installation or replace the live identity check.
+export function resolveStartupInitializers(expected,prefixes,failures){
+  const matches=expected.sha256===startupSymbols.app_sha256&&prefixes.length===1&&
+    /^[a-f0-9]{8,64}$/.test(prefixes[0])&&startupSymbols.elf_sha256.startsWith(prefixes[0]);
+  return failures.map(failure=>({...failure,...(matches&&Object.hasOwn(startupSymbols.functions,failure.function_address)?
+    {matched_build_function:startupSymbols.functions[failure.function_address]}:{})}));
 }

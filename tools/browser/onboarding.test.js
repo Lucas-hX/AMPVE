@@ -369,7 +369,7 @@ test('panic details distinguish allocator failures and expose only instruction P
   assert.deepEqual(api.bootFailureDetails('MEPC : 0x48012340 RA : 0x482abcde SP : 0x4ff54320').program_counters,['0x48012340']);
   assert.deepEqual(api.bootFailureDetails('ELF file SHA256: 12345678abcdef00...').elf_prefixes,['12345678abcdef00']);
   assert.deepEqual(api.bootFailureDetails('ELF file SHA256: private-password').elf_prefixes,[]);
-  for(const line of ['password private-secret /private/path','A0 : 0x48012340','MEPC : 0x00000000','abort() was called at PC 0x4ff01234'+'x'.repeat(768)])assert.deepEqual(api.bootFailureDetails(line),{details:[],program_counters:[],elf_prefixes:[]});
+  for(const line of ['password private-secret /private/path','A0 : 0x48012340','MEPC : 0x00000000','abort() was called at PC 0x4ff01234'+'x'.repeat(768)])assert.deepEqual(api.bootFailureDetails(line),{details:[],program_counters:[],elf_prefixes:[],init_failures:[]});
 });
 test('first panic ends capture with a bounded tail instead of waiting for repeated-boot overflow',async()=>{
   const port=runtimePort((request,c)=>{c.enqueue(new TextEncoder().encode('E (1) LvglPsramPool: Failed to allocate 512 bytes in PSRAM\nabort() was called at PC 0x4ff01234 on core 0\nMEPC : 0x48012340\nSSID private-network password private-secret\n'));});
@@ -379,4 +379,22 @@ test('first panic ends capture with a bounded tail instead of waiting for repeat
   assert.deepEqual(summary.panic_program_counters,['0x4ff01234','0x48012340']);
   assert.ok(summary.failure_details.includes('lvgl_psram_pool_allocation'));
   assert.equal(JSON.stringify(summary).includes('private-'),false);assert.equal(port.closed,true);
+});
+
+test('system initializer evidence preserves the failed callee separately from generic abort PCs',async()=>{
+  const line='\x1b[0;31mE (82) cpu_start: init function 0x48001234 has failed (0x101), aborting\x1b[0m';
+  assert.deepEqual(api.bootFailureDetails(line).init_failures,[{function_address:'0x48001234',error_code:'0x101'}]);
+  for(const invalid of ['init function 0x00000000 has failed (0x101), aborting','init function private-path has failed (private-secret), aborting','init function 0x48001234 has failed (0x101), aborting private-secret'])assert.deepEqual(api.bootFailureDetails(invalid).init_failures,[]);
+  const port=runtimePort((request,c)=>c.enqueue(new TextEncoder().encode(line+'\nabort() was called at PC 0x480019e9 on core 0\nELF file SHA256: 6ea09dd6d\n')));
+  let summary;try{await api.checkRuntime(port,runtimeExpected,()=>{},undefined,4000);}catch(error){summary=error.startupSummary;}
+  assert.deepEqual(summary.startup_initializer_failures,[{function_address:'0x48001234',error_code:'0x101'}]);
+  assert.deepEqual(summary.panic_program_counters,['0x480019e9']);assert.equal(summary.capture_stop,'panic_captured');
+});
+
+test('initializer symbol labels require both the published app and observed matching ELF prefix',()=>{
+  const expected={sha256:'9431969a70d060db94f92a11873ce5200d597a6df199ceeed90c80de2deae33e'};
+  const failures=[{function_address:'0x481a3ce6',error_code:'0x101'}];
+  assert.equal(api.resolveStartupInitializers(expected,['6ea09dd6d'],failures)[0].matched_build_function,'psram_core_stage_init');
+  for(const prefixes of [[],['aaaaaaaa'],['6ea09dd6d','aaaaaaaa'],['6ea']])assert.deepEqual(api.resolveStartupInitializers(expected,prefixes,failures),failures);
+  assert.deepEqual(api.resolveStartupInitializers({sha256:'a'.repeat(64)},['6ea09dd6d'],failures),failures);
 });
