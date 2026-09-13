@@ -75,6 +75,10 @@ if(root) {
         'If AMPVE did not start, use Repair or reinstall AMPVE. Keep the original backups. Use the USB TO UART port; an accessible RESET button is not required for the first automatic reconnect attempt.';
       if(error.installationSummary){
         downloadLink('export-install-result',error.installationSummary);
+        if(error.installationSummary.app_readback_verified&&error.installationSummary.selection_readback_verified){
+          installedRuntime={version:error.installationSummary.expected_version,sha256:error.installationSummary.expected_app_sha256};
+          show('wifi-step');
+        }
         detail.textContent=error.installationSummary.app_readback_verified&&error.installationSummary.selection_readback_verified?
           'Flash verification completed. The remaining step is USB startup checking.':
           `Installation result: ${error.installationSummary.phase.replaceAll('_',' ')}. Use Download installation result below; the backup summary describes only your saved files.`;
