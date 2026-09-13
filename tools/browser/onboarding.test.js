@@ -402,13 +402,15 @@ test('initializer symbol labels require both the published app and observed matc
 
 test('startup symbol catalog distinguishes current and previous builds without cross-labeling',()=>{
   const builds=JSON.parse(readFileSync('startup-symbols.json'));
-  assert.equal(builds.length,2);
+  assert.ok(builds.length>=2);
+  assert.equal(new Set(builds.map(item=>item.app_sha256)).size,builds.length);
+  assert.equal(new Set(builds.map(item=>item.elf_sha256)).size,builds.length);
   for(const build of builds){
     const [address,name]=Object.entries(build.functions)[0];
     const failures=[{function_address:address,error_code:'0x101'}];
     assert.equal(api.resolveStartupInitializers({sha256:build.app_sha256},[build.elf_sha256.slice(0,9)],failures)[0].matched_build_function,name);
-    const other=builds.find(item=>item!==build);
-    assert.deepEqual(api.resolveStartupInitializers({sha256:build.app_sha256},[other.elf_sha256.slice(0,9)],failures),failures);
+    for(const other of builds.filter(item=>item!==build))
+      assert.deepEqual(api.resolveStartupInitializers({sha256:build.app_sha256},[other.elf_sha256.slice(0,9)],failures),failures);
   }
   assert.equal(Object.values(builds[1].functions).includes('sleep_clock_icg_startup_init'),false);
 });
