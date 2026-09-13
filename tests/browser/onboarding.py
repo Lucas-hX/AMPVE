@@ -74,7 +74,7 @@ with tempfile.TemporaryDirectory(prefix='ampve-browser-fixture-') as directory,s
     page.locator('#confirm-device').click()
     page.locator('#use-existing').click()
     page.locator('#import-backups').set_input_files([str(root/name) for name in ['backup-a.bin','backup-b.bin','audit-private.json']])
-    page.wait_for_function('document.querySelector("#backup-result").textContent.includes("saved copies match")',timeout=30000)
+    page.wait_for_function('document.querySelector("#backup-result").textContent.includes("saved copies match") && !document.querySelector("#prepare-install").disabled',timeout=30000)
     page.locator('#technical-review summary').click()
     with page.expect_download() as download_event:
         page.locator('#export-review').click()
@@ -87,8 +87,8 @@ with tempfile.TemporaryDirectory(prefix='ampve-browser-fixture-') as directory,s
     assert review['images'][0]['region_sha256']==hashlib.sha256(data[0x2000:0x8000]).hexdigest()
     assert 'PRIVATE-FIXTURE-MAC' not in exported and str(root) not in exported
 
-    page.locator('#prepare-install').click()
-    page.wait_for_function('document.querySelector("#setup-status").textContent.includes("waiting for a reviewed release")')
+    assert any('/devices/firmware/release/' in url for _,url in requests)
+    page.wait_for_function('document.querySelector("#release-status").textContent.includes("No approved installation")')
     assert page.locator('#install-ampve').is_disabled()
     assert page.locator('#plan-panel').is_hidden()
     review_candidate=True
@@ -101,7 +101,7 @@ with tempfile.TemporaryDirectory(prefix='ampve-browser-fixture-') as directory,s
       })};
       window.showDirectoryPicker=async()=>directory;
     }""")
-    page.locator('#prepare-install').click()
+    page.locator('#import-backups').set_input_files([str(root/name) for name in ['backup-b.bin','backup-a.bin','audit-private.json']])
     page.wait_for_function('document.querySelector("#setup-status").textContent.includes("Candidate compared")')
     assert page.locator('#plan-panel').is_visible()
     assert page.locator('#approve-plan').is_disabled()

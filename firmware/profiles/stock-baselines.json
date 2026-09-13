@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "baselines": [
+    {
+      "id": "waveshare-7b-factory-2025-12-18",
+      "profile_id": "waveshare-esp32-p4-wifi6-touch-lcd-7b",
+      "source_url": "https://github.com/waveshareteam/ESP32-P4-WIFI6-Touch-LCD-7B/blob/9fcd49a8c927a00f5583c22d568b3448addbe51c/firmware/ESP32-P4-WIFI6-Touch-LCD-7B-FactoryOnly.bin",
+      "source_sha256": "3a60bb19b90f04914ac1173d9a63df19eeb3626662c72d7d631028aded00c6df",
+      "source_bytes": 33488896,
+      "regions": [
+        {
+          "name": "bootloader",
+          "offset": 8192,
+          "size": 24576,
+          "sha256": "4292a0266be4741a53d224ececf62c1e2ca95d09b9e92081e2f3e78f9c5cd051"
+        },
+        {
+          "name": "table",
+          "offset": 32768,
+          "size": 4096,
+          "sha256": "11f4ad270441f47870b3f2202b6f65730682ee1bdc6406aaf726a7a540b8939b"
+        }
+      ],
+      "evidence": "Exact byte fingerprint of the public vendor image; not source reproduction, C6 identity or hardware validation.",
+      "installable": false
+    }
+  ]
+}

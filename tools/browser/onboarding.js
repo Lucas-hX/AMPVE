@@ -3,6 +3,7 @@ import {verifyRelease,makePlan,makeReviewPlan,planReviewSummary,executePlan} fro
 import {openWifi,validCredentials} from './wifi.js';
 import {CONTRACT} from './profile.js';
 import {reviewSummary} from './review.js';
+import {recognizeBaseline} from './baselines.js';
 
 const root=document.querySelector('#firmware-setup');
 if(root) {
@@ -80,12 +81,14 @@ if(root) {
     const name='ampve-'+new Date().toISOString().replace(/[:.]/g,'-')+'-'+crypto.randomUUID().slice(0,8);
     return parent.getDirectoryHandle(name,{create:true});
   }
-  function showReport() {
+  async function showReport() {
     const compatible=report.stock_layout_matches&&report.ota_1_erased;
     get('backup-result').textContent='Your saved copies match and have been checked. They stay on your computer.';
     get('installation-choice').textContent=compatible?'Available for review: add AMPVE while keeping your previous software.':'No compatible installation is available for this device’s current software. Your device has not been changed.';
     downloadLink('export-review',reviewSummary(report,reportSource));
+    get('stock-baseline').textContent=recognizeBaseline(report)?'The original software base matches a verified vendor artifact. This identifies the base; it does not approve a release.':'The original software base is not recognized in the current catalog.';
     continueTo('installation-step');
+    await prepareInstallation();
   }
   async function inspect(signal){
     ensure(port,'Connect your device first.');get('read-consent').checked=true;
@@ -132,7 +135,7 @@ if(root) {
     reportSource='live-browser-capture';
     await save(directory,'audit-private.json',JSON.stringify(report,null,2)+'\n');
     await save(directory,'SHA256SUMS.txt',`${report.sha256}  backup-a.bin\n${report.sha256}  backup-b.bin\n`);
-    status.textContent='Backup complete and verified. Nothing installed.';showReport();
+    status.textContent='Backup complete and verified. Nothing installed.';await showReport();
     // Keep the second connection in ROM; no application boot between backup and installation.
   });
   get('import-backups').onchange=event=>run(async signal=>{
@@ -145,13 +148,14 @@ if(root) {
     ensure(record.independent_reads_match===true && record.sha256===result.sha256 && record.hardware?.chip==='ESP32-P4' && record.hardware.revision===103,'Completed independent capture evidence is required.');
     report={...result,independent_reads_match:true,hardware:record.hardware,evidence:'Owner-supplied capture record; files rehashed locally.'};backup=bins[0];
     reportSource='imported-capture-record';
-    showReport();status.textContent='Local files verified. A live comparison is still required before installation.';
+    status.textContent='Local files verified. Checking the available installation automatically…';await showReport();
   });
   for(const id of ['export-review','export-plan-review'])get(id).onclick=event=>{
     if(busy||!downloadUrls.has(id)){event.preventDefault();return;}
     status.textContent='Your support summary is ready. If the browser blocks the download, use Save link as on this link.';
   };
-  get('prepare-install').onclick=()=>run(async()=>{
+  get('prepare-install').onclick=()=>run(prepareInstallation);
+  async function prepareInstallation(){
     plan=null;policy=null;get('release-status').textContent='Checking availability…';get('candidate-download').hidden=true;get('export-plan-review').hidden=true;get('plan-panel').hidden=true;status.textContent='Checking the curated AMPVE release…';
     const response=await fetch(root.dataset.release,{cache:'no-store'});ensure(response.ok,'Release unavailable.');
     const data=await response.json();
@@ -180,7 +184,7 @@ if(root) {
     get('release-status').textContent=approved?'Ready to install after you save your return-to-original files.':'This board’s first AMPVE release is still being validated. Installation is not available yet. Your device has not been changed.';
     status.textContent=approved?'Installation prepared. Save your return-to-original files to continue.':'Candidate compared with your backups. The installation option is prepared for review.';
     detail.textContent=approved?'': 'You do not need to run commands or interpret technical details. The development review must finish before installation becomes available.';
-  });
+  }
   get('save-recovery').onclick=()=>run(async()=>{
     ensure(plan,'Prepare a plan first.');const directory=await folder();
     for(const item of plan.recovery)await save(directory,item.name,item.bytes);
