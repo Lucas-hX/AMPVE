@@ -297,3 +297,6 @@ Sources reviewed for the selected approach; upstream content may change, so pin 
 - [Waveshare hardware documentation](https://www.waveshare.com/wiki/ESP32-P4-WIFI6-Touch-LCD-7B)
 
 The hardware observations summarized in section 4 came from the owner's local audit on 2026-08-27. The original audit and private flash backup are not published here. Reconfirm hardware state before using them as the basis for a write operation.
+
+
+Validation update (2026-09-13): Lucas reports successful OpenAI API-key setup and a real browser voice conversation. Gemini and physical hardware remain unvalidated. The revised Companion instructions discourage prompt disclosure; this is behavioral guidance, not a security guarantee. Provider keys remain outside model context and the model has no device-management tools.

@@ -144,3 +144,6 @@ Ten fixture-only audio tests verify grant rejection/origins, readiness, connecti
 - Both virtual environments passed dependency consistency checks. The audio service is active with zero automatic restarts at verification; existing NEUROSIS services remain active.
 - Public HTTPS browser tests passed connection creation/replacement/deletion, hidden key output and layout at 390/768/1440 px. Actual public WSS rejected an invalid grant. A browser-only socket fixture verified microphone worklet PCM capture, mute and stop. No provider connection success was simulated in persistent records.
 - The original authenticated platform smoke test still passed, with no JavaScript errors. New views were visually inspected. Production checks retain only the two previously documented HSTS warnings.
+
+
+Validation update (2026-09-13): Lucas reports successful OpenAI API-key setup and a real browser voice conversation. Gemini and physical hardware remain unvalidated. The revised Companion instructions discourage prompt disclosure; this is behavioral guidance, not a security guarantee. Provider keys remain outside model context and the model has no device-management tools.

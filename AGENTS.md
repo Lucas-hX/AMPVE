@@ -81,3 +81,6 @@ The repository now includes the Django platform foundation alongside documentati
 On Lucas's Windows development machine, the elevated Codex sandbox may run as `codexsandboxoffline`, which can see GitHub CLI configuration but cannot unlock the owner's Windows keyring credentials. If sandboxed `gh` returns an invalid token or HTTP 401, do not run `gh auth login` or start device authorization. Retry the required GitHub operation outside the sandbox with the narrowest appropriate approval so it reuses the existing Lucas login. When needed, verify identity with `whoami`, `gh auth status`, and `gh api user --jq .login`.
 
 Never print, persist, or work around this with plaintext `GH_TOKEN`/`GITHUB_TOKEN`. Keep ordinary work in the sandbox. This Windows behavior does not establish authentication on the Debian VPS; inspect that environment separately and follow its authorization.
+
+
+Validation update (2026-09-13): Lucas reports successful OpenAI API-key setup and a real browser voice conversation. Gemini and physical hardware remain unvalidated. The revised Companion instructions discourage prompt disclosure; this is behavioral guidance, not a security guarantee. Provider keys remain outside model context and the model has no device-management tools.

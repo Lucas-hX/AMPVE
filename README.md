@@ -58,3 +58,6 @@ The images are design concepts. Illustrated enclosures are not exact hardware ph
 The repository contains the Django platform, migrations and tests, deployment definitions, architecture decisions, contributor guidance, and selected graphic assets. Credentials, dependencies, generated assets, firmware binaries, and private hardware backups stay outside Git.
 
 Begin implementation with the milestones in the [MVP brief](docs/MVP_IMPLEMENTATION.md#11-implementation-sequence-and-completion-criteria). Do not treat mockups or roadmap items as already working features.
+
+
+Validation update (2026-09-13): Lucas reports successful OpenAI API-key setup and a real browser voice conversation. Gemini and physical hardware remain unvalidated. The revised Companion instructions discourage prompt disclosure; this is behavioral guidance, not a security guarantee. Provider keys remain outside model context and the model has no device-management tools.

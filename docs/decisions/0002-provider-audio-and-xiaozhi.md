@@ -42,3 +42,6 @@ Pipecat readiness hooks are isolated in `apps/audio/providers.py` because sessio
 - [OpenAI gpt-realtime model](https://developers.openai.com/api/docs/models/gpt-realtime)
 - [Gemini Live capabilities](https://ai.google.dev/gemini-api/docs/live-api/capabilities)
 - [Cryptography Fernet and rotation](https://cryptography.io/en/latest/fernet/)
+
+
+Validation update (2026-09-13): Lucas reports successful OpenAI API-key setup and a real browser voice conversation. Gemini and physical hardware remain unvalidated. The revised Companion instructions discourage prompt disclosure; this is behavioral guidance, not a security guarantee. Provider keys remain outside model context and the model has no device-management tools.
