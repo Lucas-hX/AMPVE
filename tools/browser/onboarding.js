@@ -326,7 +326,7 @@ if(root) {
       writing=true;get('cancel-setup').disabled=true;
       await executeRecovery(reader,recoveryPlan,review,{restore_original:true,discard_ampve_settings:true,stable_usb_power:true},progress);
       await close();recoveryPlan=null;installedRuntime=null;plan=null;policy=null;currentFlashChanged=false;recoveryMode=false;
-      status.textContent='Original flash restored and verified. Confirm that the original application starts on the board.';
+      show('recovered-next');status.textContent='Original flash restored and verified. Confirm that the original application starts on the board, then use the link to start AMPVE installation again.';
     });
   };
   function wifiState(state){

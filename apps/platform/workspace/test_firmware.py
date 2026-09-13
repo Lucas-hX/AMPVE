@@ -131,9 +131,19 @@ class FirmwareDeliveryTests(TestCase):
         previous=self.root/'previous'
         shutil.copytree(root,previous)
         digest=self.policy['app']['sha256']
-        # The current release can be unavailable without losing a valid previous recovery.
-        (root/'approved-release.json').write_text('{}')
+        # A smaller new image must not shrink the previous installation's recovery span.
+        from .release_contract import canonical
+        new_app=b'new-fixture'.ljust(2048,b'0')
+        new_policy={**self.policy,'app':{**self.policy['app'],'size':len(new_app),'sha256':hashlib.sha256(new_app).hexdigest()}}
+        payload=canonical(new_policy)
+        (root/'xiaozhi.bin').write_bytes(new_app)
+        (root/'approved-release.json').write_text(json.dumps({'payload':base64.b64encode(payload).decode(),'signature':base64.b64encode(self.key.sign(payload)).decode()}))
         with override_settings(FIRMWARE_RECOVERY_ROOT=str(previous)):
+            self.assertEqual(self.client.get('/devices/firmware/release/').json()['release']['app']['size'],2048)
+            self.assertEqual(self.client.get('/devices/firmware/release/?recovery=1').json()['release']['app']['size'],4096)
+            # No arbitrary selector resolves to the private recovery root.
+            self.assertEqual(self.client.get('/devices/firmware/release/?recovery=../../previous').json()['release']['app']['size'],2048)
+            (root/'approved-release.json').write_text('{}')
             self.assert_blocked()
             self.assertEqual(self.client.get('/devices/firmware/release/?recovery=1').json()['release_id'],self.release_id)
             url='/devices/firmware/artifacts/'+digest+'.bin?recovery=1'
