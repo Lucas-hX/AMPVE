@@ -2,6 +2,7 @@
 import base64
 import hashlib
 import json
+from datetime import datetime, timezone
 from pathlib import Path
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 from django.conf import settings
@@ -23,6 +24,9 @@ def release_data():
         policy=json.loads(payload)
         if policy['profile']!='waveshare-7b-stock-v1' or policy['installable'] is not True:
             raise ValueError('Wrong release policy')
+        expiry = datetime.fromisoformat(policy['expires_at'].replace('Z', '+00:00'))
+        if expiry.tzinfo is None or expiry <= datetime.now(timezone.utc):
+            raise ValueError('Release approval expired or missing timezone')
         return {'status':'reviewed-development-release','envelope':envelope,'publisher_key':key.hex(),'release':policy},root
     except FileNotFoundError:
         pass

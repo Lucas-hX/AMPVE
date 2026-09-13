@@ -98,6 +98,25 @@ test('changed physical flash blocks writes even with a matching release',async()
   await assert.rejects(executePlan(reader,plan,policy,{exact_plan:true,separate_copy:true,rom_recovery:true}));assert.deepEqual(writes,[]);
 });
 
+test('approval expiry during preflight prevents writes but never interrupts a started installation',async(t)=>{
+  const start=Date.parse('2030-01-01T00:00:00Z');let now=start;
+  t.mock.method(Date,'now',()=>now);
+  const expiring={...policy,expires_at:new Date(start+60000).toISOString()};
+  for(const expireDuringPreflight of [true,false]) {
+    now=start;
+    const flash=new Uint8Array(FLASH_BYTES).fill(255),app=new Uint8Array(4096).fill(42);
+    const selection=selectBoot(flash.slice(0x10d000,0x10f000));
+    const plan={profile:policy.profile,backup_sha256:await sha256(flash),app_sha256:policy.app.sha256,
+      writes:[{offset:0xe00000,bytes:app,sha256:await sha256(app)},
+        {offset:selection.offset,bytes:selection.bytes,sha256:await sha256(selection.bytes)}]};
+    const {reader,writes}=flashFixture(flash);
+    const action=executePlan(reader,plan,expiring,{exact_plan:true,separate_copy:true,rom_recovery:true},
+      phase=>{if(expireDuringPreflight || phase.startsWith('Writing'))now=start+60000;});
+    if(expireDuringPreflight){await assert.rejects(action,/expired during preflight/);assert.deepEqual(writes,[]);}
+    else{await action;assert.deepEqual(writes,[0xe00000,0x10d000,'reset']);}
+  }
+});
+
 test('storage failure aborts the backup and cannot return a completed hash',async()=>{
   const flash=new Uint8Array(FLASH_BYTES).fill(255),{reader}=flashFixture(flash);let aborted=false,closed=false;
   const handle={createWritable:async()=>({write:async()=>{throw new Error('quota fixture');},abort:async()=>{aborted=true;},close:async()=>{closed=true;}})};
