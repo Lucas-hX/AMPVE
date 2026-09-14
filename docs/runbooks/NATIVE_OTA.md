@@ -63,7 +63,10 @@ Neither a timeout nor compilation proves physical safety. A first USB installati
 
 Run the normal isolated ESP-IDF build from [NATIVE_FIRMWARE.md](NATIVE_FIRMWARE.md). The enabled build fixture uses public-only temporary test trust, retains no private test signing key and is never selected by the public installer. To run the native host checks, compile the resolved libsodium sources outside their managed component:
 
+For a reviewed wireless successor, build with `AMPVE_BUILD_MODE=ota`. This removes the initial USB commissioning interface from the candidate and causes the release manifest to record `network-first-v1`. The default remains `usb-assisted`; the publisher refuses using a USB-assisted binary as an OTA release.
+
 ```bash
+export AMPVE_BUILD_MODE=ota
 AMPVE_OTA_WORK="$HOME/.cache/ampve-firmware/xiaozhi-ota"
 AMPVE_SODIUM_HOST="$HOME/.cache/ampve-firmware/sodium-host"
 mkdir -p "$AMPVE_SODIUM_HOST"
@@ -77,6 +80,12 @@ AMPVE_TESTING=1 .venv/bin/python apps/platform/manage.py test workspace --noinpu
 ```
 
 The native runner checks the dependency lock and compiles the actual policy/client/identity modules with AddressSanitizer and UndefinedBehaviorSanitizer. Policy tests use temporary signed fixtures. Client tests simulate the transport, server and hardware boundary, covering lost claim/progress/verify/reboot/outcome responses, network loss, cancellation, hash/selection/storage faults, process interruption, revoked authorization and unknown boot selection. Identity tests stub ESP-IDF partition/metadata calls. These prove software behavior at those boundaries, not actual flash/HTTP driver operation on the P4. The ESP-IDF build separately checks the native adapter's compilation/linking and image capacity.
+
+## First owner-authorized Wi-Fi trial — 2026-09-14
+
+For the first registered physical 7B only, the owner explicitly authorized a controlled Wi-Fi deployment using the retained matching backups despite the still-pending physical rollback acceptance. This is a bounded development trial, not a general relaxation of release policy or production hardware acceptance. Eligibility is restricted to the device's confirmed 0.1.13 app SHA-256 `ca04872053e00abd412ef9f074ed71f43efa39477487d74e423dd20de964d1b9` and the exact schema-2 profile tuple.
+
+Two clean `AMPVE_BUILD_MODE=ota` workspaces produced identical app, bootloader, partition-table and initial-otadata bytes. The 0.1.14 application is **2,876,272 bytes**, SHA-256 `fab1dc2311c91c553db55ee597341267bbe9078498199d9ed45dbe2ae394c141`, with 30% free in each application slot. Both generated configurations have `CONFIG_AMPVE_USB_COMMISSIONING` disabled. During OTA, the ESP-IDF client selects the inactive `ota_0` slot at `0xA10000`, streams and hashes the complete app, changes boot selection only after verification, then requires confirmed startup. The retained USB backups remain the fallback if automatic rollback or network recovery fails.
 
 ## Earlier foundation evidence
 

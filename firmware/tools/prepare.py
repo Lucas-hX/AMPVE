@@ -32,7 +32,9 @@ def stage_overlay(source, destination):
     shutil.copytree(source, destination, dirs_exist_ok=True, copy_function=shutil.copyfile)
 
 
-def prepare(work):
+def prepare(work, mode='usb-assisted'):
+    if mode not in {'usb-assisted', 'ota'}:
+        raise ValueError('Firmware mode must be usb-assisted or ota')
     if PROFILE['source']['commit'] != PIN or PROFILE['id'] != UPSTREAM['hardware_profile']:
         raise RuntimeError('Hardware profile and pinned firmware source differ')
     if work.is_relative_to(ROOT) or any((parent/'.git').exists() for parent in work.parents):
@@ -154,6 +156,9 @@ def prepare(work):
     (work/'main/ampve/publisher_trust.h').write_text(trust_header)
     (work/'native-public-trust.json').write_bytes(trust_metadata)
     shutil.copyfile(ROOT/'firmware/xiaozhi/sdkconfig.ampve',work/'sdkconfig.ampve')
+    if mode == 'ota':
+        replace(work/'sdkconfig.ampve', 'CONFIG_AMPVE_USB_COMMISSIONING=y',
+                '# CONFIG_AMPVE_USB_COMMISSIONING is not set')
     shutil.copytree(ROOT/'firmware/xiaozhi/partitions',work/'partitions/ampve',dirs_exist_ok=True)
     lock=ROOT/'firmware/xiaozhi/dependencies.lock'
     if lock.exists() and not (work/'dependencies.lock').exists():shutil.copyfile(lock,work/'dependencies.lock')
@@ -162,4 +167,5 @@ def prepare(work):
 
 if __name__=='__main__':
     parser=argparse.ArgumentParser();parser.add_argument('--work',required=True,type=Path)
-    prepare(parser.parse_args().work.resolve())
+    parser.add_argument('--mode', choices=['usb-assisted', 'ota'], default='usb-assisted')
+    args=parser.parse_args();prepare(args.work.resolve(),args.mode)
