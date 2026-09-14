@@ -1,6 +1,6 @@
 # Platform foundation
 
-Current device milestone: the first 7B completed signed nominal Wi-Fi OTAs through `0.1.17-visual-console-dev` sequence 8. The owner confirms display, corrected touch and connectivity on sequence 7; the owner-authenticated semantic [visual console](VISUAL_CONSOLE.md) then completed a live physical-mode session with four distinct device acknowledgements. Speaker output, local console-stop observation, restoration and interrupted-update rollback remain pending.
+Current device milestone: the first 7B completed signed nominal Wi-Fi OTAs through `0.1.17-visual-console-dev` sequence 8. The owner confirms display, corrected touch, connectivity and the owner-authenticated semantic [visual console](VISUAL_CONSOLE.md) work excellently and accepted closing #84. Speaker output, restoration and interrupted-update rollback remain pending. Companion is next; [ADR 0006](../decisions/0006-resident-core-and-portable-apps.md) defines the later resident-Core/package boundary.
 Date: 2026-09-13
 Architecture: [ADR 0001](../decisions/0001-platform-architecture.md) and [ADR 0002](../decisions/0002-provider-audio-and-xiaozhi.md)
 

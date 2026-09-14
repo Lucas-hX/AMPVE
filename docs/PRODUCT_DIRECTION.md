@@ -66,7 +66,7 @@ The accepted implementation uses Django with templates for the platform, FastAPI
 
 ## First-release boundaries
 
-On the ESP32, the management client and companion share firmware. An initial onboarding image may already contain the companion; application activation then assigns configuration rather than reflashing identical code. Arbitrary replacement firmware can remove manageability.
+On the ESP32, a resident AMPVE Core contains management, recovery and Companion's native hardware integration. Companion activation assigns configuration rather than reflashing identical code. Future signed portable packages can use a bounded Core runtime and shared semantic UI without replacing Companion; applications that need new native drivers still require a reviewed Core OTA. Arbitrary replacement firmware can remove manageability and is not an ordinary marketplace package. See [ADR 0006](decisions/0006-resident-core-and-portable-apps.md).
 
 Cloud speech sessions initially use Gemini Live or OpenAI Realtime with API credentials. Consumer subscription login is not the planned authentication method. Local large-model inference is outside scope.
 

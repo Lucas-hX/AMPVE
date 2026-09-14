@@ -1,6 +1,6 @@
 # Device inspection, pairing and management
 
-Date: 2026-09-14. The first physical 7B completed signed Wi-Fi OTAs from 0.1.13 through `0.1.17-visual-console-dev` sequence 8. The owner confirms its preceding display, corrected touch navigation and Wi-Fi behavior. A live authenticated console session on sequence 8 reported physical mode and acknowledged mouse, touch and keyboard navigation. The speaker test still fails; local console-stop observation, physical restoration and interrupted-update rollback remain pending. The VPS has no direct USB access to the board. See [the authenticated visual console](VISUAL_CONSOLE.md).
+Date: 2026-09-14. The first physical 7B completed signed Wi-Fi OTAs from 0.1.13 through `0.1.17-visual-console-dev` sequence 8. The owner confirms its display, corrected touch navigation, Wi-Fi and visual-console hardware behavior work excellently and accepted closing #84. The live authenticated console reported physical mode and acknowledged mouse, touch and keyboard navigation. The speaker test still fails; physical restoration and interrupted-update rollback remain pending. The VPS has no direct USB access to the board. See [the authenticated visual console](VISUAL_CONSOLE.md).
 
 ## What works now
 
@@ -56,7 +56,7 @@ Automated device tests cover single claiming, pending/expired exchange, hashed s
 
 ## Next hardware milestone
 
-Publish and deliberately deploy a signed console-capable release, then validate the mouse/touch/keyboard round trip and the physical local-stop control in #84. Diagnose the failed speaker output in #23. Repeated cold boots, documented original restoration, interrupted OTA and physical rollback remain separate acceptance work. Opus/Pipecat remains a later milestone; the browser voice preview remains independently usable.
+The signed console-capable release and mouse/touch/keyboard round trip are owner-accepted in closed #84. Diagnose the failed speaker output in #23. Repeated cold boots, documented original restoration, interrupted OTA and physical rollback remain separate acceptance work. The XiaoZhi/Pipecat adapter and native Companion are next in #35–#36; the browser voice preview remains independently usable.
 
 ## Delivery evidence
 
