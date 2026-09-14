@@ -1,16 +1,30 @@
-# USB chip inspection
+# AMPVE browser device tools
 
-Build with Node.js and npm: `npm ci --ignore-scripts && npm run build` in this directory, then Django collectstatic. Exact dependency versions/integrity are locked. The generated bundle and linked legal comments are served locally, never from a third-party CDN. esptool-js's Apache-2.0 notice is retained in ESPTOOL-LICENSE; bundled dependency notices remain in the generated legal file. No project license is implied.
+These tools power the guided USB inspection, setup and recovery experience served by AMPVE. They use Web Serial and a pinned `esptool-js` dependency without loading code from a third-party CDN.
 
-The pinned esptool-js 0.6.1 implementation performs ROM sync, chip magic/register reads and reset. AMPVE calls `connect`, the P4 chip description reader, and `after('hard_reset')`; it does not call `main`, `runStub`, erase, flash writes, or eFuse/security configuration. A separate explicit browser checkbox acknowledges a temporary reset/download-mode transition. Failed inspection can require physical RESET/power reconnection. USB selection alone does not open the port.
+## Build and test
 
-Chip-family detection is distinct from board-model confirmation, firmware compatibility, ownership and network connectivity. No serial data is uploaded or retained. The physical P4 path still requires Lucas's local test. ESP Web Tools remains the selected installer once verified artifacts and recovery details exist.
+```bash
+npm ci --ignore-scripts
+npm test
+npm run build
+```
 
-References: [Web Serial](https://developer.chrome.com/docs/capabilities/serial), [esptool-js](https://github.com/espressif/esptool-js), [ESP Web Tools](https://esphome.github.io/esp-web-tools/).
+The generated bundles are collected by Django and served as local static assets. Dependency versions and integrity hashes are recorded in `package-lock.json`; applicable notices are included beside the bundles.
 
+## Device boundaries
 
-## Stock-preserving browser onboarding
+- Selecting a serial port does not establish device ownership or compatibility.
+- Inspection and backup happen locally in the browser.
+- Raw flash contents, serial logs and device identifiers are not uploaded by the browser tools.
+- Installation requires a matching supported profile and authenticated release metadata.
+- Security configuration, eFuses and full-chip erase are outside the browser flow.
 
-`onboarding.js`, `audit.js` and `install.js` build the new onboarding bundle. See [ADR 0004](../../docs/decisions/0004-stock-preserving-browser-installation.md) for the narrow ESP Web Tools integration and the reason its generic button is not exposed. The legacy inspection bundle above remains a separate utility; the new audit explicitly uses a temporary RAM stub after security gates. It performs no erase/write during audit/backup.
+See [Supported hardware](../../docs/SUPPORTED_HARDWARE.md), [Architecture](../../docs/ARCHITECTURE.md) and [Security](../../SECURITY.md).
 
-Both bundles are local assets. `npm test` exercises the legacy inspector and the new fixture-only safety suite. `hash-wasm` (MIT), pako/zlib and esptool-js notices accompany the generated onboarding bundle. ESP Web Tools is pinned as the upstream manifest/writer reference; its generic dialog is not bundled. No raw backup, serial log, key or device identifier is uploaded.
+Third-party references and notices:
+
+- [Web Serial](https://developer.chrome.com/docs/capabilities/serial)
+- [esptool-js](https://github.com/espressif/esptool-js)
+- [ESP Web Tools](https://esphome.github.io/esp-web-tools/)
+- `ESPTOOL-LICENSE`, `PAKO-LICENSE` and `ZLIB-NOTICE`
