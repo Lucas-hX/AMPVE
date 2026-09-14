@@ -62,6 +62,9 @@ def replace_key(request, pk):
 def delete_connection(request, pk):
     with transaction.atomic():
         item = get_object_or_404(ProviderConnection.objects.select_for_update(), pk=pk, owner=request.user)
+        if item.companion_installations.filter(enabled=True).exists():
+            messages.error(request, 'Turn off Companion on its device before deleting this connection.')
+            return redirect('connections')
         item.delete()
     messages.success(request, 'Connection deleted. Active audio sessions will stop within two seconds.')
     return redirect('connections')

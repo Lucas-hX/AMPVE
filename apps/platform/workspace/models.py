@@ -74,8 +74,10 @@ class AudioGrant(models.Model):
     owner = models.ForeignKey(User, on_delete=models.CASCADE)
     connection = models.ForeignKey(ProviderConnection, on_delete=models.CASCADE)
     revision = models.PositiveIntegerField()
-    browser_session = models.CharField(max_length=40)
-    mode = models.CharField(max_length=8, choices=[('check', 'check'), ('voice', 'voice')])
+    browser_session = models.CharField(max_length=40, blank=True, default='')
+    device = models.ForeignKey('Device', null=True, blank=True, on_delete=models.CASCADE,
+        related_name='audio_grants')
+    mode = models.CharField(max_length=8, choices=[('check', 'check'), ('voice', 'voice'), ('device', 'device')])
     created_at = models.DateTimeField(auto_now_add=True)
     expires_at = models.DateTimeField()
     used_at = models.DateTimeField(null=True)
@@ -86,6 +88,8 @@ class AudioSession(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     owner = models.ForeignKey(User, on_delete=models.CASCADE)
     connection = models.ForeignKey(ProviderConnection, null=True, on_delete=models.SET_NULL)
+    device = models.ForeignKey('Device', null=True, blank=True, on_delete=models.SET_NULL,
+        related_name='audio_sessions')
     revision = models.PositiveIntegerField()
     provider = models.CharField(max_length=16)
     mode = models.CharField(max_length=8)
@@ -127,6 +131,17 @@ class Device(models.Model):
 
     class Meta:
         ordering = ['-created_at']
+
+
+class CompanionInstallation(models.Model):
+    """Owner-selected provider for the resident Companion on one device."""
+    device = models.OneToOneField(Device, primary_key=True, on_delete=models.CASCADE,
+        related_name='companion')
+    connection = models.ForeignKey(ProviderConnection, on_delete=models.PROTECT,
+        related_name='companion_installations')
+    enabled = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
 
 
 class DeviceEnrollment(models.Model):

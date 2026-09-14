@@ -3,6 +3,7 @@
 #include <cassert>
 #include <set>
 #include <atomic>
+#include <cstring>
 inline std::atomic<bool> ampve_codec_failed{false};
 inline bool partial_channel_failure=false;
 inline int calls=0, fail_at=0, allocations=0, rx_enabled=0;
@@ -17,6 +18,7 @@ constexpr int ESP_CODEC_DEV_WORK_MODE_DAC=1,ESP_CODEC_DEV_TYPE_OUT=1,ESP_CODEC_D
 using i2s_tdm_slot_mask_t=int;
 #define ESP_LOGI(...) ((void)0)
 #define ESP_LOGW(...) ((void)0)
+#define ESP_CODEC_DEV_MAKE_CHANNEL_MASK(channel) (1 << (channel))
 struct i2s_chan_config_t { int id,role,dma_desc_num,dma_frame_num;bool auto_clear_after_cb,auto_clear_before_cb;int intr_priority; };
 struct Clock { uint32_t sample_rate_hz;int clk_src,ext_clk_freq_hz,mclk_multiple,bclk_div=0; };
 struct Slot { int data_bit_width,slot_bit_width,slot_mode,slot_mask,ws_width;bool ws_pol,bit_shift,left_align,big_endian,bit_order_lsb,skip_mask=false;int total_slot=0; };
@@ -27,7 +29,7 @@ inline int i2s_new_channel(const i2s_chan_config_t*,void** tx,void** rx) {if(!st
 inline int i2s_channel_init_std_mode(void*,const i2s_std_config_t*) { return step()?0:-1; }
 inline int i2s_channel_init_tdm_mode(void*,const i2s_tdm_config_t*) { return step()?0:-1; }
 inline int i2s_channel_enable(void* p) {if(*static_cast<int*>(p)==2)rx_enabled++;return step()?0:-1;}
-inline int i2s_channel_disable(void*) {return -1;} // Cleanup errors must not abort.
+inline int i2s_channel_disable(void* p) {if(p && *static_cast<int*>(p)==2 && rx_enabled)rx_enabled--;return 0;}
 inline int i2s_del_channel(void* p) {free_resource(p);return 0;}
 struct audio_codec_i2s_cfg_t {int port;void* rx_handle;void* tx_handle;};
 struct audio_codec_i2c_cfg_t {int port,addr;void* bus_handle;};
@@ -48,5 +50,7 @@ inline void audio_codec_delete_ctrl_if(const void* p){free_resource(p);}
 inline void audio_codec_delete_gpio_if(const void* p){free_resource(p);}
 inline void audio_codec_delete_data_if(const void* p){free_resource(p);}
 inline int esp_codec_dev_set_out_vol(void*,int){return step()?0:-1;}
+inline int esp_codec_dev_set_in_channel_gain(void*,int,float){return step()?0:-1;}
 inline int esp_codec_dev_open(void*,const esp_codec_dev_sample_info_t*){return step()?0:-1;}
 inline int esp_codec_dev_write(void*,void*,unsigned){return step()?0:-1;}
+inline int esp_codec_dev_read(void*,void* data,unsigned size){if(!step())return -1;std::memset(data,0,size);return 0;}

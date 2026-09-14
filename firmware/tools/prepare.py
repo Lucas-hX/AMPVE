@@ -114,6 +114,8 @@ def prepare(work, mode='usb-assisted'):
         replace(cmake,'set(PROJECT_VER "0.1.15-touch-ota-dev")',f'set(PROJECT_VER "{UPSTREAM["candidate_version"]}")')
     if 'set(PROJECT_VER "0.1.16-touch-ota-dev")' in cmake.read_text():
         replace(cmake,'set(PROJECT_VER "0.1.16-touch-ota-dev")',f'set(PROJECT_VER "{UPSTREAM["candidate_version"]}")')
+    if 'set(PROJECT_VER "0.1.17-visual-console-dev")' in cmake.read_text():
+        replace(cmake,'set(PROJECT_VER "0.1.17-visual-console-dev")',f'set(PROJECT_VER "{UPSTREAM["candidate_version"]}")')
     if f'set(PROJECT_VER "{UPSTREAM["candidate_version"]}")' not in cmake.read_text():
         raise RuntimeError('Prepared project version differs from the candidate version')
     component=work/'main/idf_component.yml'
@@ -137,6 +139,8 @@ def prepare(work, mode='usb-assisted'):
                 'set(SOURCES "ampve/image_identity.cc" "ampve/ota_policy.cc"')
     if '"ampve/ota_client.cc"' not in component_cmake.read_text():
         replace(component_cmake,'set(SOURCES ', 'set(SOURCES "ampve/ota_client.cc" "ampve/ota_platform.cc" ')
+    if '"ampve/companion.cc"' not in component_cmake.read_text():
+        replace(component_cmake,'set(SOURCES ', 'set(SOURCES "ampve/companion.cc" ')
     if '"ampve/boot_guard.cc"' not in component_cmake.read_text():
         replace(component_cmake,'set(SOURCES ', 'set(SOURCES "ampve/boot_guard.cc" ')
     wifi_board=work/'main/boards/common/wifi_board.cc'

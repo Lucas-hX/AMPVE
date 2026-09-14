@@ -9,6 +9,7 @@
 #include "wifi_board.h"
 #include "audio_codec.h"
 #include "ampve/boot_guard.h"
+#include "ampve/companion.h"
 #include "ampve/improv_platform.h"
 #include "wifi_manager.h"
 #include "display.h"
@@ -44,7 +45,9 @@ extern const lv_image_dsc_t ampve_companion;
 }
 std::atomic<bool> ampve_wifi_initialized{false}, ampve_touch_ready{false}, ampve_codec_present{false}, ampve_codec_failed{false};
 static std::atomic<bool> wifi_requested{false}, pair_requested{false}, tone_requested{false};
+static std::atomic<bool> companion_start_requested{false}, companion_stop_requested{false};
 static std::atomic<bool> local_muted{true}, heard_tone{false}, tone_played{false};
+static std::atomic<bool> companion_enabled{false};
 static std::atomic<int> local_volume{-1};
 static std::atomic<uint32_t> ui_ticks{0};
 static std::atomic<bool> management_started{false}, boot_confirmed{false}, image_verified{false}, usb_ready{false};
@@ -59,6 +62,7 @@ static std::atomic<bool> usb_display_ready{false};
 extern "C" const char* ampve_wifi_password() { return setup_password.c_str(); }
 static std::atomic<int> displayed_volume{40};
 static lv_obj_t *body, *network_label, *status_label, *home_name=nullptr, *remote_label=nullptr;
+static lv_obj_t *companion_status_label=nullptr, *companion_action_label=nullptr, *companion_mute_label=nullptr;
 static std::atomic<int> current_page{0};
 static std::atomic<bool> remote_allowed{true}, remote_active{false};
 static std::atomic<uint32_t> console_revision{1};
@@ -186,7 +190,7 @@ static lv_obj_t* button(lv_obj_t* parent,const char* text,lv_event_cb_t callback
 }
 static void go(lv_event_t* e) {page(reinterpret_cast<intptr_t>(lv_event_get_user_data(e)));}
 static void page(int id) {
-    home_name=nullptr;
+    home_name=nullptr;companion_status_label=nullptr;companion_action_label=nullptr;companion_mute_label=nullptr;
     if(current_page.exchange(id)!=id)console_revision++;
     lv_obj_clean(body);
     if(id==0) {
@@ -239,7 +243,21 @@ static void page(int id) {
     } else {
         label(body,"A little company.",&lv_font_montserrat_36);
         auto image=lv_image_create(body);lv_image_set_src(image,&ampve_companion);
-        label(body,"Companion voice is coming next.\nThis shell never opens an AI session.");
+        if(!companion_enabled) {
+            label(body,"Activate Companion and choose a tested AI connection at ampve.com.");
+        } else {
+            companion_status_label=label(body,ampve::companion_status());
+            auto action=button(body,ampve::companion_active()?"Stop conversation":"Start conversation",[](lv_event_t*) {
+                if(ampve::companion_active())companion_stop_requested=true;
+                else companion_start_requested=true;
+            });
+            companion_action_label=lv_obj_get_child(action,0);
+            auto mute=button(body,ampve::companion_muted()?"Microphone muted":"Mute microphone",[](lv_event_t*) {
+                ampve::companion_toggle_mute();local_muted=ampve::companion_muted();
+            });
+            companion_mute_label=lv_obj_get_child(mute,0);
+            label(body,"Audio is live only after Start. Stop and mute always remain available here.");
+        }
     }
 }
 static void create_ui() {
@@ -258,8 +276,10 @@ static void create_ui() {
     lv_obj_set_flex_flow(nav,LV_FLEX_FLOW_ROW);lv_obj_set_style_pad_all(nav,8,0);
     for(int id: {0,3}){auto b=button(nav,id==0?"Home":"Settings",go,id);lv_obj_set_width(b,200);}
     auto mute=button(nav,"Microphone muted",[](lv_event_t*) {
-        // Never enable capture from this shell. Remote settings cannot override local mute.
-        local_muted=true;message("Microphone remains off in this shell.");
+        if(ampve::companion_active())ampve::companion_toggle_mute();
+        else ampve::companion_mute();
+        local_muted=ampve::companion_muted();
+        message(local_muted?"Microphone muted locally.":"Microphone enabled for this Companion session.");
     });
     lv_obj_set_width(mute,250);
     auto remote=button(nav,"Remote control allowed",[](lv_event_t*) {
@@ -276,6 +296,9 @@ static void create_ui() {
         lv_label_set_text(status_label,management_text.c_str());
         if(home_name)lv_label_set_text(home_name,device_name.c_str());
         if(remote_label)lv_label_set_text(remote_label,!remote_allowed?"Remote control stopped":remote_active?"Remote active · tap to stop":"Remote control allowed");
+        if(companion_status_label)lv_label_set_text(companion_status_label,ampve::companion_status());
+        if(companion_action_label)lv_label_set_text(companion_action_label,ampve::companion_active()?"Stop conversation":"Start conversation");
+        if(companion_mute_label)lv_label_set_text(companion_mute_label,ampve::companion_muted()?"Microphone muted":"Mute microphone");
     },500,nullptr);
     lvgl_port_unlock();
 }
@@ -305,7 +328,7 @@ static bool apply_console_target(const std::string& target) {
     if(target=="pair"){pair_requested=true;return true;}
     if(target=="speaker_test"){tone_requested=true;return true;}
     if(target=="cancel_update"){ampve_cancel_update();message("Remote cancellation requested before firmware restart.");return true;}
-    if(target=="mute"){local_muted=true;message("Microphone remains off.");return true;}
+    if(target=="mute"){local_muted=true;ampve::companion_mute();message("Microphone muted remotely; only the local screen can unmute it.");return true;}
     return false;
 }
 static bool console_sync(const std::string& device,const std::string& token,int& interval_ms) {
@@ -435,15 +458,53 @@ static void worker(void*) {
             else {
                 auto codec=Board::GetInstance().GetAudioCodec();
                 if(codec && !ampve_codec_failed){
-                    codec_initialized=true;codec->EnableInput(false);codec->SetOutputVolume(10);codec->EnableOutput(true);
-                    std::vector<int16_t> tone(codec->output_sample_rate()/4);
-                    for(size_t i=0;i<tone.size();i++)tone[i]=static_cast<int16_t>(900*sin(2*3.14159265*440*i/codec->output_sample_rate()));
-                    codec->OutputData(tone);codec->EnableOutput(false);codec->SetOutputVolume(volume);
+                    codec_initialized=true;codec->EnableInput(false);
+                    // Set volume while closed, then allow the codec and PA to settle. The
+                    // former test wrote volume before open, used a near-silent amplitude,
+                    // and closed immediately after a quarter-second tone.
+                    codec->SetOutputVolume(std::clamp(volume,25,45));codec->EnableOutput(true);
+                    vTaskDelay(pdMS_TO_TICKS(120));
+                    std::vector<int16_t> tone(480);
+                    for(int frame=0;frame<40 && !ampve_codec_failed;frame++){
+                        const double frequency=frame<20?523.25:659.25;
+                        for(size_t i=0;i<tone.size();i++){
+                            const double phase=2*3.14159265*frequency*(frame*tone.size()+i)/codec->output_sample_rate();
+                            const double edge=std::min(1.0,std::min((frame*480+i)/2400.0,(40*480-frame*480-i)/2400.0));
+                            tone[i]=static_cast<int16_t>(9000*std::max(0.0,edge)*sin(phase));
+                        }
+                        codec->OutputData(tone);
+                    }
+                    vTaskDelay(pdMS_TO_TICKS(80));codec->EnableOutput(false);codec->SetOutputVolume(volume);
                     tone_played=!ampve_codec_failed;
                     if(ampve_codec_failed){codec_initialized=false;heard_tone=false;message("Speaker test failed. Navigation and recovery remain available.");}
                     else message("Did you hear the tone? Confirm on My device.");
                     lvgl_port_lock(0);if(current_page==2)page(2);lvgl_port_unlock();
                 }else message("Audio initialization failed. Navigation and recovery remain available.");
+            }
+        }
+        ampve::companion_poll();
+        if(!companion_enabled && ampve::companion_active())ampve::companion_stop();
+        if(companion_stop_requested.exchange(false)){
+            ampve::companion_stop();local_muted=true;message("Companion stopped. Microphone off.");
+        }
+        if(companion_start_requested.exchange(false)){
+            if(!companion_enabled){message("Activate Companion at ampve.com before starting.");}
+            else if(device.empty() || token.empty() || !connected){message("Companion needs an authenticated Wi-Fi connection.");}
+            else if(ampve_codec_failed || !ampve_codec_present){message("Companion audio is unavailable. Run the speaker diagnostic first.");}
+            else if(!ampve::companion_active()){
+                auto payload=cJSON_CreateObject();cJSON_AddNumberToObject(payload,"protocol",1);
+                std::string reply;int status=post(device+"/companion/session/",token,payload,reply);cJSON_Delete(payload);
+                auto response=cJSON_Parse(reply.c_str());
+                auto ticket=response?json_string(response,"ticket",43):"";
+                auto path=response?json_string(response,"path",80):"";
+                int sample_rate=0,channels=0,frame_samples=0,max_seconds=0;
+                bool contract=response && status==200 && ticket.size()==43 && path=="/audio/device/ws" &&
+                    number(response,"sample_rate",24000,24000,sample_rate) && number(response,"channels",1,1,channels) &&
+                    number(response,"frame_samples",480,480,frame_samples) && number(response,"max_seconds",1,300,max_seconds);
+                if(contract && ampve::companion_start("wss://ampve.com"+path,ticket,volume)){
+                    local_muted=false;message("Companion connecting. Microphone will turn on when ready.");
+                }else message(status==409?"Finish Companion setup at ampve.com.":"Companion could not start. Microphone remains off.");
+                cJSON_Delete(response);
             }
         }
         int requested_volume=local_volume.exchange(-1);
@@ -524,11 +585,18 @@ static void worker(void*) {
                     auto config=cJSON_GetObjectItemCaseSensitive(response,"configuration");
                     int version=0,remote_volume=0;
                     auto mute=cJSON_GetObjectItemCaseSensitive(config,"microphone_muted");
+                    auto companion=cJSON_GetObjectItemCaseSensitive(config,"companion");
+                    auto companion_on=companion?cJSON_GetObjectItemCaseSensitive(companion,"enabled"):nullptr;
+                    auto companion_provider=companion?cJSON_GetObjectItemCaseSensitive(companion,"provider"):nullptr;
                     auto name=json_string(config,"name",80);
                     if(number(config,"version",1,1000000000,version) && version>=ack &&
-                        number(config,"volume",0,80,remote_volume) && cJSON_IsBool(mute) && !name.empty()){
-                        if(version>ack && cJSON_IsTrue(mute)){
-                            // Capture remains disabled even when the desired configuration says unmuted.
+                        number(config,"volume",0,80,remote_volume) && cJSON_IsBool(mute) && !name.empty() &&
+                        cJSON_IsObject(companion) && cJSON_IsBool(companion_on) && cJSON_IsString(companion_provider) &&
+                        strlen(companion_provider->valuestring)<=16){
+                        companion_enabled=cJSON_IsTrue(companion_on);
+                        if(!companion_enabled){ampve::companion_stop();local_muted=true;}
+                        if(version>ack){
+                            // Dashboard preference never starts capture; the local Start action does.
                             cJSON_DeleteItemFromObject(state,"ack");cJSON_AddNumberToObject(state,"ack",version);
                             cJSON_DeleteItemFromObject(state,"volume");cJSON_AddNumberToObject(state,"volume",remote_volume);
                             cJSON_DeleteItemFromObject(state,"name");cJSON_AddStringToObject(state,"name",name.c_str());
@@ -537,7 +605,8 @@ static void worker(void*) {
                                 std::lock_guard<std::mutex> lock(ui_mutex);device_name=name;
                             }
                         }
-                        message(cJSON_IsTrue(mute)?"Dashboard connected - microphone off":"Unmute requested; unsupported in this shell. Configuration pending.");
+                        message(ampve::companion_active()?ampve::companion_status():
+                            cJSON_IsTrue(mute)?"Dashboard connected - microphone off":"Dashboard prefers unmuted; local Start is still required.");
                     }else message("Invalid configuration. Previous settings kept.");
                     auto console=cJSON_GetObjectItemCaseSensitive(response,"console");
                     auto active=cJSON_GetObjectItemCaseSensitive(console,"active");

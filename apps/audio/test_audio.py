@@ -15,7 +15,7 @@ import server
 from fastapi.testclient import TestClient
 from pipecat.processors.frame_processor import FrameProcessor
 from pipecat.frames.frames import InputAudioRawFrame, OutputAudioRawFrame, InterruptionFrame
-from browser_transport import BrowserPCMSerializer
+from browser_transport import BrowserPCMSerializer, DevicePCMSerializer
 from providers import error_code, make_provider
 
 
@@ -48,10 +48,13 @@ class GatewayTests(unittest.TestCase):
         self.finish = self.stack.enter_context(patch.object(server,'finish_session'))
         self.record = self.stack.enter_context(patch.object(server,'record_check'))
         self.stack.enter_context(patch.object(server,'AudioSession'))
-        self.provider = self.stack.enter_context(patch.object(server,'make_provider',side_effect=lambda provider,key,ready:EchoFixture(ready)))
+        self.provider = self.stack.enter_context(patch.object(server,'make_provider',side_effect=lambda provider,key,ready,mode:EchoFixture(ready)))
 
     def connect(self):
         return self.client.websocket_connect('/audio/ws',headers={'origin':'https://ampve.com'})
+
+    def connect_device(self):
+        return self.client.websocket_connect('/audio/device/ws')
 
     def test_check_waits_for_pipeline_ready_and_records_result(self):
         with self.connect() as ws:
@@ -89,6 +92,31 @@ class GatewayTests(unittest.TestCase):
                 time.sleep(0.05)
             self.assertFalse(server.active_users)
         self.record.assert_not_called()
+
+    def test_device_audio_uses_no_browser_origin_and_fixed_pcm_frames(self):
+        self.grant.mode = 'device'
+        with self.connect_device() as ws:
+            ws.send_json({'ticket': 'fixture'})
+            self.assertEqual(ws.receive_json()['type'], 'connecting')
+            self.assertEqual(ws.receive_json()['type'], 'ready')
+            samples = b'\x02\x00' * 480
+            ws.send_bytes(samples)
+            self.assertEqual(ws.receive_bytes(), samples)
+            self.authorized.return_value = False
+            self.assertEqual(ws.receive_json()['code'], 'revoked')
+        self.consume.assert_called_with('fixture', 'device')
+
+    def test_device_audio_rejects_browser_origin_and_browser_route_rejects_device_grant(self):
+        self.grant.mode = 'device'
+        with self.assertRaises(Exception):
+            with self.client.websocket_connect('/audio/device/ws', headers={'origin': 'https://ampve.com'}):
+                pass
+        self.consume.assert_not_called()
+        self.consume.return_value = None
+        with self.connect() as ws:
+            ws.send_json({'ticket': 'device-fixture'})
+            self.assertEqual(ws.receive_json()['type'], 'error')
+        self.consume.assert_called_with('device-fixture', 'browser')
 
     def test_revocation_closes_without_provider_success(self):
         self.authorized.return_value=False
@@ -131,7 +159,15 @@ class SerializerTests(unittest.IsolatedAsyncioTestCase):
     async def test_input_rate_limit(self):
         serializer=BrowserPCMSerializer()
         with self.assertRaises(ValueError):
-            for _ in range(30):await serializer.deserialize(b'\x00'*4096)
+                for _ in range(30):await serializer.deserialize(b'\x00'*4096)
+
+    async def test_device_serializer_requires_one_twenty_ms_frame(self):
+        serializer = DevicePCMSerializer()
+        frame = await serializer.deserialize(b'\x00' * 960)
+        self.assertEqual((len(frame.audio), frame.sample_rate, frame.num_channels), (960, 24000, 1))
+        for invalid in [b'', b'\x00' * 958, b'\x00' * 962, 'control']:
+            with self.assertRaises(ValueError):
+                await serializer.deserialize(invalid)
 
     async def test_provider_constructors_and_sanitized_errors(self):
         for provider in ['openai','gemini']:

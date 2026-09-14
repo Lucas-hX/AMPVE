@@ -1,4 +1,5 @@
 """Apply bounded, non-aborting audio diagnostics to the pinned BoxAudioCodec."""
+import hashlib
 import subprocess
 
 SOURCE = 'main/audio/codecs/box_audio_codec.cc'
@@ -21,7 +22,7 @@ def transform(source, header):
     source = replace(source, '    CreateDuplexChannels(mclk, bclk, ws, dout, din);',
                      '    CreateDuplexChannels(mclk, bclk, ws, dout, din);\n    if (ampve_codec_failed) return;')
     source = replace(source, '    AMPVE_AUDIO_CHECK(i2s_channel_enable(rx_handle_));',
-                     '    // AMPVE diagnostics never enable microphone RX DMA.')
+                     '    // Keep RX disabled until a local Companion action explicitly opens the microphone.')
     start = source.index('BoxAudioCodec::~BoxAudioCodec() {')
     end = source.index('\nvoid BoxAudioCodec::CreateDuplexChannels', start)
     source = source[:start] + '''BoxAudioCodec::~BoxAudioCodec() { Release(); }
@@ -48,17 +49,56 @@ void BoxAudioCodec::Release() {
     input_enabled_ = false;
 }
 ''' + source[end:]
+    start = source.index('void BoxAudioCodec::SetOutputVolume(int volume) {')
+    end = source.index('\nvoid BoxAudioCodec::EnableInput', start)
+    source = source[:start] + '''void BoxAudioCodec::SetOutputVolume(int volume) {
+    if (ampve_codec_failed) return;
+    // Remember volume while closed. Some codec revisions reject volume writes
+    // before esp_codec_dev_open(), which previously made the speaker test fail.
+    AudioCodec::SetOutputVolume(volume);
+    if (output_enabled_) AMPVE_AUDIO_CHECK(esp_codec_dev_set_out_vol(output_dev_, volume));
+}
+''' + source[end:]
     start = source.index('void BoxAudioCodec::EnableInput(bool enable) {')
     end = source.index('\nvoid BoxAudioCodec::EnableOutput', start)
     source = source[:start] + '''void BoxAudioCodec::EnableInput(bool enable) {
-    // Capture is outside the native management/diagnostic milestone.
-    if (enable) ESP_LOGW(TAG, "Microphone capture is unavailable in this shell");
+    if (ampve_codec_failed) return;
+    std::lock_guard<std::mutex> lock(data_if_mutex_);
+    if (enable == input_enabled_) return;
+    if (enable) {
+        esp_codec_dev_sample_info_t fs = {
+            .bits_per_sample = 16,
+            .channel = 4,
+            .channel_mask = ESP_CODEC_DEV_MAKE_CHANNEL_MASK(0),
+            .sample_rate = (uint32_t)input_sample_rate_,
+            .mclk_multiple = 0,
+        };
+        if (input_reference_) fs.channel_mask |= ESP_CODEC_DEV_MAKE_CHANNEL_MASK(1);
+        AMPVE_AUDIO_CHECK(i2s_channel_enable(rx_handle_));
+        AMPVE_AUDIO_CHECK(esp_codec_dev_open(input_dev_, &fs));
+        AMPVE_AUDIO_CHECK(esp_codec_dev_set_in_channel_gain(
+            input_dev_, ESP_CODEC_DEV_MAKE_CHANNEL_MASK(0), input_gain_));
+        if (input_reference_ && reference_gain_channel_ >= 0) {
+            AMPVE_AUDIO_CHECK(esp_codec_dev_set_in_channel_gain(input_dev_,
+                ESP_CODEC_DEV_MAKE_CHANNEL_MASK(reference_gain_channel_), reference_gain_));
+        }
+    } else {
+        AMPVE_AUDIO_CHECK(esp_codec_dev_close(input_dev_));
+        AMPVE_AUDIO_CHECK(i2s_channel_disable(rx_handle_));
+    }
+    AudioCodec::EnableInput(enable);
 }
 ''' + source[end:]
-    for signature in ['void BoxAudioCodec::SetOutputVolume(int volume) {', 'void BoxAudioCodec::EnableOutput(bool enable) {']:
-        source = replace(source, signature, signature + '\n    if (ampve_codec_failed) return;')
+    source = replace(source, 'void BoxAudioCodec::EnableOutput(bool enable) {',
+                     'void BoxAudioCodec::EnableOutput(bool enable) {\n    if (ampve_codec_failed) return;')
     start = source.index('int BoxAudioCodec::Read(int16_t* dest, int samples) {')
-    source = source[:start] + '''int BoxAudioCodec::Read(int16_t*, int) { return 0; }
+    source = source[:start] + '''int BoxAudioCodec::Read(int16_t* data, int samples) {
+    if (ampve_codec_failed || !input_enabled_) return 0;
+    if (esp_codec_dev_read(input_dev_, (void*)data, samples * sizeof(int16_t)) != ESP_OK) {
+        Fail(); return 0;
+    }
+    return samples;
+}
 
 int BoxAudioCodec::Write(const int16_t* data, int samples) {
     if (ampve_codec_failed || !output_enabled_) return 0;
@@ -79,7 +119,10 @@ def prepare(work, pin):
         target = work/path
         previous = original.replace('    ESP_ERROR_CHECK(i2s_channel_enable(rx_handle_));',
                                     '    // AMPVE shell: leave the RX DMA channel disabled; no microphone capture.')
-        if target.read_text() not in [original, previous, updated]:
+        current = target.read_text()
+        legacy = (path == SOURCE and hashlib.sha256(current.encode()).hexdigest() ==
+                  'bb80f2db14705187e08fce97242a553febf03f7cf6a9b5822353471f9f5f3219')
+        if current not in [original, previous, updated] and not legacy:
             raise ValueError('Refusing to overwrite unrelated audio changes: ' + path)
-        if target.read_text() != updated:
+        if current != updated:
             target.write_text(updated)

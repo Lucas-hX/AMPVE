@@ -32,7 +32,7 @@ from pipecat.processors.aggregators.llm_context import LLMContext
 from pipecat.processors.aggregators.llm_response_universal import LLMContextAggregatorPair
 from pipecat.transports.websocket.fastapi import FastAPIWebsocketTransport, FastAPIWebsocketParams
 from providers import make_provider, error_code
-from browser_transport import BrowserPCMSerializer
+from browser_transport import BrowserPCMSerializer, DevicePCMSerializer
 
 ALLOWED_ORIGINS = {'https://ampve.com', 'https://www.ampve.com'}
 active_users = set()
@@ -59,13 +59,15 @@ async def run_provider(ws, grant, connection, session):
     ready, failed, disconnected = asyncio.Event(), asyncio.Event(), asyncio.Event()
     failure = 'provider'
     api_key = await sync_to_async(decrypt_key)(connection)
-    llm = make_provider(connection.provider, api_key, ready)
+    llm = make_provider(connection.provider, api_key, ready, grant.mode)
     del api_key
-    if grant.mode == 'voice':
+    if grant.mode in ('voice', 'device'):
+        serializer = DevicePCMSerializer() if grant.mode == 'device' else BrowserPCMSerializer()
         transport = FastAPIWebsocketTransport(ws, FastAPIWebsocketParams(
-            serializer=BrowserPCMSerializer(), audio_in_enabled=True, audio_out_enabled=True,
+            serializer=serializer, audio_in_enabled=True, audio_out_enabled=True,
             audio_in_sample_rate=24000, audio_out_sample_rate=24000, audio_out_10ms_chunks=2, audio_out_auto_silence=False,
-            add_wav_header=False, allowed_origins=list(ALLOWED_ORIGINS)))
+            add_wav_header=False,
+            allowed_origins=[] if grant.mode == 'device' else list(ALLOWED_ORIGINS)))
         context = LLMContext([])
         aggregators = LLMContextAggregatorPair(context, realtime_service_mode=True)
         processors = [transport.input(), aggregators.user(), llm, transport.output(), aggregators.assistant()]
@@ -82,7 +84,7 @@ async def run_provider(ws, grant, connection, session):
         failure = error_code(frame.exception or frame.error)
         failed.set()
 
-    if grant.mode == 'voice':
+    if grant.mode in ('voice', 'device'):
         @transport.event_handler('on_client_connected')
         async def client_connected(transport, client):
             await task.queue_frames([LLMContextFrame(context)])
@@ -133,7 +135,7 @@ async def run_provider(ws, grant, connection, session):
                 code = 'limit'; break
             await asyncio.sleep(0.5)
     finally:
-        if grant.mode == 'voice':
+        if grant.mode in ('voice', 'device'):
             with contextlib.suppress(Exception):
                 await send(ws, 'result', code=code, message=RESULTS[code])
         if receiver:
@@ -151,10 +153,11 @@ async def run_provider(ws, grant, connection, session):
     return code
 
 
-@app.websocket('/audio/ws')
-async def audio(ws: WebSocket):
+async def audio_session(ws: WebSocket, expected_mode):
     global handshakes
-    if ws.headers.get('origin') not in ALLOWED_ORIGINS or handshakes >= 8:
+    origin = ws.headers.get('origin')
+    valid_origin = origin in ALLOWED_ORIGINS if expected_mode == 'browser' else origin is None
+    if not valid_origin or handshakes >= 8:
         await ws.close(code=1008)
         return
     handshakes += 1
@@ -168,7 +171,7 @@ async def audio(ws: WebSocket):
         payload = json.loads(raw)
         if not isinstance(payload, dict) or set(payload) != {'ticket'}:
             raise ValueError('Invalid grant message')
-        claimed = await sync_to_async(consume_grant)(payload['ticket'])
+        claimed = await sync_to_async(consume_grant)(payload['ticket'], expected_mode)
     except Exception:
         pass
     finally:
@@ -201,3 +204,13 @@ async def audio(ws: WebSocket):
         with contextlib.suppress(Exception):
             await send(ws, 'result', code=code, message=RESULTS[code])
             await ws.close(code=1000)
+
+
+@app.websocket('/audio/ws')
+async def browser_audio(ws: WebSocket):
+    await audio_session(ws, 'browser')
+
+
+@app.websocket('/audio/device/ws')
+async def device_audio(ws: WebSocket):
+    await audio_session(ws, 'device')
