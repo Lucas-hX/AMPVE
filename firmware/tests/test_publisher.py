@@ -35,14 +35,18 @@ class PublisherTests(unittest.TestCase):
         for byte in app[32:288]:checksum^=byte
         app[303]=checksum;app+=hashlib.sha256(app).digest()
         self.app=bytes(app);digest=hashlib.sha256(app).hexdigest()
-        for name,content in {'xiaozhi.bin':app,'sdkconfig':b'config fixture','dependencies.lock':b'lock fixture',
+        table=b'fixture table'.ljust(0xc00,b'\xff');self.table_sha256=hashlib.sha256(table).hexdigest()
+        for name,content in {'xiaozhi.bin':app,'partition_table/partition-table.bin':table,
+                             'sdkconfig':b'config fixture','dependencies.lock':b'lock fixture',
                              'LICENSE.xiaozhi':b'fixture notice','provisioning-component/LICENSE':b'fixture notice'}.items():
-            path=self.candidate/name;path.parent.mkdir(exist_ok=True);path.write_bytes(content)
+            path=self.candidate/name;path.parent.mkdir(parents=True,exist_ok=True);path.write_bytes(content)
         manifest={'installable':False,'installation_profile':'waveshare-7b-stock-v1','compatibility':CONTRACT,
             'repository_commit':'1'*40,'firmware_version':'fixture-0.1','xiaozhi_commit':'2'*40,'esp_idf_commit':'3'*40,
             'sdkconfig_sha256':hashlib.sha256(b'config fixture').hexdigest(),
             'dependency_lock_sha256':hashlib.sha256(b'lock fixture').hexdigest(),
             'bit_reproducibility':{'verified':True,'scope':'Software fixture only'},
+            'build_artifacts_not_installation_plan':[{'file':'partition_table/partition-table.bin',
+                'size':len(table),'offset':0x8000,'sha256':self.table_sha256}],
             'proposed_regions_not_approved_writes':[{'sha256':digest,'offset':0xe00000}]}
         (self.candidate/'review-manifest.json').write_bytes(canonical(manifest))
         archive_tree(self.candidate,self.root/'candidate.zip')
@@ -143,6 +147,9 @@ class PublisherTests(unittest.TestCase):
 
     def test_ota_requires_predecessors_and_cannot_be_used_for_usb(self):
         self.review.update(purpose='ota',ota_review='Explicit software fixture, not physical recovery',from_app_sha256=['a'*64])
+        with self.assertRaisesRegex(ValueError,'table fingerprint'):
+            self.run_publish()
+        self.review['table_sha256']=self.table_sha256
         policy,output=self.run_publish()
         self.assertNotIn('offset',policy['app'])
         self.assertFalse(policy['installable'])

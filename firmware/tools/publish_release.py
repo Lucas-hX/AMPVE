@@ -56,6 +56,13 @@ def publish(candidate, review_file, key_file, output, ledger_file):
     recorded=manifest['proposed_regions_not_approved_writes']
     if len(recorded)!=1 or recorded[0]['sha256']!=sha256(app) or review['app_sha256']!=sha256(app) or recorded[0]['offset']!=0xe00000 or not 24<=len(app)<=0x3f0000:
         raise ValueError('Review does not match the actual candidate app')
+    if review['purpose']=='ota':
+        tables=[item for item in manifest.get('build_artifacts_not_installation_plan',[])
+                if item.get('file')=='partition_table/partition-table.bin']
+        if (len(tables)!=1 or tables[0].get('size')!=0xc00 or
+                tables[0].get('sha256')!=review['table_sha256'] or
+                sha256((candidate/'partition_table/partition-table.bin').read_bytes())!=review['table_sha256']):
+            raise ValueError('OTA table fingerprint must match the generated partition-table artifact')
     image=image_metadata(app)
     if image['image_bytes']!=len(app) or image['min_revision']>103 or image['max_revision'] not in (0,65535) and image['max_revision']<103:
         raise ValueError('Candidate image is not compatible with P4 1.3')
