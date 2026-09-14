@@ -1,0 +1,30 @@
+{% extends 'workspace/base.html' %}{% load static %}
+{% block subtitle %}Choose its connection, then start each conversation from your device.{% endblock %}
+{% block content %}
+<div class="settings-grid companion-setup">
+  <section class="form-card">
+    <span class="pill">{% if installation_ready %}ACTIVE{% elif installation %}CONNECTION TEST REQUIRED{% else %}NOT ACTIVE{% endif %}</span>
+    <h2>{{ device.name }}</h2>
+    <p>Companion stays inside AMPVE Core and uses the AI connection selected here. Your provider key remains on this server.</p>
+    {% if installation %}
+      <dl class="device-facts"><dt>AI connection</dt><dd>{{ installation.connection.label }}</dd><dt>Provider</dt><dd>{{ installation.connection.get_provider_display }}</dd><dt>Connection status</dt><dd>{% if installation_ready %}Test accepted{% else %}Test this connection again before starting Companion{% endif %}</dd><dt>Device acknowledgement</dt><dd>{% if installation_ready and device.config_version == device.acknowledged_version %}Ready on device{% else %}Waiting for configuration and connection readiness{% endif %}</dd></dl>
+      <form method="post">{% csrf_token %}<input type="hidden" name="action" value="deactivate"><button class="button secondary" type="submit">Turn off Companion</button></form>
+    {% else %}
+      <p>Activate Companion with a tested connection. Activation never starts the microphone.</p>
+    {% endif %}
+  </section>
+  <section class="form-card">
+    <h2>Choose an AI connection</h2>
+    {% if connections %}
+      <form method="post">{% csrf_token %}<input type="hidden" name="action" value="activate">
+        <label for="connection">Connection</label><select id="connection" name="connection" required>
+          <option value="">Choose a tested connection</option>{% for connection in connections %}<option value="{{ connection.pk }}" {% if connection.validation != 'accepted' %}disabled{% endif %}>{{ connection.label }} · {{ connection.get_provider_display }}{% if connection.validation != 'accepted' %} · test required{% endif %}</option>{% endfor %}
+        </select><button class="button" type="submit">Activate Companion</button>
+      </form>
+    {% else %}<p>Add and test an AI connection first.</p><a class="button" href="{% url 'connections' %}">Add a connection</a>{% endif %}
+    <p class="helptext">After activation, open Companion on the physical screen and tap Start conversation. The device begins muted after every restart. Stop and mute remain local controls.</p>
+  </section>
+</div>
+<aside class="notice"><strong>First native preview</strong><p>This version sends live microphone audio through AMPVE to your selected provider and plays the response on the board. AMPVE does not retain audio or transcripts. Provider usage can consume API quota.</p></aside>
+<p class="back-link"><a href="{% url 'device_detail' device.pk %}">← Back to {{ device.name }}</a></p>
+{% endblock %}

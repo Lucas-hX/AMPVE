@@ -29,3 +29,11 @@ class BrowserPCMSerializer(FrameSerializer):
         if self.received > 96000:
             raise ValueError('Browser audio rate exceeded')
         return InputAudioRawFrame(audio=data, sample_rate=24000, num_channels=1)
+
+
+class DevicePCMSerializer(BrowserPCMSerializer):
+    """Fixed 20 ms, 24 kHz mono PCM contract for the first native Companion."""
+    async def deserialize(self, data):
+        if not isinstance(data, bytes) or len(data) != 960:
+            raise ValueError('Invalid device audio frame')
+        return await super().deserialize(data)

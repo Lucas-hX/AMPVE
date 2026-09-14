@@ -173,13 +173,18 @@ def heartbeat(request, data, pk):
         for field in ['firmware_version', 'chip_revision', 'transport', 'acknowledged_version']:
             setattr(device, field, data[field])
         device.save()
-        from .models import DeviceConsoleSession
+        from .models import CompanionInstallation, DeviceConsoleSession
         console_active = DeviceConsoleSession.objects.filter(device=device, ended_at=None,
             expires_at__gt=timezone.now()).exists()
+        companion = CompanionInstallation.objects.select_related('connection').filter(
+            device=device, enabled=True, connection__owner=device.owner,
+            connection__validation='accepted').first()
         return JsonResponse({'protocol': 1, 'heartbeat_interval': 30,
             'configuration': {'version': device.config_version, 'name': device.name,
-                'volume': device.volume, 'microphone_muted': device.microphone_muted},
-            'audio_available': False, 'ota_available': hasattr(device,'firmware_state'),
+                'volume': device.volume, 'microphone_muted': device.microphone_muted,
+                'companion': {'enabled': bool(companion),
+                    'provider': companion.connection.provider if companion else ''}},
+            'audio_available': bool(companion), 'ota_available': hasattr(device,'firmware_state'),
             'console': {'active': console_active, 'poll_interval_ms': 600 if console_active else 30000}})
 
 

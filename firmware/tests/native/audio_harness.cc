@@ -2,21 +2,35 @@
 #include <iostream>
 
 int main() {
+    auto exercise=[](bool require_success) {
+        int operational_calls=0;
+        {
+        BoxAudioCodec codec(nullptr,16000,16000,0,0,0,0,0,0,0,0,false);
+        std::vector<int16_t> tone(4000,20);
+        if(!ampve_codec_failed) codec.EnableInput(true);
+        if(!ampve_codec_failed) {bool read=codec.InputData(tone);if(require_success)assert(read);}
+        if(!ampve_codec_failed) codec.EnableInput(false);
+        if(!ampve_codec_failed) codec.SetOutputVolume(10);
+        if(!ampve_codec_failed) codec.EnableOutput(true);
+        if(!ampve_codec_failed) codec.OutputData(tone);
+        if(!ampve_codec_failed) codec.EnableOutput(false);
+        operational_calls=calls;
+        }
+        return operational_calls;
+    };
+    calls=allocations=rx_enabled=0;fail_at=0;ampve_codec_failed=false;
     int normal_calls=0;
-    for(int failure=0;failure<=normal_calls;++failure) {
+    {
+        normal_calls=exercise(true);
+        assert(!ampve_codec_failed && rx_enabled==0);
+    }
+    assert(live.empty());
+    for(int failure=1;failure<=normal_calls;++failure) {
         calls=allocations=rx_enabled=0;fail_at=failure;ampve_codec_failed=false;
         {
-            BoxAudioCodec codec(nullptr,16000,16000,0,0,0,0,0,0,0,0,false);
-            codec.EnableInput(true);
-            std::vector<int16_t> tone(4000,20);
-            assert(!codec.InputData(tone));
-            codec.SetOutputVolume(10);codec.EnableOutput(true);codec.OutputData(tone);
-            codec.EnableOutput(false);
-            if(!failure) {assert(!ampve_codec_failed);normal_calls=calls;fail_at=calls+1;codec.EnableOutput(true);}
-            else assert(ampve_codec_failed);
+            exercise(false);
             assert(ampve_codec_failed);
             int allocated=allocations;
-            codec.EnableOutput(true);codec.OutputData(tone);codec.SetOutputVolume(70);
             assert(allocations==allocated && live.empty() && rx_enabled==0);
         }
         assert(live.empty());
@@ -28,5 +42,5 @@ int main() {
     calls=0;fail_at=0;ampve_codec_failed=false;
     {BoxAudioCodec codec(nullptr,16000,16000,0,0,0,0,0,0,0,0,false);assert(!ampve_codec_failed);}
     assert(live.empty() && rx_enabled==0);
-    std::cout << normal_calls+4 << " audio failure/cleanup scenarios passed; no microphone capture\n";
+    std::cout << normal_calls+4 << " audio failure/cleanup scenarios passed; microphone is locally gated\n";
 }

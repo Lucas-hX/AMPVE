@@ -24,9 +24,9 @@ The preview includes:
 - signed software delivery over Wi-Fi;
 - an authenticated visual console with mouse, touch and keyboard input;
 - encrypted Gemini Live and OpenAI Realtime provider connections; and
-- a browser-based Companion voice experience.
+- a browser Companion voice experience and a native 7B development candidate.
 
-Native Companion audio on the device and additional hardware profiles are outside the current preview offering. See [supported hardware](docs/SUPPORTED_HARDWARE.md) for the precise compatibility boundary.
+Native Companion audio is awaiting physical validation on the first 7B; additional hardware profiles remain outside the current preview offering. See [supported hardware](docs/SUPPORTED_HARDWARE.md) for the precise compatibility boundary.
 
 ## How AMPVE works
 
