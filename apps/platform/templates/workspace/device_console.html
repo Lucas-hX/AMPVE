@@ -36,14 +36,14 @@
         </div>
         <div class="console-screen-page" data-page="device" hidden>
           <p class="console-kicker">HARDWARE</p><h3>My device</h3><dl class="console-facts"><dt>Profile</dt><dd>Waveshare P4 Touch LCD 7B</dd><dt>Software</dt><dd data-firmware>{{ device.firmware_version|default:'Unknown' }}</dd><dt>Display</dt><dd>1024 × 600</dd></dl>
-          <button class="console-inline-action" data-console-target="speaker_test">Play quiet speaker test</button><p class="console-warning">Speaker output is still awaiting a successful physical result.</p>
+          <button class="console-inline-action" data-console-target="speaker_test">Play quiet speaker test</button><p class="console-warning">Audio input and output are validated on the first 7B; this short check remains locally controlled.</p>
         </div>
         <div class="console-screen-page" data-page="settings" hidden>
           <p class="console-kicker">COMFORT</p><h3>Comfort comes first.</h3><p>Remote input cannot enable the microphone or remove local control.</p>
           <div class="console-action-row"><button data-console-target="mute">Keep microphone muted</button><button data-console-target="cancel_update">Cancel firmware download</button></div>
         </div>
         <div class="console-screen-page companion-page" data-page="companion" hidden>
-          <img src="{% static 'brandkit/apps/companion-icon-v1.png' %}" alt="Companion face"><div><p class="console-kicker">COMPANION</p><h3>A little company.</h3><p>The visual shell is ready. Native voice still depends on the audio adapter and working speaker output.</p></div>
+          <img src="{% static 'brandkit/apps/companion-icon-v1.png' %}" alt="Companion face"><div><p class="console-kicker">COMPANION</p><h3>A little company.</h3><p>Native voice is available when Companion has an assigned, tested AI connection. Start and stop each conversation locally.</p></div>
         </div>
         <nav class="console-dock" aria-label="Device screen">
           <button data-console-target="home"><span>{% include 'workspace/icon.html' with name='home' %}</span>Home</button>
