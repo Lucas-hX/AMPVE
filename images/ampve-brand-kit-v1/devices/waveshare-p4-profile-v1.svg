@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 560 400" role="img" aria-labelledby="title description">
+  <title id="title">Waveshare P4 reported-profile portrait</title>
+  <desc id="description">A restrained interface illustration of a touch-display development board, used only when the matching Waveshare P4 profile is reported.</desc>
+  <defs>
+    <linearGradient id="screen" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#353b3a"/>
+      <stop offset="1" stop-color="#171c1c"/>
+    </linearGradient>
+    <linearGradient id="board" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#87936f"/>
+      <stop offset="1" stop-color="#59664d"/>
+    </linearGradient>
+    <filter id="shadow" x="-30%" y="-30%" width="160%" height="180%">
+      <feDropShadow dx="0" dy="18" stdDeviation="14" flood-color="#252823" flood-opacity=".18"/>
+    </filter>
+  </defs>
+  <path d="M70 221C70 123 145 53 253 48c105-5 225 41 237 131 13 93-72 175-188 181-126 7-232-40-232-139Z" fill="#e8ecdd"/>
+  <path d="M111 102h294a22 22 0 0 1 22 22v196a22 22 0 0 1-22 22H111a22 22 0 0 1-22-22V124a22 22 0 0 1 22-22Z" fill="url(#board)" stroke="#47513a" stroke-width="5" transform="rotate(-4 258 222)" filter="url(#shadow)"/>
+  <g fill="#d7ddc8" stroke="#47513a" stroke-width="3">
+    <circle cx="113" cy="126" r="7"/><circle cx="398" cy="106" r="7"/><circle cx="416" cy="310" r="7"/><circle cx="129" cy="328" r="7"/>
+  </g>
+  <g transform="rotate(-4 258 222)">
+    <rect x="99" y="205" width="24" height="62" rx="5" fill="#c9d0bb"/>
+    <rect x="107" y="214" width="8" height="10" rx="2" fill="#47513a"/>
+    <rect x="107" y="231" width="8" height="27" rx="2" fill="#47513a"/>
+    <rect x="387" y="137" width="26" height="15" rx="3" fill="#d9decd"/>
+    <rect x="387" y="164" width="26" height="15" rx="3" fill="#d9decd"/>
+    <path d="M125 294h36m-18-18v36M367 292h34" fill="none" stroke="#c6cfb6" stroke-width="4" stroke-linecap="round"/>
+  </g>
+  <g transform="rotate(3 278 198)" filter="url(#shadow)">
+    <rect x="132" y="55" width="326" height="244" rx="23" fill="#242925" stroke="#363b36" stroke-width="7"/>
+    <rect x="151" y="75" width="288" height="204" rx="13" fill="url(#screen)"/>
+    <path d="M177 235h86" stroke="#47513a" stroke-width="3" stroke-linecap="round" opacity=".75"/>
+    <path d="M177 247h57" stroke="#47513a" stroke-width="3" stroke-linecap="round" opacity=".55"/>
+    <path d="M270 247h137" stroke="#47513a" stroke-width="3" stroke-linecap="round" opacity=".4"/>
+    <path d="M259 171a27 27 0 0 1 54 0" fill="none" stroke="#e7653d" stroke-width="12" stroke-linecap="round"/>
+    <rect x="316" y="164" width="16" height="16" rx="2" fill="#e7653d"/>
+    <circle cx="422" cy="178" r="4" fill="#e8ecdd"/>
+  </g>
+  <path d="M183 328c49 19 163 18 211-2" fill="none" stroke="#b83e1c" stroke-width="5" stroke-linecap="round" opacity=".75"/>
+</svg>

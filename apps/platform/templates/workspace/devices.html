@@ -1,8 +1,48 @@
 {% extends 'workspace/base.html' %}
+{% load static %}
 {% block subtitle %}A place for the things you bring to life.{% endblock %}
-{% block heading_action %}<a class="button" href="{% url 'onboarding' %}">＋ Add a device</a>{% endblock %}
+{% block heading_action %}<a class="button" href="{% url 'onboarding' %}">{% include 'workspace/icon.html' with name='add-device' class_name='ampve-icon-compact' %} Add a device</a>{% endblock %}
 {% block content %}
-{% if devices %}<div class="device-grid">{% for device in devices %}<article class="form-card"><span class="pill">{{ device.connection_state }}</span><h2><a href="{% url 'device_detail' device.pk %}">{{ device.name }}</a></h2><p>{{ hardware_name }}</p><p class="helptext">Hardware profile reported during pairing; physical compatibility remains unverified.</p><p>Last contact: {{ device.last_seen|date:'M j, H:i:s'|default:'Not connected yet' }}</p><a class="button secondary" href="{% url 'device_detail' device.pk %}">Manage device →</a></article>{% endfor %}</div>
-{% else %}<section class="large-empty"><span class="circle-icon" aria-hidden="true">▯</span><h2>Something useful starts here.</h2><p>No devices have been added to your account. Inspect your Waveshare board by USB, then pair it after compatible firmware is available.</p><a class="button secondary" href="{% url 'onboarding' %}">Start device setup →</a></section>{% endif %}
+{% if devices %}
+<div class="device-grid device-card-grid">
+  {% for device in devices %}
+  <article class="device-card device-card--{{ device.connection_state|slugify }}">
+    <div class="device-profile-portrait">
+      <img src="{% static 'brandkit/devices/waveshare-p4-profile-v1.svg' %}" alt="">
+      <span class="device-profile-chip">Reported P4 profile</span>
+    </div>
+    <div class="device-card-content">
+      <div class="device-card-context">
+        <span class="device-state">
+          {% if device.connection_state == 'Online' %}{% include 'workspace/icon.html' with name='success' %}
+          {% elif device.connection_state == 'Offline' %}{% include 'workspace/icon.html' with name='offline' %}
+          {% else %}{% include 'workspace/icon.html' with name='attention' %}{% endif %}
+          {{ device.connection_state }}
+        </span>
+        <span class="device-owner">Personal device · Yours</span>
+      </div>
+      <h2><a href="{% url 'device_detail' device.pk %}">{{ device.name }}</a></h2>
+      <p class="device-hardware-name">{{ hardware_name }}</p>
+      <dl class="device-card-summary">
+        <div><dt>Application</dt><dd>No application assigned</dd></div>
+        <div><dt>Last contact</dt><dd>{% if device.last_seen %}<time datetime="{{ device.last_seen|date:'c' }}" title="{{ device.last_seen|date:'M j, Y H:i:s' }} UTC" aria-label="Last contact {{ device.last_seen|date:'M j, Y H:i:s' }} UTC">{{ device.last_seen|timesince }} ago</time>{% else %}Not connected yet{% endif %}</dd></div>
+      </dl>
+      <details class="device-card-details">
+        <summary>Reported technical details</summary>
+        <dl>
+          <dt>Exact profile</dt><dd><code>{{ device.hardware_profile }}</code></dd>
+          <dt>Connection</dt><dd>{{ device.transport|default:'Not reported' }}</dd>
+          <dt>Firmware</dt><dd>{{ device.firmware_version|default:'Not reported' }}</dd>
+        </dl>
+        <p>Reported during pairing or heartbeat; this is not physical hardware attestation.</p>
+      </details>
+      <a class="button secondary device-card-action" href="{% url 'device_detail' device.pk %}">Manage device {% include 'workspace/icon.html' with name='arrow-right' class_name='ampve-icon-compact' %}</a>
+    </div>
+  </article>
+  {% endfor %}
+</div>
+{% else %}
+<section class="large-empty"><img class="empty-microillustration" src="{% static 'brandkit/microillustrations/no-devices-v1.svg' %}" alt=""><h2>Something useful starts here.</h2><p>No devices have been added to your account. Inspect your Waveshare board by USB, then pair it after compatible firmware is available.</p><a class="button secondary" href="{% url 'onboarding' %}">Start device setup →</a></section>
+{% endif %}
 <aside class="notice"><strong>Real connection state</strong><p>Online means AMPVE received an authenticated device heartbeat within 90 seconds. A USB selection or saved setting does not mark a device online. Refresh this page to update its status.</p></aside>
 {% endblock %}

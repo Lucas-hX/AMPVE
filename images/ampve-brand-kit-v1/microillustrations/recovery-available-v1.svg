@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 560 400" role="img" aria-labelledby="title description">
+  <title id="title">Recovery available</title><desc id="description">A calm device outline, verified local backup file and circular recovery path.</desc>
+  <defs><filter id="s" x="-30%" y="-30%" width="160%" height="180%"><feDropShadow dx="0" dy="14" stdDeviation="12" flood-color="#252823" flood-opacity=".12"/></filter></defs>
+  <path d="M67 218C67 119 154 56 275 56c132 0 221 61 221 158 0 96-86 149-218 149-126 0-211-51-211-145Z" fill="#e9eff0"/>
+  <g filter="url(#s)"><rect x="122" y="104" width="258" height="190" rx="24" fill="#fffdf8" stroke="#405e63" stroke-width="6"/><rect x="145" y="127" width="212" height="144" rx="13" fill="#2c3535"/><path d="M211 198a23 23 0 0 1 46 0" fill="none" stroke="#e7653d" stroke-width="10" stroke-linecap="round"/><rect x="260" y="191" width="14" height="14" rx="2" fill="#e7653d"/></g>
+  <g transform="translate(349 214)" filter="url(#s)"><path d="M0 0h78l31 31v96H0Z" fill="#fffdf8" stroke="#405e63" stroke-width="5" stroke-linejoin="round"/><path d="M78 0v31h31M27 70l13 13 27-31" fill="none" stroke="#6f8957" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/></g>
+  <path d="M420 155a83 83 0 0 0-146-38m-12-30 12 30 31-8M268 299a83 83 0 0 1-141-48m-11 32 11-32 32 8" fill="none" stroke="#55747a" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

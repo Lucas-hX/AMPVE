@@ -19,7 +19,7 @@
       <details class="danger-zone"><summary>Remove connection</summary><p>Deleting this connection stops its audio sessions and removes the saved key.</p><form method="post" action="{% url 'delete_connection' connection.pk %}">{% csrf_token %}<button class="text-button" type="submit">Delete connection</button></form></details>
     </article>
     {% empty %}
-    <section class="large-empty"><span class="circle-icon" aria-hidden="true">↗</span><h2>A little intelligence.<br>Your own connection.</h2><p>Add a Gemini Live or OpenAI Realtime API key to begin testing Companion.</p></section>
+    <section class="large-empty"><span class="circle-icon" aria-hidden="true">{% include 'workspace/icon.html' with name='connections' %}</span><h2>A little intelligence.<br>Your own connection.</h2><p>Add a Gemini Live or OpenAI Realtime API key to begin testing Companion.</p></section>
     {% endfor %}
   </section>
   <section class="form-card connection-add"><p class="eyebrow">ADD A CONNECTION</p><h2>Bring your own AI.</h2><p>Stored securely on your AMPVE server. Used only to connect to your provider.</p><form method="post" autocomplete="off">{% csrf_token %}{{ form.as_p }}<button class="button" type="submit">Save connection</button></form><p class="helptext">Saving does not contact the provider. Your saved API key is never displayed again. API access is separate from consumer subscriptions.</p></section>

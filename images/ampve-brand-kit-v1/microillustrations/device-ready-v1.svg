@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 560 400" role="img" aria-labelledby="title description">
+  <title id="title">Device ready</title><desc id="description">A connected AMPVE display with a confirmed check and calm green signal.</desc>
+  <defs><linearGradient id="screen" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#353b3a"/><stop offset="1" stop-color="#171c1c"/></linearGradient><filter id="s" x="-30%" y="-30%" width="160%" height="180%"><feDropShadow dx="0" dy="15" stdDeviation="13" flood-color="#252823" flood-opacity=".16"/></filter></defs>
+  <path d="M69 213C69 115 154 52 277 52c131 0 216 58 216 157 0 96-80 155-214 155-126 0-210-52-210-151Z" fill="#e8ecdd"/>
+  <g filter="url(#s)"><rect x="128" y="85" width="304" height="220" rx="24" fill="#252823" stroke="#363b36" stroke-width="8"/><rect x="150" y="107" width="260" height="176" rx="13" fill="url(#screen)"/><path d="M218 184a26 26 0 0 1 52 0m43 0a26 26 0 0 1 52 0" fill="none" stroke="#ff8a4c" stroke-width="11" stroke-linecap="round"/><path d="M220 322h120" stroke="#b7a78e" stroke-width="18" stroke-linecap="round"/><path d="M182 340h196" stroke="#c9b99f" stroke-width="18" stroke-linecap="round"/></g>
+  <g transform="translate(397 78)"><circle cx="42" cy="42" r="42" fill="#fffdf8" stroke="#8da573" stroke-width="5"/><path d="m23 43 12 12 25-28" fill="none" stroke="#6f8957" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/></g>
+  <path d="M90 252c-18-35-14-76 13-106m-23 17 23-17 3 29" fill="none" stroke="#e7653d" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

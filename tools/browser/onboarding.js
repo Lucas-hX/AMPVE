@@ -22,17 +22,26 @@ if(root) {
   }
   function show(id){get(id).hidden=false;}
   function continueTo(id){show(id);get(id).scrollIntoView({behavior:"smooth",block:"start"});}
+  function visualState(state,label,showReady=false){
+    root.dataset.setupState=state;get('setup-visual-label').textContent=label;
+    const names={ready:'activity',working:'update',progress:'activity',success:'success',warning:'attention',recoverable:'recovery'};
+    const use=root.querySelector('.setup-state-icon use');
+    if(use)use.setAttribute('href',use.getAttribute('href').replace(/#icon-[\w-]+$/,`#icon-${names[state]||'activity'}`));
+    get('setup-success-visual').hidden=!showReady;
+  }
   get("wifi-step").hidden=true;
   get("pairing-step").hidden=!get("pairing-step").querySelector(".errorlist");
   let reportSource;
   let port,reader,report,backup,plan,policy,busy=false,controller,writing=false,phaseStart=0,lastPhase='',lastPaint=0;
   const actions=[...root.querySelectorAll('button[data-action]')];
+  visualState('ready','Ready');
   function progress(phase,done,total) {
     if(phase===lastPhase && done<total && performance.now()-lastPaint<250)return;
     lastPaint=performance.now();
     if(phase!==lastPhase){lastPhase=phase;phaseStart=performance.now();}
     const seconds=(performance.now()-phaseStart)/1000,rate=done/Math.max(seconds,0.1);
     meter.hidden=false;meter.max=total;meter.value=done;
+    visualState('progress','Measured progress');
     status.textContent=phase;
     const eta=seconds<3?'Estimating time…':`About ${Math.ceil((total-done)/rate/60)} min remaining in this phase`;
     detail.textContent=`${(done/1048576).toFixed(2)} / ${(total/1048576).toFixed(2)} MiB · ${Math.floor(done/total*100)}% · ${(rate/1024).toFixed(1)} KiB/s · ${eta}`;
@@ -65,8 +74,9 @@ if(root) {
   }
   async function close(){if(wifi){const active=wifi;wifi=null;await active.close().catch(()=>{});}if(reader){await reader.transport.disconnect().catch(()=>{});reader=null;}}
   async function run(task,cancellable=true) {
-    if(busy)return;busy=true;writing=false;controller=cancellable?new AbortController():null;lastPhase='';sync();
-    try{await task(controller?.signal);}catch(error){
+    if(busy)return;busy=true;writing=false;controller=cancellable?new AbortController():null;lastPhase='';visualState('working','Working');sync();
+    let completed=false;
+    try{await task(controller?.signal);completed=true;}catch(error){
       // Never display raw transport data or exception messages from serial libraries.
       status.textContent=error.name==='AbortError'?'Stopped. Incomplete reads are not valid backups.':
         error.userMessage||'Setup stopped. Check the cable, programming port and current operation. No installation is approved by a failed check.';
@@ -93,8 +103,10 @@ if(root) {
           `Installation result: ${error.installationSummary.phase.replaceAll('_',' ')}. Use Download installation result below; the backup summary describes only your saved files.`;
       }
       if(error.startupSummary)detail.textContent='Your verified backups and recovery preparation remain available in this tab. Check startup over USB, or use the original-software recovery option. Keep this tab open.';
+      visualState(error.startupSummary||error.installationSummary||writing?'recoverable':'warning',
+        error.name==='AbortError'?'Stopped safely':error.startupSummary||error.installationSummary||writing?'Recovery available':'Needs attention');
       await close();if(!error.startupSummary)plan=null;
-    }finally{busy=false;writing=false;sync();}
+    }finally{if(completed&&['working','progress'].includes(root.dataset.setupState))visualState('ready','Ready for next step');busy=false;writing=false;sync();}
   }
   function boardConsent(){ensure(get('board-confirm').checked&&get('read-consent').checked,'Confirm the board and temporary RAM reader first.');}
   function options(){return {baud:Number(get('read-baud').value)};}
@@ -117,6 +129,7 @@ if(root) {
     get('installation-choice').textContent=compatible?'Available for review: add AMPVE while keeping your previous software.':'No compatible installation is available for this device’s current software. Your device has not been changed.';
     downloadLink('export-review',reviewSummary(report,reportSource));
     get('stock-baseline').textContent=recognizeBaseline(report)?'The original software base matches a verified vendor artifact. This identifies the base; it does not approve a release.':'The original software base is not recognized in the current catalog.';
+    visualState('success','Backups verified');
     continueTo('installation-step');
     await prepareInstallation();
   }
@@ -185,6 +198,7 @@ if(root) {
     get('recovery-status').textContent=result.already_original?'The connected flash matches your original backup. No restoration was needed or performed.':
       'Differences are limited to the expected installation/settings areas. No restoration was performed.';
     status.textContent='Recovery comparison complete. The device was not changed.';
+    visualState('recoverable','Recovery available');
   }
   get('recover-device').onclick=()=>{
     recoveryMode=true;show('device-confirmation');show('wifi-step');
@@ -328,6 +342,7 @@ if(root) {
       get('runtime-status').textContent=runtime.wifi_initialized?'AMPVE core confirmed over USB. Continue with Wi-Fi setup.':'AMPVE core confirmed over USB. Wi-Fi still needs configuration or compatibility work.';
       status.textContent='AMPVE responds over USB. Continue setup while the device stays connected.';
       detail.textContent='USB startup is confirmed. Wi-Fi, display and other features are checked separately during setup.';
+      visualState('success','AMPVE core confirmed',true);
       show('wifi-step');show('pairing-step');return;
     }
     status.textContent='AMPVE was installed and checked. Confirm that its home screen appears on your board, then connect Wi-Fi below.';
@@ -348,6 +363,7 @@ if(root) {
     failedRuntimeHash=null;downloadLink('export-runtime-review',result);
     get('runtime-status').textContent=result.wifi_initialized?'AMPVE core confirmed. Wi-Fi initialization completed; check connection below.':'AMPVE core confirmed. Wi-Fi remains pending.';
     status.textContent='USB startup checked. Network connection and dashboard pairing are separate steps.';
+    visualState('success','AMPVE core confirmed',true);
   });
   get('restore-original').onclick=()=>{
     if(!window.confirm('Return to your original software? This restores your saved original settings and removes AMPVE settings from this installation. Keep USB power connected until finished.'))return;
@@ -362,6 +378,7 @@ if(root) {
       await executeRecovery(reader,recoveryPlan,review,{restore_original:true,discard_ampve_settings:true,stable_usb_power:true},progress);
       await close();recoveryPlan=null;installedRuntime=null;plan=null;policy=null;currentFlashChanged=false;recoveryMode=false;
       show('recovered-next');status.textContent='Original flash restored and verified. Confirm that the original application starts on the board, then use the link to start AMPVE installation again.';
+      visualState('success','Recovery completed');
     });
   };
   function wifiState(state){
@@ -389,7 +406,7 @@ if(root) {
   for(const id of ['approve-plan','separate-copy','rom-recovery'])get(id).addEventListener('change',sync);
   navigator.serial?.addEventListener('disconnect',event=>{if(event.target===port&&!busy){port=null;plan=null;close();status.textContent='Selected board disconnected. Reconnect before continuing.';sync();}});
   window.addEventListener('beforeunload',event=>{if(busy){event.preventDefault();event.returnValue='';}});
-  if(!navigator.serial){get('select-usb').hidden=true;get('usb-status').textContent='Use desktop Chrome or Edge for Web Serial. You can still inspect existing backup files locally.';}
+  if(!navigator.serial){get('select-usb').hidden=true;get('usb-status').textContent='Use desktop Chrome or Edge for Web Serial. You can still inspect existing backup files locally.';visualState('warning','Compatible browser required');}
   if(!window.showDirectoryPicker)get('storage-support').textContent='Direct backup storage requires desktop Chrome or Edge with File System Access. No backup will be uploaded to AMPVE.';
   sync();
 }
