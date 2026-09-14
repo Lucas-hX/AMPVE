@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <link rel="icon" href="data:,">
+  <title>AMPVE interface icons v1</title>
+  <style>
+    :root{--canvas:#f7f5ee;--ink:#252823;--orange:#b83e1c;--sage:#e8ecdd;--sage-ink:#47513a;--line:#daddd2}
+    *{box-sizing:border-box}body{margin:0;background:var(--canvas);color:var(--ink);font-family:Inter,system-ui,sans-serif}
+    main{max-width:1240px;margin:auto;padding:56px 28px}h1{font-size:42px;letter-spacing:-.045em;margin:0}p{color:#62675e}.legend{margin:12px 0 36px}
+    .sheet{display:grid;gap:8px}.row{display:grid;grid-template-columns:minmax(150px,1fr) repeat(4,minmax(92px,1fr));gap:8px;align-items:stretch}
+    .name,.sample{min-height:76px;border:1px solid var(--line);border-radius:14px;display:flex;align-items:center;padding:14px}.name{font:600 13px ui-monospace,monospace;background:#fffdf8}
+    .sample{justify-content:center;background:#fffdf8}.sample.active{background:#f7e8dc;color:var(--orange)}.sample.disabled{color:#9b9f96}.sample.hud{background:var(--ink);color:#f7f5ee}
+    .icon{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:1.75;stroke-linecap:round;stroke-linejoin:round}
+    .head{font-size:11px;text-transform:uppercase;letter-spacing:.12em;color:#62675e;min-height:auto;border:0;background:transparent}
+    @media(max-width:700px){.row{grid-template-columns:1fr repeat(4,54px)}.sample{padding:8px}.name{font-size:11px}.head{font-size:8px}}
+  </style>
+</head>
+<body>
+<main>
+  <p>AMPVE · Visual system</p>
+  <h1>Interface icons v1</h1>
+  <p class="legend">24 px grid · 1.75 px rounded stroke · graphite, active orange, disabled and dark-HUD review.</p>
+  <div class="sheet" id="sheet">
+    <div class="row"><div class="name head">Symbol</div><div class="sample head">Default</div><div class="sample head">Active</div><div class="sample head">Disabled</div><div class="sample head">HUD</div></div>
+  </div>
+</main>
+<script>
+  const names=['home','devices','apps','connections','settings','add-device','console','diagnostics','activity','wifi','usb','ownership','firmware','download','update','backup','restore','microphone','speaker','camera','mute','local-control','touch','mouse','keyboard','session','success','attention','offline','recovery','arrow-right','external-link','add','info','sun','spark'];
+  const sheet=document.querySelector('#sheet');
+  const icon=name=>`<svg class="icon" aria-hidden="true"><use href="ampve-icons-v1.svg#icon-${name}"></use></svg>`;
+  for(const name of names){const row=document.createElement('div');row.className='row';row.innerHTML=`<div class="name">${name}</div><div class="sample">${icon(name)}</div><div class="sample active">${icon(name)}</div><div class="sample disabled">${icon(name)}</div><div class="sample hud">${icon(name)}</div>`;sheet.append(row)}
+</script>
+</body>
+</html>

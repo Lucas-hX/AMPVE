@@ -137,6 +137,28 @@ class DeviceTests(TestCase):
         Device.objects.update(last_seen=timezone.now()-timedelta(seconds=91))
         self.device.refresh_from_db();self.assertEqual(self.device.connection_state,'Offline')
 
+    def test_device_cards_keep_profile_status_and_contact_truthful(self):
+        device = self.claim()
+        page = self.client.get(reverse('devices'))
+        self.assertContains(page, 'device-card--awaiting-device')
+        self.assertContains(page, device.hardware_profile)
+        self.assertContains(page, 'No application assigned')
+        self.assertContains(page, 'Not connected yet')
+        self.assertContains(page, 'waveshare-p4-profile-v1.svg')
+
+        self.client.post(reverse('device_detail', args=[device.pk]),
+            {'name':'Software fixture P4','volume':45,'microphone_muted':'on'})
+        self.assertContains(self.client.get(reverse('devices')), 'device-card--awaiting-device')
+
+        self.exchange();self.assertEqual(self.beat().status_code, 200)
+        page = self.client.get(reverse('devices'))
+        self.assertContains(page, 'device-card--online')
+        self.assertContains(page, '<time datetime=', html=False)
+        self.assertContains(page, 'aria-label="Last contact', html=False)
+
+        Device.objects.update(last_seen=timezone.now()-timedelta(seconds=91))
+        self.assertContains(self.client.get(reverse('devices')), 'device-card--offline')
+
     def test_pairing_limits_and_unknown_uuid_no_bucket_growth(self):
         for _ in range(5):self.start()
         response=self.machine.post('/api/devices/v1/enroll/',{'protocol':1,'hardware_profile':PROFILE},content_type='application/json')

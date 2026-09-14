@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 560 400" role="img" aria-labelledby="title description">
+  <title id="title">Connect by USB</title><desc id="description">A USB cable approaching the programming port of a touch-display development board.</desc>
+  <defs><linearGradient id="screen" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#353b3a"/><stop offset="1" stop-color="#171c1c"/></linearGradient><filter id="s" x="-30%" y="-30%" width="160%" height="180%"><feDropShadow dx="0" dy="14" stdDeviation="12" flood-color="#252823" flood-opacity=".14"/></filter></defs>
+  <ellipse cx="305" cy="211" rx="194" ry="151" fill="#f7e8dc"/>
+  <g filter="url(#s)" transform="rotate(3 330 188)"><rect x="215" y="75" width="250" height="198" rx="20" fill="#697657" stroke="#47513a" stroke-width="5"/><rect x="238" y="59" width="242" height="182" rx="18" fill="#252823" stroke="#363b36" stroke-width="7"/><rect x="255" y="76" width="208" height="148" rx="10" fill="url(#screen)"/><path d="M333 151a23 23 0 0 1 46 0" fill="none" stroke="#e7653d" stroke-width="10" stroke-linecap="round"/><rect x="381" y="144" width="14" height="14" rx="2" fill="#e7653d"/><rect x="204" y="160" width="22" height="55" rx="4" fill="#d9decd"/><rect x="209" y="174" width="12" height="27" rx="2" fill="#47513a"/></g>
+  <path d="M66 278c54 0 63-72 125-72" fill="none" stroke="#e7653d" stroke-width="12" stroke-linecap="round"/>
+  <g transform="translate(153 180)"><rect width="58" height="48" rx="9" fill="#fffdf8" stroke="#252823" stroke-width="5"/><path d="M58 15h21v18H58" fill="#252823"/><path d="M20 0v-24m0 0-7 8m7-8 7 8M38 0v-15" fill="none" stroke="#47513a" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></g>
+  <path d="M172 132h41m-10-10 10 10-10 10" fill="none" stroke="#b83e1c" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

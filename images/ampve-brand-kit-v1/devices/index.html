@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <link rel="icon" href="data:,">
+  <title>AMPVE device personality v1</title>
+  <style>
+    :root{--canvas:#f7f5ee;--surface:#fffdf8;--ink:#252823;--muted:#62675e;--orange:#b83e1c;--art-orange:#e7653d;--sage:#e8ecdd;--sage-ink:#47513a;--line:#daddd2;--peach:#f7e8dc}
+    *{box-sizing:border-box}body{margin:0;background:var(--canvas);color:var(--ink);font:15px/1.55 Inter,system-ui,sans-serif}main{max-width:1240px;margin:auto;padding:54px 28px 70px}h1,h2,h3,p{margin:0}h1{font-size:clamp(38px,5vw,58px);line-height:1;letter-spacing:-.055em}h2{font-size:26px;letter-spacing:-.035em}p{color:var(--muted)}.eyebrow{font-size:10px;font-weight:750;letter-spacing:.16em;color:var(--sage-ink);margin-bottom:10px}.lead{font-size:18px;margin-top:16px;max-width:710px}.section{margin-top:46px}.portraits{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:18px}.portrait{background:var(--surface);border:1px solid var(--line);border-radius:20px;overflow:hidden}.portrait img{display:block;width:100%;aspect-ratio:1.55;object-fit:contain;padding:10px}.portrait div{padding:0 22px 22px}.portrait small{display:block;margin-top:6px;color:var(--muted)}.state-list{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-top:18px}.state{min-height:120px;display:flex;flex-direction:column;justify-content:space-between;border-radius:16px;padding:16px;border:1px solid var(--line);background:var(--surface)}.state span{display:inline-flex;align-items:center;gap:7px;font-size:12px;font-weight:700}.state p{font-size:11px}.icon{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.75;stroke-linecap:round;stroke-linejoin:round}.online{background:#edf0e5;color:#47513a}.updating{background:var(--peach);color:var(--orange)}.attention{background:#f5edd9;color:#755b23}.recovery{background:#e9eff0;color:#405e63}.offline{color:#555b54}
+    .sample-card{display:grid;grid-template-columns:minmax(230px,320px) 1fr;border:1px solid var(--line);border-radius:22px;background:var(--surface);overflow:hidden;margin-top:18px}.sample-visual{display:grid;place-items:center;background:linear-gradient(145deg,#edf0e5,#f6eadf);padding:20px}.sample-visual img{width:100%;max-width:310px}.sample-copy{padding:30px}.sample-top{display:flex;justify-content:space-between;gap:12px}.status{display:inline-flex;align-items:center;gap:7px;border-radius:999px;padding:5px 10px;background:#e8ecdd;color:#47513a;font-size:11px;font-weight:700}.owner{font-size:11px;color:var(--muted)}.sample-copy h3{font-size:32px;letter-spacing:-.045em;margin:18px 0 4px}.facts{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:22px 0}.facts small{display:block;color:var(--muted)}.facts strong{font-size:14px}.button{display:inline-flex;background:var(--orange);color:#fff;padding:11px 18px;border-radius:11px;font-weight:700}.button .icon{margin-left:7px}
+    @media(max-width:760px){main{padding:34px 18px 50px}.portraits,.sample-card{grid-template-columns:1fr}.state-list{grid-template-columns:1fr 1fr}.state:last-child{grid-column:1/-1}.sample-visual{max-height:245px}.sample-copy{padding:23px}.facts{grid-template-columns:1fr}.sample-top{align-items:flex-start}.owner{text-align:right}}
+  </style>
+</head>
+<body><main>
+  <p class="eyebrow">AMPVE · E38 ASSET REVIEW</p>
+  <h1>Devices with a sense of place.</h1>
+  <p class="lead">A reported-profile portrait, an unmistakably conceptual future silhouette and one calm state grammar for useful device cards.</p>
+  <section class="section"><h2>Profile portraits</h2><div class="portraits">
+    <article class="portrait"><img src="waveshare-p4-profile-v1.svg" alt=""><div><strong>Waveshare P4 reported profile</strong><small>Production card asset · illustration, not hardware attestation.</small></div></article>
+    <article class="portrait"><img src="future-device-concept-v1.svg" alt=""><div><strong>Future hardware concept</strong><small>Dashed, incomplete and always paired with explicit concept language.</small></div></article>
+  </div></section>
+  <section class="section"><h2>Shared state grammar</h2><div class="state-list">
+    <div class="state online"><span><svg class="icon"><use href="../icons/ampve-icons-v1.svg#icon-success"></use></svg>Online</span><p>Authenticated heartbeat.</p></div>
+    <div class="state offline"><span><svg class="icon"><use href="../icons/ampve-icons-v1.svg#icon-offline"></use></svg>Offline</span><p>Last contact is stale.</p></div>
+    <div class="state updating"><span><svg class="icon"><use href="../icons/ampve-icons-v1.svg#icon-update"></use></svg>Updating</span><p>Verified progress only.</p></div>
+    <div class="state attention"><span><svg class="icon"><use href="../icons/ampve-icons-v1.svg#icon-attention"></use></svg>Attention</span><p>Owner action required.</p></div>
+    <div class="state recovery"><span><svg class="icon"><use href="../icons/ampve-icons-v1.svg#icon-recovery"></use></svg>Recovery</span><p>A safe next action exists.</p></div>
+  </div></section>
+  <section class="section"><h2>Production card direction</h2><article class="sample-card">
+    <div class="sample-visual"><img src="waveshare-p4-profile-v1.svg" alt=""></div>
+    <div class="sample-copy"><div class="sample-top"><span class="status"><svg class="icon"><use href="../icons/ampve-icons-v1.svg#icon-success"></use></svg>Online</span><span class="owner">Personal device · Yours</span></div><h3>Studio display</h3><p>Waveshare ESP32-P4-WIFI6 Touch LCD 7B</p><div class="facts"><div><small>Application</small><strong>No application assigned</strong></div><div><small>Last contact</small><strong>34 seconds ago</strong></div></div><span class="button">Manage device <svg class="icon"><use href="../icons/ampve-icons-v1.svg#icon-arrow-right"></use></svg></span></div>
+  </article></section>
+</main></body></html>

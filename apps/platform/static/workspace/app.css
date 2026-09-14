@@ -19,3 +19,204 @@
 .visual-console [hidden]{display:none!important}
 .console-stage,.console-frame-shell{min-width:0}.console-frame-shell{width:100%}
 @media(max-width:720px){.console-frame{min-width:680px}}
+
+/* E36: layered public hero. Raster devices stay still enough to feel tangible;
+   the AMPVE ribbon, app tiles and face remain lightweight code-native motion. */
+.public-hero{
+  position:relative;
+  grid-template-columns:minmax(360px,.82fr) minmax(520px,1.18fr);
+  gap:clamp(10px,2vw,34px);
+  min-height:620px;
+  padding:34px 0 58px;
+  isolation:isolate;
+}
+.hero-copy{position:relative;z-index:5;max-width:590px}
+.hero-visual{
+  position:relative;
+  align-self:stretch;
+  min-width:0;
+  min-height:540px;
+  overflow:hidden;
+  isolation:isolate;
+  pointer-events:none;
+}
+.hero-atmosphere{position:absolute;z-index:0;border-radius:50%;filter:blur(1px);opacity:.78}
+.hero-atmosphere-sage{width:68%;height:48%;right:-8%;top:5%;background:#e8ecdd;transform:rotate(-13deg)}
+.hero-atmosphere-peach{width:72%;height:46%;left:5%;bottom:2%;background:#f7e8dc;transform:rotate(9deg)}
+.hero-ribbon{position:absolute;z-index:3;inset:3% -9% auto -18%;width:127%;height:74%;overflow:visible;mask-image:linear-gradient(to right,#000 0 29%,transparent 37% 82%,#000 89% 100%);animation:hero-ribbon-breathe 9s ease-in-out infinite;transform-origin:center}
+.hero-ribbon path{fill:none;stroke-linecap:round;stroke-linejoin:round;vector-effect:non-scaling-stroke}
+.hero-ribbon-shadow{stroke:#8e321c;stroke-width:18;opacity:.13;transform:translateY(8px)}
+.hero-ribbon-line{stroke:var(--art-orange);stroke-width:15}
+.hero-device-picture{position:absolute;z-index:2;width:116%;right:-10%;bottom:-9%;mix-blend-mode:normal;mask-image:radial-gradient(ellipse 83% 78% at 57% 60%,#000 69%,transparent 96%)}
+.hero-device-picture img{display:block;width:100%;height:auto;mix-blend-mode:normal;animation:hero-device-breathe 8s ease-in-out infinite;transform-origin:58% 72%}
+.hero-eyes{position:absolute;z-index:4;left:57%;top:40.5%;display:flex;gap:20px;transform:rotate(-.4deg)}
+.hero-eyes i{display:block;width:28px;height:16px;border:7px solid #ff7b3a;border-bottom:0;border-radius:28px 28px 0 0;filter:drop-shadow(0 2px 3px #e7653d45);transform-origin:center bottom;animation:hero-eye-blink 7.2s ease-in-out infinite}
+.hero-eyes i+ i{animation-delay:.035s}
+.hero-app-tile{position:absolute;z-index:4;width:82px;aspect-ratio:1;display:grid;place-items:center;border-radius:22px;border:1px solid #ffffffb8;box-shadow:0 14px 30px #59422a20,0 3px 0 #ffffff80 inset;animation:hero-tile-float 6.2s ease-in-out infinite}
+.hero-app-tile svg{width:46px;height:46px;fill:none;stroke:currentColor;stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round}
+.hero-app-chat{left:1%;top:37%;background:#fffaf2;color:var(--art-orange);transform:rotate(-5deg);animation-delay:-1.4s}
+.hero-app-chat svg path{fill:var(--art-orange);stroke:var(--art-orange)}
+.hero-app-chat svg circle{fill:#fff;stroke:none}
+.hero-app-voice{left:32%;top:7%;background:#899265;color:#fff;transform:rotate(4deg);animation-delay:-3.7s}
+.hero-app-light{right:1%;top:25%;background:#fffaf2;color:var(--art-orange);transform:rotate(5deg);animation-delay:-5.2s}
+
+@keyframes hero-device-breathe{0%,100%{transform:translateY(0) rotate(.01deg)}50%{transform:translateY(-5px) rotate(-.25deg)}}
+@keyframes hero-ribbon-breathe{0%,100%{transform:translateY(0) scaleX(1)}50%{transform:translateY(-5px) scaleX(1.012)}}
+@keyframes hero-tile-float{0%,100%{translate:0 0}50%{translate:0 -8px}}
+@keyframes hero-eye-blink{0%,42%,46%,100%{transform:scaleY(1)}44%{transform:scaleY(.08)}}
+
+@media(max-width:1100px){
+  .public-hero{grid-template-columns:minmax(320px,.9fr) minmax(430px,1.1fr);min-height:570px}
+  .hero-visual{min-height:500px}
+  .hero-app-tile{width:70px;border-radius:18px}
+  .hero-app-tile svg{width:38px;height:38px}
+  .hero-eyes{left:57%;top:42%;gap:15px}
+  .hero-eyes i{width:23px;height:14px;border-width:6px}
+}
+
+@media(max-width:800px){
+  .public-hero{grid-template-columns:1fr;min-height:0;padding:25px 0 42px}
+  .hero-copy{max-width:650px}
+  .hero-visual{min-height:430px;margin-top:-18px}
+  .hero-device-picture{width:92%;right:3%;bottom:-21%}
+  .hero-eyes{left:52%;top:33.5%;gap:18px}
+  .hero-eyes i{width:27px;height:16px;border-width:7px}
+  .hero-app-chat{left:3%;top:39%}
+  .hero-app-voice{left:34%;top:5%}
+  .hero-app-light{right:3%;top:32%}
+  .hero-ribbon{inset:2% -12% auto -14%;width:126%;height:82%}
+}
+
+@media(max-width:560px){
+  .public-hero{overflow:hidden;margin:0 -22px;padding:25px 22px 34px}
+  .hero-copy{z-index:6}
+  .hero-visual{min-height:340px;margin:2px -22px 0}
+  .hero-device-picture{width:112%;right:-6%;bottom:-17%;mask-image:radial-gradient(ellipse 81% 78% at 52% 56%,#000 68%,transparent 97%)}
+  .hero-eyes{left:52%;top:34%;gap:13px}
+  .hero-eyes i{width:20px;height:12px;border-width:5px}
+  .hero-app-tile{width:58px;border-radius:16px}
+  .hero-app-tile svg{width:31px;height:31px}
+  .hero-app-chat{left:1%;top:43%}
+  .hero-app-voice{left:37%;top:4%}
+  .hero-app-light{right:1%;top:39%}
+  .hero-ribbon{inset:5% -20% auto -24%;width:144%;height:83%}
+}
+
+@media(prefers-reduced-motion:reduce){
+  .hero-ribbon,.hero-device-picture img,.hero-app-tile,.hero-eyes i{animation:none!important}
+}
+
+/* E37: AMPVE's repository-native icon language. */
+.ampve-icon{display:inline-block;width:24px;height:24px;flex:0 0 auto;overflow:visible;fill:none;stroke:currentColor;stroke-width:1.75;stroke-linecap:round;stroke-linejoin:round}
+.ampve-icon-compact{width:19px;height:19px}
+.sidebar nav .ampve-icon{width:23px;height:23px}
+.circle-icon .ampve-icon{width:27px;height:27px}
+.tile-glyph .ampve-icon{width:1em;height:1em}
+.console-dock .ampve-icon{width:2cqw;height:2cqw;vertical-align:middle}
+.console-note-icon .ampve-icon{width:34px;height:34px}
+@media(forced-colors:active){.ampve-icon{stroke:CanvasText}.sidebar nav a[aria-current] .ampve-icon{stroke:HighlightText}}
+
+/* E38: reported-profile device cards. Portraits support the facts; they never
+   substitute for profile, assignment, heartbeat or ownership text. */
+.device-card-grid{grid-template-columns:repeat(auto-fit,minmax(min(100%,560px),1fr));gap:20px}
+.device-card{position:relative;display:grid;grid-template-columns:minmax(230px,34%) minmax(0,1fr);min-height:350px;border:1px solid var(--line);border-radius:22px;background:#fffdf8;overflow:hidden;box-shadow:0 10px 30px #25282309}
+.device-card:before{content:"";position:absolute;z-index:2;inset:0 auto 0 0;width:4px;background:#8b9088}
+.device-profile-portrait{position:relative;display:grid;place-items:center;min-height:100%;padding:24px;background:linear-gradient(145deg,#edf0e5 0%,#f4ede2 100%);overflow:hidden}
+.device-profile-portrait:after{content:"";position:absolute;width:190px;height:190px;right:-80px;bottom:-95px;border:32px solid #e7653d1f;border-radius:50%}
+.device-profile-portrait img{display:block;width:100%;max-width:330px;height:auto;position:relative;z-index:1}
+.device-profile-chip{position:absolute;z-index:2;left:18px;bottom:18px;border:1px solid #ffffffb8;border-radius:999px;background:#fffdf8dd;color:var(--sage-ink);padding:5px 9px;font-size:9px;font-weight:750;letter-spacing:.08em;text-transform:uppercase;backdrop-filter:blur(7px)}
+.device-card-content{display:flex;min-width:0;flex-direction:column;align-items:flex-start;padding:28px 30px}
+.device-card-context{width:100%;display:flex;align-items:center;justify-content:space-between;gap:14px;margin-bottom:17px}
+.device-state{display:inline-flex;align-items:center;gap:7px;width:fit-content;border-radius:999px;background:#eceee8;color:#555b54;padding:5px 10px;font-size:11px;font-weight:700;letter-spacing:.025em}
+.device-state .ampve-icon{width:17px;height:17px}
+.device-owner{font-size:10px;color:var(--muted);letter-spacing:.025em;text-align:right}
+.device-card h2{font-size:clamp(27px,2.2vw,36px);margin-bottom:5px;overflow-wrap:anywhere}
+.device-card h2 a{color:var(--ink)}
+.device-card h2 a:hover{color:var(--orange)}
+.device-hardware-name{font-size:13px;max-width:650px}
+.device-card-summary{width:100%;display:grid;grid-template-columns:1fr 1fr;gap:18px;margin:23px 0 18px}
+.device-card-summary div{min-width:0;padding-top:12px;border-top:1px solid #e3e3d9}
+.device-card-summary dt{font-size:10px;color:var(--muted);letter-spacing:.08em;text-transform:uppercase}
+.device-card-summary dd{margin:3px 0 0;color:var(--ink);font-size:13px;font-weight:650;overflow-wrap:anywhere}
+.device-card-summary time{cursor:help;text-decoration:underline dotted #9da194;text-underline-offset:3px}
+.device-card-details{width:100%;margin-bottom:20px;color:var(--muted);font-size:12px}
+.device-card-details summary{width:fit-content;color:var(--sage-ink);font-weight:650;cursor:pointer}
+.device-card-details[open] summary{margin-bottom:10px}
+.device-card-details dl{display:grid;grid-template-columns:105px minmax(0,1fr);gap:5px 12px;margin:0 0 9px}
+.device-card-details dt{color:var(--muted)}
+.device-card-details dd{margin:0;color:var(--ink);overflow-wrap:anywhere}
+.device-card-details code{font-size:11px}
+.device-card-details p{font-size:11px}
+.device-card-action{margin-top:auto!important}
+.device-card--online:before{background:#73875e}
+.device-card--online .device-state{background:#e8ecdd;color:#47513a}
+.device-card--offline:before{background:#727771}
+.device-card--offline .device-state{background:#eceee8;color:#50564f}
+.device-card--awaiting-device:before{background:#b18437}
+.device-card--awaiting-device .device-state{background:#f5edd9;color:#755b23}
+.device-card--revoked:before{background:#a33b26}
+.device-card--revoked .device-state{background:#f5dfd8;color:#842f1e}
+@media(max-width:1100px){.device-card-grid{grid-template-columns:1fr}}
+@media(max-width:680px){.device-card{grid-template-columns:1fr}.device-profile-portrait{min-height:230px;padding:12px 24px 24px}.device-profile-portrait img{max-width:280px}.device-card-content{padding:23px}.device-card-summary{grid-template-columns:1fr}.device-card-context{align-items:flex-start}.device-owner{max-width:115px}.device-card-details dl{grid-template-columns:1fr}.device-card-details dt{margin-top:4px}}
+@media(forced-colors:active){.device-card:before{background:CanvasText}.device-profile-chip,.device-state{border:1px solid CanvasText}}
+
+/* E39: semantic console HUD. Every signal has a text label; color and motion
+   are secondary confirmation only. */
+.console-status-rail{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px;margin:-2px 0 18px}
+.hud-signal{min-width:0;min-height:58px;display:flex;align-items:center;gap:9px;border:1px solid #ffffff16;border-radius:12px;background:#1114115e;padding:9px 10px;color:#d7dad4}
+.hud-signal-icon{display:grid;place-items:center;width:28px;height:28px;flex:0 0 28px;border-radius:8px;background:#ffffff0d;color:#b9beb6}
+.hud-signal .ampve-icon{width:17px;height:17px}
+.hud-signal small,.hud-signal strong{display:block;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hud-signal small{font-size:8px;line-height:1.2;letter-spacing:.09em;text-transform:uppercase;color:#90968e}
+.hud-signal strong{margin-top:3px;font-size:10px;line-height:1.25;color:#f7f5ee}
+.hud-signal[data-state="live"],.hud-signal[data-state="online"],.hud-signal[data-state="acknowledged"]{border-color:#a9c77e55;background:#65794d29}
+.hud-signal[data-state="live"] .hud-signal-icon,.hud-signal[data-state="online"] .hud-signal-icon,.hud-signal[data-state="acknowledged"] .hud-signal-icon{color:#bfd899;background:#a9c77e14}
+.hud-signal[data-state="reconnecting"],.hud-signal[data-state="pending"]{border-color:#e7653d66;background:#e7653d15}
+.hud-signal[data-state="reconnecting"] .hud-signal-icon,.hud-signal[data-state="pending"] .hud-signal-icon{color:#ff9a72}
+.hud-signal[data-state="attention"],.hud-signal[data-state="rejected"],.hud-signal[data-state="offline"]{border-color:#d7b56a5c;background:#d7b56a12}
+.hud-signal[data-state="attention"] .hud-signal-icon,.hud-signal[data-state="rejected"] .hud-signal-icon,.hud-signal[data-state="offline"] .hud-signal-icon{color:#e4c47d}
+.hud-local-authority{border-color:#93a0a055;background:#80939814}
+.hud-local-authority .hud-signal-icon{color:#b7cdd0}
+.hud-signal.is-acknowledged{animation:hud-acknowledged .65s ease-out 1}
+@keyframes hud-acknowledged{0%{box-shadow:0 0 0 0 #a9c77e70}100%{box-shadow:0 0 0 10px transparent}}
+.console-network .ampve-icon{width:1.8cqw;height:1.8cqw;color:#718060}
+.console-remote-ribbon{display:flex;align-items:center;gap:.7cqw}
+.console-remote-ribbon .ampve-icon{width:1.65cqw;height:1.65cqw}
+@media(min-width:1101px){.console-panel{position:sticky;top:24px}}
+@media(max-width:850px){.console-status-rail{grid-template-columns:repeat(2,minmax(0,1fr))}.hud-local-authority{grid-column:1/-1}}
+@media(max-width:420px){.console-status-rail{grid-template-columns:1fr}.hud-local-authority{grid-column:auto}.hud-signal{min-height:52px}}
+@media(prefers-reduced-motion:reduce){.hud-signal.is-acknowledged{animation:none}}
+@media(forced-colors:active){.hud-signal{border:1px solid CanvasText}.hud-signal-icon{border:1px solid CanvasText}}
+
+/* E40: onboarding microillustrations and truthful operation states. */
+.empty-microillustration{display:block;width:min(360px,90%);height:auto;margin:-25px auto 5px}
+.onboarding-intro-art{min-height:330px;display:grid;place-items:center;background:linear-gradient(145deg,#edf0e5,#f7e8dc);overflow:hidden}
+.onboarding-intro-art img{display:block;width:min(520px,94%);height:auto}
+.setup-status-card{position:relative;overflow:hidden;border-left:4px solid #8b9088}
+.setup-state-heading{display:flex;align-items:center;gap:13px;margin-bottom:15px}
+.setup-state-heading .eyebrow{margin:0 0 2px}
+.setup-state-heading strong{font-size:16px}
+.setup-state-icon{display:grid;place-items:center;width:43px;height:43px;flex:0 0 43px;border-radius:13px;background:#eceee8;color:#555b54}
+.setup-state-icon .ampve-icon{width:22px;height:22px}
+#firmware-setup[data-setup-state="working"] .setup-status-card,#firmware-setup[data-setup-state="progress"] .setup-status-card{border-left-color:#e7653d}
+#firmware-setup[data-setup-state="working"] .setup-state-icon,#firmware-setup[data-setup-state="progress"] .setup-state-icon{background:#f7e8dc;color:#b83e1c}
+#firmware-setup[data-setup-state="working"] .setup-state-icon{animation:setup-working-orbit 1.2s linear infinite}
+#firmware-setup[data-setup-state="success"] .setup-status-card{border-left-color:#73875e}
+#firmware-setup[data-setup-state="success"] .setup-state-icon{background:#e8ecdd;color:#47513a;animation:setup-success-reveal .42s ease-out 1}
+#firmware-setup[data-setup-state="warning"] .setup-status-card{border-left-color:#b18437}
+#firmware-setup[data-setup-state="warning"] .setup-state-icon{background:#f5edd9;color:#755b23}
+#firmware-setup[data-setup-state="recoverable"] .setup-status-card{border-left-color:#55747a}
+#firmware-setup[data-setup-state="recoverable"] .setup-state-icon{background:#e9eff0;color:#405e63;animation:setup-recovery-settle .5s ease-out 1}
+.setup-success-visual{grid-template-columns:140px 1fr;align-items:center;gap:15px;margin:16px 0;padding:10px 16px;border-radius:14px;background:#edf0e5}
+.setup-success-visual:not([hidden]){display:grid!important}
+.setup-success-visual img{width:140px;height:90px;object-fit:cover}
+.setup-success-visual p{font-size:12px;color:#47513a}
+.recovery-panel{display:grid;grid-template-columns:minmax(180px,260px) 1fr;gap:22px;align-items:center;margin:26px 0;padding:18px;border:1px solid #cad7d8;border-radius:16px;background:#f2f6f5}
+.recovery-microillustration{display:block;width:100%;height:auto}
+.recovery-panel p{margin:9px 0}
+@keyframes setup-working-orbit{to{transform:rotate(1turn)}}
+@keyframes setup-success-reveal{0%{transform:scale(.82);opacity:.5}100%{transform:scale(1);opacity:1}}
+@keyframes setup-recovery-settle{0%,45%{transform:translateX(-3px)}22%,68%{transform:translateX(3px)}100%{transform:translateX(0)}}
+@media(max-width:700px){.onboarding-intro{grid-template-columns:1fr}.onboarding-intro-art{min-height:230px}.onboarding-intro-art img{max-width:390px}.recovery-panel{grid-template-columns:1fr}.recovery-microillustration{max-width:280px;margin:auto}.setup-success-visual{grid-template-columns:100px 1fr}.setup-success-visual img{width:100px;height:75px}}
+@media(prefers-reduced-motion:reduce){#firmware-setup[data-setup-state] .setup-state-icon{animation:none}}
+@media(forced-colors:active){.setup-status-card,.recovery-panel{border:1px solid CanvasText}.setup-state-icon{border:1px solid CanvasText}}

@@ -101,6 +101,36 @@ class PlatformTests(TestCase):
         self.assertContains(self.client.get(reverse('connections')), 'Saving does not contact the provider')
         self.assertContains(self.client.get(reverse('apps')), 'In development')
 
+    def test_workspace_navigation_uses_the_ampve_icon_sprite(self):
+        self.sign_in()
+        response = self.client.get(reverse('home'))
+        for name in ['home', 'devices', 'apps', 'connections', 'settings']:
+            with self.subTest(name=name):
+                self.assertContains(response, f'ampve-icons-v1.svg#icon-{name}')
+        navigation = response.content.decode().split('<nav aria-label="Workspace">', 1)[1].split('</nav>', 1)[0]
+        self.assertEqual(navigation.count('class="ampve-icon"'), 5)
+        self.assertEqual(navigation.count('aria-hidden="true"'), 5)
+        for legacy_glyph in ['⌂', '▯', '⊞', '↗', '⚙']:
+            self.assertNotIn(legacy_glyph, navigation)
+
+    def test_public_landing_uses_optimized_versioned_hero_exports(self):
+        response = self.client.get(reverse('landing'))
+        self.assertContains(response, 'hero/exports/landing-devices-wide-v1.webp')
+        self.assertContains(response, 'hero/exports/landing-devices-mobile-v1.webp')
+        self.assertContains(response, 'fetchpriority="high"')
+        self.assertNotContains(response, 'hero/source/')
+
+    def test_onboarding_and_empty_state_use_truthful_microillustrations(self):
+        self.sign_in()
+        empty = self.client.get(reverse('devices'))
+        self.assertContains(empty, 'microillustrations/no-devices-v1.svg')
+        onboarding = self.client.get(reverse('onboarding'))
+        for asset in ['usb-connect-v1.svg', 'device-ready-v1.svg', 'recovery-available-v1.svg']:
+            with self.subTest(asset=asset):
+                self.assertContains(onboarding, f'microillustrations/{asset}')
+        self.assertContains(onboarding, 'id="setup-visual-label"')
+        self.assertContains(onboarding, 'Duration appears after measurable progress begins.')
+
     def test_proxy_ip_only_trusted_locally(self):
         factory = RequestFactory()
         self.assertEqual(client_ip(factory.get('/', REMOTE_ADDR='127.0.0.1', HTTP_CF_CONNECTING_IP='192.0.2.7')), '192.0.2.7')

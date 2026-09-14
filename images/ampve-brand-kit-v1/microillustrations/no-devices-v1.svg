@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 560 400" role="img" aria-labelledby="title description">
+  <title id="title">No devices yet</title><desc id="description">An empty warm shelf with an unplugged orange cable and a small plus symbol.</desc>
+  <defs><filter id="s" x="-30%" y="-30%" width="160%" height="180%"><feDropShadow dx="0" dy="14" stdDeviation="12" flood-color="#252823" flood-opacity=".13"/></filter></defs>
+  <path d="M65 220c0-100 88-168 211-168 132 0 225 65 225 161 0 99-96 151-225 151-124 0-211-49-211-144Z" fill="#e8ecdd"/>
+  <g filter="url(#s)"><path d="M120 264h320v36c0 13-10 23-23 23H143c-13 0-23-10-23-23v-36Z" fill="#fffdf8" stroke="#daddd2" stroke-width="4"/><path d="M142 264c27-24 46-22 65 2 22 27 43 25 66-2 24-29 47-28 69-1 21 26 42 26 74 1" fill="none" stroke="#e7653d" stroke-width="10" stroke-linecap="round"/></g>
+  <path d="M432 230v31m-15-15h30" stroke="#47513a" stroke-width="5" stroke-linecap="round"/>
+  <rect x="98" y="242" width="34" height="17" rx="5" fill="#252823"/><path d="M103 242v-21m9 21v-21m9 21v-21" stroke="#e8ecdd" stroke-width="4" stroke-linecap="round"/>
+  <path d="m169 89 7 18 18 7-18 7-7 18-7-18-18-7 18-7 7-18Z" fill="#e7653d"/><path d="m414 104 4 10 10 4-10 4-4 10-4-10-10-4 10-4 4-10Z" fill="#b8c3a8"/>
+</svg>

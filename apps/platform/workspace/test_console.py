@@ -46,6 +46,11 @@ class DeviceConsoleTests(TestCase):
     def test_console_is_private_and_sets_csrf_cookie(self):
         page = self.client.get(reverse('device_console', args=[self.device.pk]))
         self.assertContains(page, 'Reach it from here.')
+        self.assertContains(page, 'class="console-status-rail"')
+        self.assertContains(page, 'data-hud="', count=5)
+        for icon in ['wifi', 'console', 'session', 'activity', 'local-control']:
+            self.assertContains(page, f'ampve-icons-v1.svg#icon-{icon}')
+        self.assertContains(page, 'Always available')
         self.assertIn('csrftoken', page.cookies)
         anonymous = Client()
         self.assertEqual(anonymous.get(reverse('device_console', args=[self.device.pk])).status_code, 302)

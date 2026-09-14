@@ -50,7 +50,10 @@ with tempfile.TemporaryDirectory(prefix='ampve-browser-fixture-') as directory,s
     root=Path(directory);data=backup();digest=hashlib.sha256(data).hexdigest()
     for name in ['backup-a.bin','backup-b.bin']:(root/name).write_bytes(data)
     (root/'audit-private.json').write_text(json.dumps({'independent_reads_match':True,'sha256':digest,'hardware':{'chip':'ESP32-P4','revision':103,'identity':'PRIVATE-FIXTURE-MAC','path':str(root)}}))
-    browser=p.chromium.launch();page=browser.new_page();errors=[];requests=[]
+    launch={}
+    if os.environ.get('AMPVE_BROWSER_EXECUTABLE'):
+        launch['executable_path']=os.environ['AMPVE_BROWSER_EXECUTABLE']
+    browser=p.chromium.launch(**launch);page=browser.new_page();errors=[];requests=[]
     page.on('pageerror',lambda e:errors.append(str(e)))
     review_candidate=False
     approved_candidate=False
@@ -73,7 +76,7 @@ with tempfile.TemporaryDirectory(prefix='ampve-browser-fixture-') as directory,s
         elif path=='/devices/firmware/release/':r.fulfill(status=200,content_type='application/json',body=json.dumps(approved_release(previous=urlparse(req.url).query=='recovery=1') if approved_candidate else {'status':'development-review','installable':False,'profile':'waveshare-7b-stock-v1','app':{'offset':0xe00000,'size':len(app),'sha256':app_hash}} if review_candidate else {'status':'no-reviewed-release','installable':False}))
         elif path=='/devices/firmware/artifacts/'+app_hash+'.bin':r.fulfill(status=200,content_type='application/octet-stream',body=app)
         elif path.startswith('/static/'):
-            file=finders.find(path[len('/static/'):])
+            file=finders.find(path[len('/static/'):].replace('/',os.sep))
             if file:r.fulfill(status=200,content_type=mimetypes.guess_type(file)[0] or 'application/octet-stream',body=Path(file).read_bytes())
             else:r.fulfill(status=404,body='')
         else:r.fulfill(status=404,body='')

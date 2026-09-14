@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 560 400" role="img" aria-labelledby="title description">
+  <title id="title">Conceptual future-device portrait</title>
+  <desc id="description">An intentionally incomplete wireframe silhouette for unannounced future hardware concepts.</desc>
+  <path d="M76 218C76 119 161 54 269 54c117 0 214 58 214 155 0 98-87 154-211 154-112 0-196-49-196-145Z" fill="#f7e8dc"/>
+  <g fill="none" stroke="#9aa08f" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="8 13">
+    <rect x="126" y="77" width="308" height="226" rx="30"/>
+    <path d="M186 323h188M214 303l-8 20m139-20 9 20"/>
+  </g>
+  <g fill="none" stroke="#c8a28d" stroke-width="4" stroke-linecap="round" opacity=".85">
+    <path d="M184 119h79M184 139h47M184 236h95"/>
+    <circle cx="376" cy="229" r="29"/>
+    <path d="M376 214v30m-15-15h30"/>
+  </g>
+  <path d="M270 173a23 23 0 0 1 46 0" fill="none" stroke="#e7653d" stroke-width="10" stroke-linecap="round" opacity=".55"/>
+  <path d="m435 83 5 13 13 5-13 5-5 13-5-13-13-5 13-5 5-13Z" fill="#e7653d" opacity=".75"/>
+</svg>

@@ -11,16 +11,23 @@
       <div><p class="eyebrow">LIVE DEVICE SPACE</p><h2 id="console-stage-title">{{ device.name }}</h2></div>
       <div class="console-signals" aria-live="polite"><span class="signal-dot" data-signal></span><span data-console-status>Session stopped</span></div>
     </div>
+    <div class="console-status-rail" aria-label="Console status">
+      <div class="hud-signal" data-hud="device" data-state="{{ device.connection_state|slugify }}"><span class="hud-signal-icon">{% if device.connection_state == 'Online' %}{% include 'workspace/icon.html' with name='wifi' %}{% elif device.connection_state == 'Offline' %}{% include 'workspace/icon.html' with name='offline' %}{% else %}{% include 'workspace/icon.html' with name='attention' %}{% endif %}</span><span><small>Device</small><strong data-hud-device>{{ device.connection_state }}</strong></span></div>
+      <div class="hud-signal" data-hud="channel" data-state="stopped"><span class="hud-signal-icon">{% include 'workspace/icon.html' with name='console' %}</span><span><small>Visual channel</small><strong data-hud-channel>Stopped</strong></span></div>
+      <div class="hud-signal" data-hud="session" data-state="stopped"><span class="hud-signal-icon">{% include 'workspace/icon.html' with name='session' %}</span><span><small>Browser session</small><strong data-hud-session>Not started</strong></span></div>
+      <div class="hud-signal" data-hud="input" data-state="idle"><span class="hud-signal-icon" data-hud-input-icon>{% include 'workspace/icon.html' with name='activity' %}</span><span><small>Last input</small><strong data-hud-input>None sent</strong></span></div>
+      <div class="hud-signal hud-local-authority" data-hud="local" data-state="authoritative"><span class="hud-signal-icon">{% include 'workspace/icon.html' with name='local-control' %}</span><span><small>Local authority</small><strong>Always available</strong></span></div>
+    </div>
     <div class="console-frame-shell">
       <div class="console-frame" tabindex="0" aria-label="AMPVE device screen. Use Tab to move through controls or keyboard shortcuts H, W, D, S and C.">
-        <div class="console-topbar"><span class="console-mark" aria-hidden="true"><i></i></span><strong>AMPVE</strong><span class="console-network"><i></i><span data-device-connection>{{ device.connection_state }}</span></span></div>
-        <div class="console-remote-ribbon" data-remote-ribbon>Remote console is waiting</div>
+        <div class="console-topbar"><span class="console-mark" aria-hidden="true"><i></i></span><strong>AMPVE</strong><span class="console-network">{% include 'workspace/icon.html' with name='wifi' %}<span data-device-connection>{{ device.connection_state }}</span></span></div>
+        <div class="console-remote-ribbon" data-remote-ribbon>{% include 'workspace/icon.html' with name='console' %}<span data-remote-label>Remote console is waiting</span></div>
         <div class="console-screen-page" data-page="home">
           <div class="console-welcome"><p>MAKE YOURSELF AT HOME.</p><h3 data-device-name>{{ device.name }}</h3><span>Your device, close even when it is far away.</span></div>
           <div class="console-tile-grid">
             <button class="console-tile companion-tile" data-console-target="companion"><img src="{% static 'brandkit/apps/companion-icon-v1.png' %}" alt=""><span><b>Companion</b><small>A little company</small></span></button>
-            <button class="console-tile" data-console-target="wifi"><span class="tile-glyph">⌁</span><span><b>Wi-Fi</b><small>Connection</small></span></button>
-            <button class="console-tile" data-console-target="device"><span class="tile-glyph">▯</span><span><b>My device</b><small>Hardware</small></span></button>
+            <button class="console-tile" data-console-target="wifi"><span class="tile-glyph">{% include 'workspace/icon.html' with name='wifi' %}</span><span><b>Wi-Fi</b><small>Connection</small></span></button>
+            <button class="console-tile" data-console-target="device"><span class="tile-glyph">{% include 'workspace/icon.html' with name='devices' %}</span><span><b>My device</b><small>Hardware</small></span></button>
           </div>
         </div>
         <div class="console-screen-page" data-page="wifi" hidden>
@@ -39,8 +46,8 @@
           <img src="{% static 'brandkit/apps/companion-icon-v1.png' %}" alt="Companion face"><div><p class="console-kicker">COMPANION</p><h3>A little company.</h3><p>The visual shell is ready. Native voice still depends on the audio adapter and working speaker output.</p></div>
         </div>
         <nav class="console-dock" aria-label="Device screen">
-          <button data-console-target="home"><span>⌂</span>Home</button>
-          <button data-console-target="settings"><span>⚙</span>Settings</button>
+          <button data-console-target="home"><span>{% include 'workspace/icon.html' with name='home' %}</span>Home</button>
+          <button data-console-target="settings"><span>{% include 'workspace/icon.html' with name='settings' %}</span>Settings</button>
           <span class="console-local-control">Local input stays available</span>
         </nav>
       </div>
@@ -57,7 +64,7 @@
     <p class="console-error" role="alert" data-console-error hidden></p>
   </aside>
 </div>
-<section class="console-note"><span class="console-note-icon" aria-hidden="true">◎</span><div><h3>Physical and virtual displays share one language.</h3><p>The browser reconstructs a semantic AMPVE screen instead of recording pixels. A headless device can report the same pages and controls while a device with a screen keeps local touch available. This installed firmware may remain in preview-only mode until it receives the console-capable update.</p></div></section>
+<section class="console-note"><span class="console-note-icon" aria-hidden="true">{% include 'workspace/icon.html' with name='console' %}</span><div><h3>Physical and virtual displays share one language.</h3><p>The browser reconstructs a semantic AMPVE screen instead of recording pixels. A headless device can report the same pages and controls while a device with a screen keeps local touch available. This installed firmware may remain in preview-only mode until it receives the console-capable update.</p></div></section>
 <p><a href="{% url 'device_detail' device.pk %}">← Back to {{ device.name }}</a></p>
 <script src="{% static 'workspace/device-console.js' %}" defer></script>
 {% endblock %}
