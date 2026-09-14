@@ -21,7 +21,7 @@ The current named actions are navigation, opening the local Wi-Fi setup flow, st
 
 `virtual` uses the same screen schema for a managed device without an initialized physical display. It is a UI surface backed by device state, not an invented hardware capability. A headless profile can expose only the controls its firmware actually implements. The first firmware implementation remains restricted to the Waveshare 7B profile and reports `physical`.
 
-The installed `0.1.16-touch-ota-dev` predates this channel. The web console therefore remains an authenticated virtual preview until the board receives a separately published `0.1.17-visual-console-dev` or later compatible OTA release. A successful compile does not authorize or perform that update.
+The first registered 7B now runs the signed `0.1.17-visual-console-dev` sequence-8 release and reports `physical` mode. Other enrolled devices without a console-capable release remain in an authenticated preview until compatible firmware joins the session. A virtual view alone does not establish a physical capability.
 
 ## Authorization and bounds
 
@@ -44,7 +44,9 @@ AMPVE_TESTING=1 .venv/bin/python apps/platform/manage.py test workspace --noinpu
 
 The contract tests cover authentication separation, owner isolation, CSRF, session expiry/stop, heartbeat discovery, one-time dispatch, acknowledgement, replay rejection, local stop, schema bounds, invalid coordinates, revocation and oversized requests. These are software fixtures.
 
-The release-sequence-8 ESP32-P4 OTA build of `0.1.17-visual-console-dev` succeeded with IDF 6.1 and the pinned dependencies. Two separate workspaces produced byte-identical app, bootloader, partition-table and initial-otadata artifacts from merged source `4daaa45`. The app is 2,881,536 bytes, SHA-256 `ebe00e7fd5327efa57b797b4d921d17e8a8a253e214c7e60c06fdef383075cc6`, leaving 1,312,768 bytes (30%) in either 4 MiB application slot. Both configurations disable USB commissioning. This proves compilation, reproduction and fit only. Physical remote navigation, local interruption, 600 ms cadence, heap stability and outage recovery remain acceptance work in #84.
+The release-sequence-8 ESP32-P4 OTA build of `0.1.17-visual-console-dev` succeeded with IDF 6.1 and the pinned dependencies. Two separate workspaces produced byte-identical app, bootloader, partition-table and initial-otadata artifacts from merged source `4daaa45`. The app is 2,881,536 bytes, SHA-256 `ebe00e7fd5327efa57b797b4d921d17e8a8a253e214c7e60c06fdef383075cc6`, leaving 1,312,768 bytes (30%) in either 4 MiB application slot. Both configurations disable USB commissioning. This establishes compilation, reproduction and fit; the physical results below are separate runtime evidence.
+
+Signed release `3f9eeca4be7306b37c9052292ad66792e6e30e34bf68b1974499080244823b0c` was restricted to the device's confirmed sequence-7 app hash. Deployment `63ce7b90-2618-4a60-942a-ed2eb15f2b88` completed 15 ordered device reports, all 2,881,536 bytes, exact target identity and sequence-8 startup confirmation with no attention flag. A live browser session then joined in physical mode. After correcting the server's two-second assumption to a measured-latency six-second window, four separate Settings/Home/Companion/Home inputs from mouse, keyboard, touch and keyboard were each dispatched once and acknowledged `applied` by the device. The browser stopped the session and reported no JavaScript errors. This validates the nominal authenticated remote-control path; a person still needs to compare the physical panel, exercise local stop and observe outage/recovery and heap behavior.
 
 ## Next acceptance pass
 
