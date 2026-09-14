@@ -141,6 +141,8 @@ def prepare(work, mode='usb-assisted'):
         replace(component_cmake,'set(SOURCES ', 'set(SOURCES "ampve/ota_client.cc" "ampve/ota_platform.cc" ')
     if '"ampve/companion.cc"' not in component_cmake.read_text():
         replace(component_cmake,'set(SOURCES ', 'set(SOURCES "ampve/companion.cc" ')
+    if '"ampve/companion_face.cc"' not in component_cmake.read_text():
+        replace(component_cmake,'set(SOURCES ', 'set(SOURCES "ampve/companion_face.cc" ')
     if '"ampve/boot_guard.cc"' not in component_cmake.read_text():
         replace(component_cmake,'set(SOURCES ', 'set(SOURCES "ampve/boot_guard.cc" ')
     wifi_board=work/'main/boards/common/wifi_board.cc'
