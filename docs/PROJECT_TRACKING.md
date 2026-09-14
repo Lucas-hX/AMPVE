@@ -17,7 +17,7 @@ The first profile is Waveshare ESP32-P4-WIFI6-Touch-LCD-7B revision 1.3. The cur
 | M3 | Enrollment, heartbeat, settings, diagnostics and visual console | #19–#23, #84 |
 | M4 | Signed releases, deployment tracking, app-only OTA and dashboard updates | #24–#28 |
 | M5 | Select and validate one second common ESP32 profile | #29–#30 |
-| M6 | XiaoZhi–Pipecat adapter and native Companion experience | #35–#36 |
+| M6 | XiaoZhi–Pipecat adapter, native Companion and portable application foundation | #35–#36, #89–#90 |
 | M7 | Measured resource budgets, footprint, scheduling and regression checks | #31–#34 |
 | M8 | Physical end-to-end acceptance and operating/recovery documentation | #37–#38 |
 
@@ -49,4 +49,6 @@ USB commissioning: ADR 0005 assigns preflight, post-write USB core checks and ex
 
 Startup correction: the owner identified `sleep_clock_icg_startup_init` returning `ESP_ERR_NO_MEM` before AMPVE in 0.1.11. Version 0.1.12 disables the optional initializer using pinned IDF configuration; two builds reproduce and previous-install recovery remains available independently of the new app size. Software correction/release evidence belongs to #10/#17. The owner later accepted the installed display/touch/Wi-Fi result and closed #12; interrupted rollback and original restoration remain separate lifecycle work. See FIRST_INSTALLATION.md for exact identities.
 
-Visual-console milestone: sequence 8 completed the signed nominal Wi-Fi OTA and confirmed the exact application identity. A live owner session reported physical-display mode and the device acknowledged four distinct mouse, touch and keyboard actions after the measured HTTPS cadence was incorporated into the replay window. Issue #84 remains in progress for visual comparison at the physical panel, local stop, outage/reconnect and heap/traffic measurements. Speaker output remains independently open in #23.
+Visual-console milestone: sequence 8 completed the signed nominal Wi-Fi OTA and confirmed the exact application identity. A live owner session reported physical-display mode and the device acknowledged four distinct mouse, touch and keyboard actions after the measured HTTPS cadence was incorporated into the replay window. Lucas subsequently reported that the hardware behavior works excellently and accepted closing #84. Long-run resource measurements continue in #31; speaker output remains independently open in #23.
+
+Application-platform direction: [ADR 0006](decisions/0006-resident-core-and-portable-apps.md) keeps management, recovery and Companion's native hardware integration in a resident AMPVE Core. #89 defines the bounded portable runtime/package contract; #90 adds a curated marketplace and controlled creator submissions. Portable packages may coexist with Companion in shared storage, while new native drivers require a signed Core OTA.

@@ -1,6 +1,6 @@
 # AMPVE — MVP Implementation Brief
 
-Current device milestone: the first physical 7B completed signed Wi-Fi OTAs from 0.1.13 sequence 4 through `0.1.17-visual-console-dev` sequence 8. The owner confirms the display, corrected touch navigation and Wi-Fi work well on sequence 7. The authenticated semantic visual console then completed a live physical-mode session with four distinct device acknowledgements for mouse, touch and keyboard navigation. Speaker output, local console-stop observation, physical restoration and failure/rollback tests remain pending; this is not production hardware acceptance. See [the device](runbooks/DEVICES.md) and [visual console](runbooks/VISUAL_CONSOLE.md) runbooks.
+Current device milestone: the first physical 7B completed signed Wi-Fi OTAs from 0.1.13 sequence 4 through `0.1.17-visual-console-dev` sequence 8. The owner confirms the display, corrected touch navigation, Wi-Fi and authenticated semantic visual-console behavior work excellently and accepted closing #84. Speaker output, physical restoration and failure/rollback tests remain pending; this is not production hardware acceptance. See [the device](runbooks/DEVICES.md) and [visual console](runbooks/VISUAL_CONSOLE.md) runbooks.
 Current delivery: see [the platform runbook](runbooks/PLATFORM.md) and [ADR 0002](decisions/0002-provider-audio-and-xiaozhi.md). OpenAI browser voice is user-validated; Gemini remains unvalidated; XiaoZhi remains the sole selected firmware foundation.
 
 Date: 2026-09-12
@@ -100,11 +100,11 @@ Build the first working voice-and-face flow before adding camera capture. The ev
 
 The stock Waveshare demo is not an operating system into which AMPVE can copy an arbitrary application. The board needs an initial installation of AMPVE-compatible firmware.
 
-For this MVP, the management client and companion application share **one firmware image**. There is no independent resident management daemon that survives arbitrary replacement firmware.
+For this MVP, the management client and Companion application share **one AMPVE Core firmware image**. There is no independent resident daemon that survives arbitrary replacement firmware. [ADR 0006](decisions/0006-resident-core-and-portable-apps.md) keeps that Core as the managed base and defines a later portable package class that can coexist with Companion without becoming a second native firmware image.
 
 The first catalog entry is `AMPVE Companion`. Its application definition contains a compatible firmware requirement and a configuration schema. The onboarding image can already contain the companion code in an inactive state. Clicking **Install & Activate** then assigns the application and applies its settings; it does not needlessly flash the same image again. If a different compatible firmware is required, the platform creates an OTA deployment first.
 
-The UI must show these steps accurately: firmware installation, device registration, application assignment, configuration acknowledgement, and readiness. Each future ESP32 application must retain the AMPVE management integration to remain remotely manageable.
+The UI must show these steps accurately: firmware installation, device registration, application assignment, configuration acknowledgement, and readiness. Built-in native features remain part of Core. A future portable application targets Core's bounded runtime; a feature requiring new native drivers follows the signed Core release path. Raw third-party firmware is not installed as an ordinary marketplace app.
 
 For Raspberry Pi later, applications may be separate Linux processes or containers. Preserve the distinction between hardware profile, firmware/runtime release, and application assignment in the data model without implementing a universal runtime now.
 
@@ -270,7 +270,7 @@ Acceptance: successful camera operation is demonstrated alongside audio and disp
 
 Included now: one VPS, administrator and regular test account, one supported board, one companion application, user-owned API keys, Gemini Live/OpenAI Realtime, browser USB onboarding, ownership, configuration, basic diagnostics, and verified OTA.
 
-Deferred: public signup, subscriptions, billing, application marketplace submissions, arbitrary firmware execution, automatic support for every ESP32, Raspberry Pi runtime, permanent PC bridge, continuous remote camera streaming, local large-model inference, and industrial fleet orchestration.
+Deferred from the first Companion slice: public signup, subscriptions, billing, public marketplace submissions, arbitrary firmware execution, automatic support for every ESP32, Raspberry Pi runtime, permanent PC bridge, continuous remote camera streaming, local large-model inference, and industrial fleet orchestration. The resident-Core contract and a curated portable-package prototype are tracked in #89–#90 rather than treated as already available.
 
 Preserve extension points for device capabilities, application definitions, provider adapters, runtime types, and deployment mechanisms. This allows later applications such as a sensor dashboard, notification display, physical AI experiment, or Raspberry Pi service without making the first implementation abstract and oversized.
 
