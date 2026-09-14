@@ -1,6 +1,6 @@
 # Device inspection, pairing and management
 
-Date: 2026-09-14. The owner reports the first physical 7B installed on the signed 0.1.13 development release. Read-only server inspection observed its authenticated Wi-Fi heartbeat, exact schema-2 compatibility tuple and settings acknowledgement 1/1. The device was offline at the latest inspection. Touch/Home navigation, physical restoration, audio and Wi-Fi OTA remain pending. The VPS has no direct USB access to the board; tests use explicitly named software fixtures.
+Date: 2026-09-14. The first physical 7B completed a signed Wi-Fi OTA from 0.1.13 to `0.1.16-touch-ota-dev`. The owner confirms its display, corrected touch navigation and Wi-Fi work well. The speaker test still fails; physical restoration and interrupted-update rollback remain pending. The VPS has no direct USB access to the board; tests use explicitly named software fixtures. See [the authenticated visual console](VISUAL_CONSOLE.md) for the next device-control milestone.
 
 ## What works now
 
@@ -56,7 +56,7 @@ Automated device tests cover single claiming, pending/expired exchange, hashed s
 
 ## Next hardware milestone
 
-Validate the installed 0.1.16 7B touch-coordinate correction on the physical screen, including every edge control and Home/Settings navigation. The nominal signed Wi-Fi OTA from confirmed sequence 4 to sequence 7 completed on the first device. Next test offline navigation, local mute, the speaker tone, repeated cold boots and the documented original-backup restoration before closing #12. Opus/Pipecat, interrupted OTA and physical rollback remain later acceptance work; the browser voice preview remains independently usable.
+Publish and deliberately deploy a signed console-capable release, then validate the mouse/touch/keyboard round trip and the physical local-stop control in #84. Diagnose the failed speaker output in #23. Repeated cold boots, documented original restoration, interrupted OTA and physical rollback remain separate acceptance work. Opus/Pipecat remains a later milestone; the browser voice preview remains independently usable.
 
 ## Delivery evidence
 

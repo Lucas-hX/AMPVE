@@ -14,7 +14,7 @@ The first profile is Waveshare ESP32-P4-WIFI6-Touch-LCD-7B revision 1.3. The cur
 | --- | --- | --- |
 | M1 | P4 baseline, compatibility and recoverable first installation | #7–#12 |
 | M2 | Browser audit, private backups, installation and Wi-Fi provisioning | #13–#18 |
-| M3 | Enrollment, heartbeat, settings acknowledgement and diagnostics | #19–#23 |
+| M3 | Enrollment, heartbeat, settings, diagnostics and visual console | #19–#23, #84 |
 | M4 | Signed releases, deployment tracking, app-only OTA and dashboard updates | #24–#28 |
 | M5 | Select and validate one second common ESP32 profile | #29–#30 |
 | M6 | XiaoZhi–Pipecat adapter and native Companion experience | #35–#36 |
@@ -45,6 +45,6 @@ Reuse XiaoZhi, ESP-IDF, ESP Web Tools/Improv and Pipecat. Keep Django/PostgreSQL
 - Label fixture/simulation evidence separately from actual hardware results. Compilation proves a build, not screen/audio/Wi-Fi operation, safe installation or recovery.
 - Optimize against measured boot/UI latency, internal heap/PSRAM, stack headroom, CPU, traffic, NVS writes and app size. Retain recovery and security; measure electrical power only with appropriate hardware.
 
-USB commissioning: ADR 0005 assigns preflight, post-write USB core checks and exact original-backup restoration to onboarding. Keep #10/#12/#17 open for release/physical acceptance as applicable; a passing software fixture does not close Wi-Fi, native startup or recovery acceptance.
+USB commissioning: ADR 0005 assigns preflight, post-write USB core checks and exact original-backup restoration to onboarding. The owner accepted and closed #12 after the successful display/touch/Wi-Fi result; physical restoration remains separately tracked. A passing software fixture does not close recovery acceptance.
 
-Startup correction: the owner identified `sleep_clock_icg_startup_init` returning `ESP_ERR_NO_MEM` before AMPVE in 0.1.11. Version 0.1.12 disables the optional initializer using pinned IDF configuration; two builds reproduce and previous-install recovery remains available independently of the new app size. Software correction/release evidence belongs to #10/#17; #12 remains In Progress / Hardware required until actual recovery and corrected startup are observed. See FIRST_INSTALLATION.md for exact identities.
+Startup correction: the owner identified `sleep_clock_icg_startup_init` returning `ESP_ERR_NO_MEM` before AMPVE in 0.1.11. Version 0.1.12 disables the optional initializer using pinned IDF configuration; two builds reproduce and previous-install recovery remains available independently of the new app size. Software correction/release evidence belongs to #10/#17. The owner later accepted the installed display/touch/Wi-Fi result and closed #12; interrupted rollback and original restoration remain separate lifecycle work. See FIRST_INSTALLATION.md for exact identities.

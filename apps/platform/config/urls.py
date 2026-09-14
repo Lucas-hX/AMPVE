@@ -1,7 +1,7 @@
 from django.contrib import admin
 from django.contrib.auth import views as auth
 from django.urls import path
-from workspace import diagnostic_views, views, connection_views, device_views, firmware_views, deployment_views
+from workspace import diagnostic_views, views, connection_views, device_views, firmware_views, deployment_views, console_views
 
 urlpatterns = [
     path('', views.landing, name='landing'),
@@ -19,6 +19,11 @@ urlpatterns = [
     path('devices/firmware/artifacts/<str:digest>.bin', firmware_views.artifact, name='firmware_artifact'),
     path('devices/interface-preview/', device_views.interface_preview, name='interface_preview'),
     path('devices/<uuid:pk>/', device_views.detail, name='device_detail'),
+    path('devices/<uuid:pk>/console/', console_views.console, name='device_console'),
+    path('devices/<uuid:pk>/console/session/', console_views.start, name='device_console_start'),
+    path('devices/<uuid:pk>/console/session/<uuid:session_id>/', console_views.state, name='device_console_state'),
+    path('devices/<uuid:pk>/console/session/<uuid:session_id>/commands/', console_views.command, name='device_console_command'),
+    path('devices/<uuid:pk>/console/session/<uuid:session_id>/stop/', console_views.stop, name='device_console_stop'),
     path('devices/<uuid:pk>/revoke/', device_views.revoke, name='device_revoke'),
     path('devices/<uuid:pk>/updates/', deployment_views.updates, name='device_updates'),
     path('devices/<uuid:pk>/updates/<uuid:job_id>/cancel/', deployment_views.cancel, name='device_update_cancel'),
@@ -30,6 +35,7 @@ urlpatterns = [
     path('api/devices/v1/enroll/', device_views.enrollment_start),
     path('api/devices/v1/enroll/<uuid:pk>/exchange/', device_views.enrollment_exchange),
     path('api/devices/v1/<uuid:pk>/heartbeat/', device_views.heartbeat),
+    path('api/devices/v1/<uuid:pk>/console/sync/', console_views.sync),
     path('apps/', views.page, {'section': 'apps'}, name='apps'),
     path('connections/', connection_views.connections, name='connections'),
     path('connections/<uuid:pk>/replace/', connection_views.replace_key, name='replace_key'),

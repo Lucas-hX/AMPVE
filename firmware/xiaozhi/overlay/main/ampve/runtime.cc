@@ -58,8 +58,12 @@ static std::atomic<const char*> usb_phase{"starting"};
 static std::atomic<bool> usb_display_ready{false};
 extern "C" const char* ampve_wifi_password() { return setup_password.c_str(); }
 static std::atomic<int> displayed_volume{40};
-static lv_obj_t *body, *network_label, *status_label, *home_name=nullptr;
-static int current_page=0;
+static lv_obj_t *body, *network_label, *status_label, *home_name=nullptr, *remote_label=nullptr;
+static std::atomic<int> current_page{0};
+static std::atomic<bool> remote_allowed{true}, remote_active{false};
+static std::atomic<uint32_t> console_revision{1};
+static std::mutex console_mutex;
+static std::string console_ack_id, console_ack_result;
 static uint32_t flash_bytes=0;
 static esp_chip_info_t chip;
 static nvs_handle_t store_handle=0;
@@ -183,7 +187,8 @@ static lv_obj_t* button(lv_obj_t* parent,const char* text,lv_event_cb_t callback
 static void go(lv_event_t* e) {page(reinterpret_cast<intptr_t>(lv_event_get_user_data(e)));}
 static void page(int id) {
     home_name=nullptr;
-    current_page=id;lv_obj_clean(body);
+    if(current_page.exchange(id)!=id)console_revision++;
+    lv_obj_clean(body);
     if(id==0) {
         auto symbol=lv_image_create(body);lv_image_set_src(symbol,&ampve_symbol);
         home_name=label(body,"Make yourself at home.",&lv_font_montserrat_36);
@@ -251,12 +256,18 @@ static void create_ui() {
     status_label=label(screen,"Not paired");lv_obj_set_height(status_label,26);
     auto nav=lv_obj_create(screen);lv_obj_set_size(nav,LV_PCT(100),84);
     lv_obj_set_flex_flow(nav,LV_FLEX_FLOW_ROW);lv_obj_set_style_pad_all(nav,8,0);
-    for(int id: {0,3}){auto b=button(nav,id==0?"Home":"Settings",go,id);lv_obj_set_width(b,280);}
+    for(int id: {0,3}){auto b=button(nav,id==0?"Home":"Settings",go,id);lv_obj_set_width(b,200);}
     auto mute=button(nav,"Microphone muted",[](lv_event_t*) {
         // Never enable capture from this shell. Remote settings cannot override local mute.
         local_muted=true;message("Microphone remains off in this shell.");
     });
-    lv_obj_set_width(mute,350);
+    lv_obj_set_width(mute,250);
+    auto remote=button(nav,"Remote control allowed",[](lv_event_t*) {
+        bool allow=!remote_allowed.load();
+        remote_allowed=allow;remote_active=false;console_revision++;
+        message(allow?"Remote console allowed when an owner session is active.":"Remote console stopped locally.");
+    });
+    lv_obj_set_width(remote,300);remote_label=lv_obj_get_child(remote,0);
     lv_screen_load(screen);page(0);
     lv_timer_create([](lv_timer_t*) {
         ui_ticks++;
@@ -264,6 +275,7 @@ static void create_ui() {
         lv_label_set_text(network_label,network_text.c_str());
         lv_label_set_text(status_label,management_text.c_str());
         if(home_name)lv_label_set_text(home_name,device_name.c_str());
+        if(remote_label)lv_label_set_text(remote_label,!remote_allowed?"Remote control stopped":remote_active?"Remote active · tap to stop":"Remote control allowed");
     },500,nullptr);
     lvgl_port_unlock();
 }
@@ -280,6 +292,66 @@ static bool identifier(const std::string& value, size_t size, bool uuid=false) {
         }else if(!((c>='0'&&c<='9')||(c>='a'&&c<='z')||(c>='A'&&c<='Z')||c=='-'||c=='_'))return false;
     }
     return true;
+}
+static const char* page_name() {
+    switch(current_page.load()){case 1:return "wifi";case 2:return "device";case 3:return "settings";case 4:return "companion";default:return "home";}
+}
+static bool apply_console_target(const std::string& target) {
+    int destination=-1;
+    if(target=="home")destination=0;else if(target=="wifi")destination=1;else if(target=="device")destination=2;
+    else if(target=="settings")destination=3;else if(target=="companion")destination=4;
+    if(destination>=0){lvgl_port_lock(0);page(destination);lvgl_port_unlock();return true;}
+    if(target=="wifi_setup"){wifi_requested=true;return true;}
+    if(target=="pair"){pair_requested=true;return true;}
+    if(target=="speaker_test"){tone_requested=true;return true;}
+    if(target=="cancel_update"){ampve_cancel_update();message("Remote cancellation requested before firmware restart.");return true;}
+    if(target=="mute"){local_muted=true;message("Microphone remains off.");return true;}
+    return false;
+}
+static bool console_sync(const std::string& device,const std::string& token,int& interval_ms) {
+    auto payload=cJSON_CreateObject();cJSON_AddNumberToObject(payload,"protocol",1);
+    cJSON_AddNumberToObject(payload,"state_revision",console_revision.load());
+    auto screen=cJSON_AddObjectToObject(payload,"screen");
+    cJSON_AddStringToObject(screen,"page",page_name());cJSON_AddStringToObject(screen,"display_mode","physical");
+    cJSON_AddBoolToObject(screen,"remote_allowed",remote_allowed.load());
+    std::string sent_ack;
+    {
+        std::lock_guard<std::mutex> lock(console_mutex);sent_ack=console_ack_id;
+        if(!sent_ack.empty()){
+            auto ack=cJSON_AddObjectToObject(payload,"acknowledgement");
+            cJSON_AddStringToObject(ack,"id",sent_ack.c_str());cJSON_AddStringToObject(ack,"result",console_ack_result.c_str());
+        }
+    }
+    std::string reply;int status=post(device+"/console/sync/",token,payload,reply);cJSON_Delete(payload);
+    auto response=cJSON_Parse(reply.c_str());
+    if(status!=200 || !response){cJSON_Delete(response);interval_ms=status==429?1000:5000;return remote_active.load();}
+    auto protocol=cJSON_GetObjectItemCaseSensitive(response,"protocol");
+    auto active=cJSON_GetObjectItemCaseSensitive(response,"active");
+    int server_interval=0;
+    if(!cJSON_IsNumber(protocol)||protocol->valueint!=1||!cJSON_IsBool(active)||
+       !number(response,"poll_interval_ms",500,30000,server_interval)){
+        cJSON_Delete(response);interval_ms=5000;return remote_active.load();
+    }
+    interval_ms=server_interval;
+    if(!sent_ack.empty()){
+        std::lock_guard<std::mutex> lock(console_mutex);
+        if(console_ack_id==sent_ack){console_ack_id.clear();console_ack_result.clear();}
+    }
+    bool enabled=cJSON_IsTrue(active);
+    bool was_active=remote_active.exchange(enabled && remote_allowed.load());
+    if(was_active!=remote_active.load())message(remote_active?"Remote console active. Tap its local control to stop.":"Remote console ended. Local controls remain available.");
+    auto command=cJSON_GetObjectItemCaseSensitive(response,"command");
+    if(remote_active && cJSON_IsObject(command)){
+        auto id=json_string(command,"id",36),target=json_string(command,"target",32);
+        auto kind=json_string(command,"kind",16),source=json_string(command,"input_source",16);
+        int sequence=0;
+        bool valid=identifier(id,36,true)&&number(command,"sequence",1,1000000000,sequence)&&kind=="activate"&&
+            (source=="mouse"||source=="touch"||source=="keyboard");
+        bool applied=valid&&apply_console_target(target);
+        std::lock_guard<std::mutex> lock(console_mutex);
+        if(valid){console_ack_id=id;console_ack_result=applied?"applied":"ignored";}
+    }
+    cJSON_Delete(response);return enabled;
 }
 static void startup_check(void*) {
     vTaskDelay(pdMS_TO_TICKS(60000));
@@ -326,7 +398,7 @@ static void worker(void*) {
     }
     {std::lock_guard<std::mutex> lock(ui_mutex);pair_code=json_string(state,"code",12);}
     int64_t ap_started=0;
-    bool clock_started=false;int64_t next_request=0;
+    bool clock_started=false,console_open=false;int64_t next_request=0,console_next=0;
     management_started=true;
     while(true) {
         const auto now=esp_timer_get_time();
@@ -343,6 +415,10 @@ static void worker(void*) {
         }
         auto& wifi=WifiManager::GetInstance();
         const bool connected=wifi.IsConnected();
+        if(connected && console_open && !device.empty() && now>=console_next){
+            int interval=600;console_open=console_sync(device,token,interval);
+            console_next=esp_timer_get_time()+static_cast<int64_t>(interval)*1000;
+        }
         if(wifi.IsConfigMode()){
             if(!ap_started)ap_started=now;
             if(now-ap_started>300000000){wifi.StopConfigAp();wifi.StartStation();if(!wifi.IsConfigMode()){ap_started=0;message("Wi-Fi setup closed after five minutes. Open it locally to retry.");}}
@@ -463,6 +539,12 @@ static void worker(void*) {
                         }
                         message(cJSON_IsTrue(mute)?"Dashboard connected - microphone off":"Unmute requested; unsupported in this shell. Configuration pending.");
                     }else message("Invalid configuration. Previous settings kept.");
+                    auto console=cJSON_GetObjectItemCaseSensitive(response,"console");
+                    auto active=cJSON_GetObjectItemCaseSensitive(console,"active");
+                    int interval=0;
+                    if(cJSON_IsObject(console)&&cJSON_IsBool(active)&&number(console,"poll_interval_ms",500,30000,interval)){
+                        console_open=cJSON_IsTrue(active);console_next=now;
+                    }
                 } else if(status==401){
                     // Retain the credential until a physical user starts fresh pairing.
                     device.clear();identity_reported=false;cJSON_DeleteItemFromObject(state,"device_id");save(encode(state));

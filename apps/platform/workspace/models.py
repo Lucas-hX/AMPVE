@@ -146,6 +146,57 @@ class DeviceRateBucket(models.Model):
     count = models.PositiveIntegerField(default=0)
 
 
+class DeviceConsoleSession(models.Model):
+    """Short-lived owner authorization for one visual device console."""
+    import uuid
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    device = models.ForeignKey(Device, on_delete=models.CASCADE, related_name='console_sessions')
+    owner = models.ForeignKey(User, on_delete=models.CASCADE, related_name='device_console_sessions')
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField()
+    last_activity_at = models.DateTimeField(auto_now_add=True)
+    device_seen_at = models.DateTimeField(null=True, editable=False)
+    ended_at = models.DateTimeField(null=True, editable=False)
+
+    class Meta:
+        ordering = ['-created_at']
+
+
+class DeviceConsoleState(models.Model):
+    """Bounded semantic screen state; it never stores pixels or media."""
+    device = models.OneToOneField(Device, primary_key=True, on_delete=models.CASCADE, related_name='console_state')
+    revision = models.PositiveIntegerField(default=0)
+    page = models.CharField(max_length=16, default='home')
+    display_mode = models.CharField(max_length=16, default='virtual')
+    remote_allowed = models.BooleanField(default=True)
+    last_command_id = models.UUIDField(null=True, editable=False)
+    last_command_result = models.CharField(max_length=16, blank=True, editable=False)
+    updated_at = models.DateTimeField(auto_now=True)
+
+
+class DeviceConsoleCommand(models.Model):
+    """A bounded input event dispatched at most once to avoid reconnect replay."""
+    import uuid
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    session = models.ForeignKey(DeviceConsoleSession, on_delete=models.CASCADE, related_name='commands')
+    device = models.ForeignKey(Device, on_delete=models.CASCADE, related_name='console_commands')
+    client_sequence = models.PositiveIntegerField()
+    kind = models.CharField(max_length=16)
+    input_source = models.CharField(max_length=16)
+    target = models.CharField(max_length=32)
+    x = models.PositiveSmallIntegerField(null=True)
+    y = models.PositiveSmallIntegerField(null=True)
+    state = models.CharField(max_length=16, default='pending')
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField()
+    dispatched_at = models.DateTimeField(null=True, editable=False)
+    acknowledged_at = models.DateTimeField(null=True, editable=False)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=['session', 'client_sequence'], name='console_command_sequence_unique')]
+        ordering = ['created_at']
+
+
 class FirmwareRelease(models.Model):
     """Immutable imported signed policy; signing keys never enter the database."""
     id = models.CharField(primary_key=True, max_length=64)

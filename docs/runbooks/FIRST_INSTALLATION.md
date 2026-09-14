@@ -148,9 +148,9 @@ Prepared review: `/home/ampve/.local/state/ampve/firmware-first-install-review-0
 
 ## First physical acceptance
 
-After the approved bounded writes, confirm actual startup, display/touch, offline navigation, bounded Wi-Fi setup/reconnect, pairing, authenticated online status and name/volume acknowledgement. Record failures in #12 and the corresponding lifecycle issue. Board voice, microphone capture, camera and physical OTA/rollback are separate milestones. A web response, downloaded file or heartbeat alone is not a passing hardware acceptance test.
+After the approved bounded writes, confirm actual startup, display/touch, offline navigation, bounded Wi-Fi setup/reconnect, pairing, authenticated online status and name/volume acknowledgement. The owner accepted the first device test in #12 after the corrected touch/Wi-Fi OTA; record later failures in their corresponding lifecycle issues. Board voice, microphone capture, camera and physical rollback are separate milestones. A web response, downloaded file or heartbeat alone is not a passing hardware acceptance test.
 
-Task status is tracked in #6: completed software tasks can close, while exact-unit review #7/#10, physical installation #12 and later hardware acceptance remain open.
+Task status is tracked in #6. The physical first-device task #12 is owner-accepted and closed; original restoration, interrupted rollback, audio and later production hardware acceptance remain separately tracked.
 
 ## Received owner summary — 2026-09-13
 
@@ -182,7 +182,7 @@ PR #67 merged as `f258acd79ec4582fd4f6e71fb73f95a484db67bf`. The private platfor
 
 Live authenticated Chromium verification on `https://ampve.com` passed: anonymous firmware access redirected to login; the exact signed initial-install policy verified with browser Ed25519; the app returned HTTP 200 and rehashed to the recorded 2,879,840-byte artifact; startup/recovery controls were present without JavaScript errors. Installation was correctly disabled before local board/backup preparation. No physical write or provider request was performed. Django deployment checks reported only the existing optional HSTS subdomain/preload warnings; no related security setting was changed.
 
-The C6 query no longer gates this signed USB mode. First on-board USB confirmation and physical restoration remain pending in #12, and the exact local install consent remains a browser gate in #10/#17.
+The C6 query no longer gates this signed USB mode. First on-board USB confirmation succeeded; physical restoration remains pending in the lifecycle runbooks, and exact local install consent remains a browser gate for future initial installations.
 
 ## First owner attempt: black screen after power cycle
 
@@ -220,7 +220,7 @@ The next capture is needed to identify the actual failed initializer and its ret
 
 The owner subsequently completed installation of signed development release 0.1.13. The server observed the first physical 7B's authenticated Wi-Fi heartbeat, exact schema-2 compatibility tuple and configuration acknowledgement 1/1. At the latest inspection the device was offline. No `DeviceFirmware` identity or deployment row exists yet, so the platform cannot currently offer or send an OTA update.
 
-The owner reports touch/Home navigation problems. The pinned XiaoZhi adapter configured the GT911 with both coordinate mirrors disabled, while [Waveshare's maintained 7B example](https://github.com/waveshareteam/ESP32-P4-WIFI6-Touch-LCD-7B/blob/main/examples/esp-idf/08_lvgl_display_panel/main/main.c) uses `swap_xy=0`, `mirror_x=1`, `mirror_y=1`. Candidate `0.1.16-touch-ota-dev` retains those flags only for the 7B profile. Nineteen host display/touch scenarios pass; physical coordinates and navigation remain unverified.
+The initial build exposed touch/Home navigation problems. The pinned XiaoZhi adapter configured the GT911 with both coordinate mirrors disabled, while [Waveshare's maintained 7B example](https://github.com/waveshareteam/ESP32-P4-WIFI6-Touch-LCD-7B/blob/main/examples/esp-idf/08_lvgl_display_panel/main/main.c) uses `swap_xy=0`, `mirror_x=1`, `mirror_y=1`. Installed `0.1.16-touch-ota-dev` applies those flags only for the 7B profile. Nineteen host scenarios pass, and Lucas confirms the corrected physical touch navigation works well.
 
 The VPS imported the already signed 0.1.13 initial-install release, and the online device reported its exact confirmed application identity: SHA-256 `ca04872053e00abd412ef9f074ed71f43efa39477487d74e423dd20de964d1b9`, sequence 4. The owner then explicitly authorized a bounded first Wi-Fi deployment using the retained matching backups despite pending physical rollback acceptance. The OTA successor was restricted to that predecessor hash and this exact 7B profile. Sequence 5 exposed a table fingerprint byte-domain mismatch; sequence 6 exposed the equivalent bootloader mismatch. Both requests remained at report sequence zero with zero bytes written, were cancelled and were revoked. The publisher now binds both runtime fingerprints to the reviewed stock baseline and the table to the packaged 3072-byte artifact.
 

@@ -8,7 +8,7 @@ Status: the owner installed the signed 0.1.13 development release on the first p
 
 ## Stock-preserving successor
 
-The current candidate version is recorded in `firmware/xiaozhi/upstream.json` (`0.1.16-touch-ota-dev` at this update). It includes the [shared hardware contract](HARDWARE_PROFILES.md), checked startup/storage, native OTA client and [Improv provisioning](NATIVE_WIFI.md). Version-specific build evidence appears below and in the linked runbooks. Earlier artifact hashes are historical; they do not identify the latest candidate or approve a release.
+The current candidate version is recorded in `firmware/xiaozhi/upstream.json` (`0.1.17-visual-console-dev` at this update). It includes the [shared hardware contract](HARDWARE_PROFILES.md), checked startup/storage, native OTA client, [Improv provisioning](NATIVE_WIFI.md) and the outbound [visual-console client](VISUAL_CONSOLE.md). Version-specific build evidence appears below and in the linked runbooks. Earlier artifact hashes are historical; they do not identify the latest candidate or approve a release.
 
 The active build uses `7b-stock-v1.csv`; the previous stock candidate was `0.1.1-stock-dev`. See [browser installation](BROWSER_INSTALLATION.md) and [ADR 0004](../decisions/0004-stock-preserving-browser-installation.md). The original 2026-09-13 layout-migration build and hashes below are historical evidence, not the current write plan. The current installer proposes only the empty stock OTA slot plus locally generated boot selection; it never writes the generated bootloader/table/blank otadata. Lucas reports completed matching physical backups and confirms stock startup after audit; exact local candidate comparison, C6/bootloader review, separate-storage confirmation and write approval remain pending.
 
@@ -176,7 +176,7 @@ This essential display failure does not provide an on-screen recovery UI. The ex
 
 The transformation accepts the pinned original, the earlier documented integration or its exact current output; it refuses unrelated board/display modifications. The upstream source and its notices remain outside Git, with changes archived in the review bundle's integration patch. The checked-in tool records the integration rather than copying an entire board implementation.
 
-Candidate `0.1.16-touch-ota-dev` retains the 7B GT911 correction first prepared in 0.1.14 and matches [Waveshare's maintained board example](https://github.com/waveshareteam/ESP32-P4-WIFI6-Touch-LCD-7B/blob/main/examples/esp-idf/08_lvgl_display_panel/main/main.c): `swap_xy=0`, `mirror_x=1`, `mirror_y=1`. The installed build left both mirrors disabled, so a touch could be delivered at the opposite screen position and make Home or edge controls appear unresponsive. The change is restricted to the 7B build option; other Waveshare display variants retain their previous transform. This diagnosis is source- and host-test evidence until Lucas confirms coordinates and navigation on the physical panel.
+Candidate `0.1.17-visual-console-dev` retains the 7B GT911 correction first prepared in 0.1.14 and physically accepted by Lucas in installed `0.1.16-touch-ota-dev`. It matches [Waveshare's maintained board example](https://github.com/waveshareteam/ESP32-P4-WIFI6-Touch-LCD-7B/blob/main/examples/esp-idf/08_lvgl_display_panel/main/main.c): `swap_xy=0`, `mirror_x=1`, `mirror_y=1`. The change is restricted to the 7B build option; other Waveshare display variants retain their previous transform.
 
 Run targeted failure injection:
 
