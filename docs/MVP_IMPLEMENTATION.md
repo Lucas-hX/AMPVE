@@ -1,6 +1,6 @@
 # AMPVE — MVP Implementation Brief
 
-Current device milestone: the first physical 7B runs the signed 0.1.13 development release. The server observed an authenticated Wi-Fi heartbeat and settings acknowledgement 1/1. Touch/Home navigation, physical restoration, audio and Wi-Fi OTA remain pending; this is not production hardware acceptance. The current 0.1.15 candidate retains the touch transform and prepares the corrected bounded Wi-Fi trial. See [the device runbook](runbooks/DEVICES.md).
+Current device milestone: the first physical 7B runs the signed 0.1.13 development release. The server observed an authenticated Wi-Fi heartbeat and settings acknowledgement 1/1. Touch/Home navigation, physical restoration, audio and Wi-Fi OTA remain pending; this is not production hardware acceptance. The current 0.1.16 candidate retains the touch transform and prepares the corrected bounded Wi-Fi trial. See [the device runbook](runbooks/DEVICES.md).
 Current delivery: see [the platform runbook](runbooks/PLATFORM.md) and [ADR 0002](decisions/0002-provider-audio-and-xiaozhi.md). OpenAI browser voice is user-validated; Gemini remains unvalidated; XiaoZhi remains the sole selected firmware foundation.
 
 Date: 2026-09-12

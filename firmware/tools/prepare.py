@@ -110,6 +110,8 @@ def prepare(work, mode='usb-assisted'):
         replace(cmake,'set(PROJECT_VER "0.1.13-scheduler-fix-dev")',f'set(PROJECT_VER "{UPSTREAM["candidate_version"]}")')
     if 'set(PROJECT_VER "0.1.14-touch-fix-dev")' in cmake.read_text():
         replace(cmake,'set(PROJECT_VER "0.1.14-touch-fix-dev")',f'set(PROJECT_VER "{UPSTREAM["candidate_version"]}")')
+    if 'set(PROJECT_VER "0.1.15-touch-ota-dev")' in cmake.read_text():
+        replace(cmake,'set(PROJECT_VER "0.1.15-touch-ota-dev")',f'set(PROJECT_VER "{UPSTREAM["candidate_version"]}")')
     if f'set(PROJECT_VER "{UPSTREAM["candidate_version"]}")' not in cmake.read_text():
         raise RuntimeError('Prepared project version differs from the candidate version')
     component=work/'main/idf_component.yml'

@@ -8,6 +8,7 @@ import sys
 import tempfile
 import unittest
 import zipfile
+from unittest.mock import patch
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -147,10 +148,12 @@ class PublisherTests(unittest.TestCase):
 
     def test_ota_requires_predecessors_and_cannot_be_used_for_usb(self):
         self.review.update(purpose='ota',ota_review='Explicit software fixture, not physical recovery',from_app_sha256=['a'*64])
-        with self.assertRaisesRegex(ValueError,'table fingerprint'):
-            self.run_publish()
-        self.review['table_sha256']=self.table_sha256
-        policy,output=self.run_publish()
+        runtime_pair={(self.review['bootloader_sha256'],self.table_sha256)}
+        with patch('publish_release.reviewed_runtime_fingerprints',return_value=runtime_pair):
+            with self.assertRaisesRegex(ValueError,'runtime fingerprints'):
+                self.run_publish()
+            self.review['table_sha256']=self.table_sha256
+            policy,output=self.run_publish()
         self.assertNotIn('offset',policy['app'])
         self.assertFalse(policy['installable'])
         self.assertFalse((output/'esp-web-tools-reference.json').exists())
@@ -159,6 +162,12 @@ class PublisherTests(unittest.TestCase):
             self.assertFalse(eligible_upgrade(policy,old_sequence,old_hash))
         for previous in [[],[policy['app']['sha256']],['a'*64,'a'*64]]:
             with self.assertRaises(ValueError):validate_policy({**policy,'from_app_sha256':previous})
+
+    def test_reviewed_runtime_fingerprint_domains_match_the_native_adapter(self):
+        from publish_release import reviewed_runtime_fingerprints
+        self.assertIn(('3935d12e32a186a19d5c3f1f465d91635b97803f1b60a8f9efd7911cb64c9cf1',
+                       '008749f42b6edc628c8dce6719ebb9d9a1d2938205ca58c5ccbcf766e2b42f2e'),
+                      reviewed_runtime_fingerprints())
 
     def test_archive_bytes_ignore_mtime_and_creation_order(self):
         original=(self.root/'candidate.zip').read_bytes()
