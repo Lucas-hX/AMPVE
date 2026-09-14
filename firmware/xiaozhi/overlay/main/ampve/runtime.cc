@@ -10,6 +10,7 @@
 #include "audio_codec.h"
 #include "ampve/boot_guard.h"
 #include "ampve/companion.h"
+#include "ampve/companion_face.h"
 #include "ampve/improv_platform.h"
 #include "wifi_manager.h"
 #include "display.h"
@@ -61,7 +62,8 @@ static std::atomic<const char*> usb_phase{"starting"};
 static std::atomic<bool> usb_display_ready{false};
 extern "C" const char* ampve_wifi_password() { return setup_password.c_str(); }
 static std::atomic<int> displayed_volume{40};
-static lv_obj_t *body, *network_label, *status_label, *home_name=nullptr, *remote_label=nullptr;
+static lv_obj_t *screen, *header, *body, *network_label, *status_label, *nav;
+static lv_obj_t *home_name=nullptr, *remote_label=nullptr, *companion_controls=nullptr;
 static lv_obj_t *companion_status_label=nullptr, *companion_action_label=nullptr, *companion_mute_label=nullptr;
 static std::atomic<int> current_page{0};
 static std::atomic<bool> remote_allowed{true}, remote_active{false};
@@ -189,9 +191,22 @@ static lv_obj_t* button(lv_obj_t* parent,const char* text,lv_event_cb_t callback
     lv_obj_add_event_cb(item,callback,LV_EVENT_CLICKED,reinterpret_cast<void*>(data));return item;
 }
 static void go(lv_event_t* e) {page(reinterpret_cast<intptr_t>(lv_event_get_user_data(e)));}
+static void toggle_companion_controls(lv_event_t*) {
+    if(!companion_controls)return;
+    if(lv_obj_has_flag(companion_controls,LV_OBJ_FLAG_HIDDEN))lv_obj_remove_flag(companion_controls,LV_OBJ_FLAG_HIDDEN);
+    else lv_obj_add_flag(companion_controls,LV_OBJ_FLAG_HIDDEN);
+}
 static void page(int id) {
-    home_name=nullptr;companion_status_label=nullptr;companion_action_label=nullptr;companion_mute_label=nullptr;
+    ampve::companion_face_hide();
+    home_name=nullptr;companion_controls=nullptr;companion_status_label=nullptr;companion_action_label=nullptr;companion_mute_label=nullptr;
     if(current_page.exchange(id)!=id)console_revision++;
+    const bool immersive=id==4;
+    lv_obj_set_style_pad_all(screen,immersive?0:20,0);
+    for(auto chrome:{header,status_label,nav}) {
+        if(immersive)lv_obj_add_flag(chrome,LV_OBJ_FLAG_HIDDEN);
+        else lv_obj_remove_flag(chrome,LV_OBJ_FLAG_HIDDEN);
+    }
+    lv_obj_set_style_pad_all(body,immersive?0:8,0);
     lv_obj_clean(body);
     if(id==0) {
         auto symbol=lv_image_create(body);lv_image_set_src(symbol,&ampve_symbol);
@@ -241,30 +256,46 @@ static void page(int id) {
         button(body,"Wi-Fi and pairing",go,1);
         button(body,"Cancel firmware download",[](lv_event_t*){ampve_cancel_update();message("Cancellation requested before firmware restart.");});
     } else {
-        label(body,"A little company.",&lv_font_montserrat_36);
-        auto image=lv_image_create(body);lv_image_set_src(image,&ampve_companion);
+        auto face=ampve::companion_face_show(body);
+        lv_obj_add_event_cb(face,toggle_companion_controls,LV_EVENT_CLICKED,nullptr);
+        companion_controls=lv_obj_create(face);lv_obj_set_size(companion_controls,760,142);
+        lv_obj_align(companion_controls,LV_ALIGN_BOTTOM_MID,0,-24);
+        lv_obj_set_style_bg_color(companion_controls,lv_color_hex(0xF7F5EE),0);
+        lv_obj_set_style_bg_opa(companion_controls,LV_OPA_90,0);
+        lv_obj_set_style_border_width(companion_controls,0,0);
+        lv_obj_set_style_radius(companion_controls,18,0);
+        lv_obj_set_style_pad_all(companion_controls,12,0);
+        lv_obj_set_flex_flow(companion_controls,LV_FLEX_FLOW_COLUMN);
         if(!companion_enabled) {
-            label(body,"Activate Companion and choose a tested AI connection at ampve.com.");
+            label(companion_controls,"Activate Companion at ampve.com to begin.");
+            auto home=button(companion_controls,"Home",go,0);lv_obj_set_height(home,58);
         } else {
-            companion_status_label=label(body,ampve::companion_status());
-            auto action=button(body,ampve::companion_active()?"Stop conversation":"Start conversation",[](lv_event_t*) {
+            companion_status_label=label(companion_controls,ampve::companion_status());
+            lv_obj_set_height(companion_status_label,30);
+            auto actions=lv_obj_create(companion_controls);lv_obj_set_size(actions,LV_PCT(100),68);
+            lv_obj_set_style_bg_opa(actions,LV_OPA_TRANSP,0);lv_obj_set_style_border_width(actions,0,0);
+            lv_obj_set_style_pad_all(actions,4,0);lv_obj_set_flex_flow(actions,LV_FLEX_FLOW_ROW);
+            auto action=button(actions,ampve::companion_active()?"Stop":"Start",[](lv_event_t*) {
                 if(ampve::companion_active())companion_stop_requested=true;
                 else companion_start_requested=true;
             });
+            lv_obj_set_size(action,220,58);
             companion_action_label=lv_obj_get_child(action,0);
-            auto mute=button(body,ampve::companion_muted()?"Microphone muted":"Mute microphone",[](lv_event_t*) {
+            auto mute=button(actions,ampve::companion_active()&&ampve::companion_muted()?"Unmute":"Mute",[](lv_event_t*) {
                 ampve::companion_toggle_mute();local_muted=ampve::companion_muted();
             });
+            lv_obj_set_size(mute,220,58);
             companion_mute_label=lv_obj_get_child(mute,0);
-            label(body,"Audio is live only after Start. Stop and mute always remain available here.");
+            auto home=button(actions,"Home",go,0);lv_obj_set_size(home,220,58);
         }
+        if(ampve::companion_active())lv_obj_add_flag(companion_controls,LV_OBJ_FLAG_HIDDEN);
     }
 }
 static void create_ui() {
     lvgl_port_lock(0);
-    auto screen=lv_obj_create(nullptr);lv_obj_set_style_bg_color(screen,lv_color_hex(0xF7F5EE),0);
+    screen=lv_obj_create(nullptr);lv_obj_set_style_bg_color(screen,lv_color_hex(0xF7F5EE),0);
     lv_obj_set_flex_flow(screen,LV_FLEX_FLOW_COLUMN);lv_obj_set_style_pad_all(screen,20,0);
-    auto header=lv_obj_create(screen);lv_obj_set_size(header,LV_PCT(100),52);
+    header=lv_obj_create(screen);lv_obj_set_size(header,LV_PCT(100),52);
     lv_obj_set_flex_flow(header,LV_FLEX_FLOW_ROW);lv_obj_set_style_pad_all(header,8,0);
     auto brand=label(header,"AMPVE",&lv_font_montserrat_28);lv_obj_set_width(brand,180);
     network_label=label(header,"Starting Wi-Fi");lv_obj_set_flex_grow(network_label,1);
@@ -272,7 +303,7 @@ static void create_ui() {
     lv_obj_set_style_bg_opa(body,LV_OPA_TRANSP,0);lv_obj_set_style_border_width(body,0,0);lv_obj_set_style_pad_all(body,8,0);
     lv_obj_set_flex_flow(body,LV_FLEX_FLOW_COLUMN);
     status_label=label(screen,"Not paired");lv_obj_set_height(status_label,26);
-    auto nav=lv_obj_create(screen);lv_obj_set_size(nav,LV_PCT(100),84);
+    nav=lv_obj_create(screen);lv_obj_set_size(nav,LV_PCT(100),84);
     lv_obj_set_flex_flow(nav,LV_FLEX_FLOW_ROW);lv_obj_set_style_pad_all(nav,8,0);
     for(int id: {0,3}){auto b=button(nav,id==0?"Home":"Settings",go,id);lv_obj_set_width(b,200);}
     auto mute=button(nav,"Microphone muted",[](lv_event_t*) {
@@ -297,8 +328,8 @@ static void create_ui() {
         if(home_name)lv_label_set_text(home_name,device_name.c_str());
         if(remote_label)lv_label_set_text(remote_label,!remote_allowed?"Remote control stopped":remote_active?"Remote active · tap to stop":"Remote control allowed");
         if(companion_status_label)lv_label_set_text(companion_status_label,ampve::companion_status());
-        if(companion_action_label)lv_label_set_text(companion_action_label,ampve::companion_active()?"Stop conversation":"Start conversation");
-        if(companion_mute_label)lv_label_set_text(companion_mute_label,ampve::companion_muted()?"Microphone muted":"Mute microphone");
+        if(companion_action_label)lv_label_set_text(companion_action_label,ampve::companion_active()?"Stop":"Start");
+        if(companion_mute_label)lv_label_set_text(companion_mute_label,ampve::companion_active()&&ampve::companion_muted()?"Unmute":"Mute");
     },500,nullptr);
     lvgl_port_unlock();
 }

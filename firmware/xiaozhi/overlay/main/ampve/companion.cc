@@ -45,6 +45,7 @@ std::atomic<CompanionState> state{CompanionState::Idle};
 std::atomic<bool> muted{true}, stop_requested{false}, task_active{false};
 std::atomic<int64_t> last_output_at{0};
 std::atomic<bool> response_playback_active{false}, local_speech{false};
+std::atomic<uint8_t> output_level{0};
 std::unique_ptr<WebSocket> socket;
 std::mutex socket_mutex;
 QueueHandle_t playback_queue = nullptr;
@@ -68,8 +69,20 @@ int64_t latency_max_us = 0;
 bool latency_reported = false;
 
 void fail() {
+    output_level = 0; last_output_at = 0;
     state = CompanionState::Error;
     stop_requested = true;
+}
+
+uint8_t level(const int16_t* samples, size_t count) {
+    if (!samples || !count) return 0;
+    uint64_t sum = 0;
+    for (size_t index = 0; index < count; ++index) {
+        const int32_t sample = samples[index];
+        sum += sample < 0 ? -sample : sample;
+    }
+    const uint64_t average = sum / count;
+    return static_cast<uint8_t>(std::min<uint64_t>(255, average * 255 / 4096));
 }
 
 bool send_socket(const void* data, size_t length, bool binary) {
@@ -332,6 +345,7 @@ void audio_task(void*) {
         if (playback_queue && xQueueReceive(playback_queue, &output, 0) == pdTRUE) {
             std::vector<int16_t> pcm(output.size / sizeof(int16_t));
             memcpy(pcm.data(), output.data, output.size);
+            output_level = level(pcm.data(), pcm.size());
             codec->OutputData(pcm); last_output_at = esp_timer_get_time();
         }
         if (response_playback_active.load() && playback_queue &&
@@ -360,6 +374,7 @@ void audio_task(void*) {
     stop_audio_processor();
     if (input_open) codec->EnableInput(false);
     codec->EnableOutput(false);
+    output_level = 0; last_output_at = 0;
     task_active = false;
     if (state != CompanionState::Error) state = CompanionState::Idle;
     vTaskDelete(nullptr);
@@ -373,7 +388,7 @@ bool companion_start(const std::string& url, const std::string& ticket, int volu
     if (!playback_queue) playback_queue = xQueueCreate(6, sizeof(PlaybackFrame));
     if (!playback_queue) return false;
     xQueueReset(playback_queue); stop_requested = false; muted = false;
-    response_playback_active = false; last_output_at = 0;
+    response_playback_active = false; output_level = 0; last_output_at = 0;
     {
         std::lock_guard<std::mutex> lock(uplink_mutex);
         uplink_gate.Reset(); pre_roll.clear(); pending_uplink.clear();
@@ -407,6 +422,7 @@ bool companion_start(const std::string& url, const std::string& ticket, int volu
 
 void companion_stop() {
     stop_requested = true; muted = true; response_playback_active = false;
+    output_level = 0; last_output_at = 0;
     stop_audio_processor();
     std::lock_guard<std::mutex> lock(socket_mutex);
     if (socket) socket->Close();
@@ -430,12 +446,19 @@ bool companion_active() {
 }
 bool companion_muted() { return muted; }
 CompanionState companion_state() { return state; }
+bool companion_speaking() {
+    const int64_t last = last_output_at.load();
+    return state == CompanionState::Listening && last > 0 && esp_timer_get_time() - last < 350000;
+}
+uint8_t companion_output_level() {
+    return companion_speaking() ? output_level.load() : 0;
+}
 const char* companion_status() {
     if (state == CompanionState::Connecting) return "Connecting securely…";
     if (state == CompanionState::Error) return "Session ended. Tap Start to try again.";
     if (state == CompanionState::Listening) {
         if (muted) return "Microphone muted. Companion can finish speaking.";
-        if (esp_timer_get_time() - last_output_at.load() < 350000) return "Companion is speaking.";
+        if (companion_speaking()) return "Companion is speaking.";
         return "Listening. Tap mute or stop whenever you like.";
     }
     return "Microphone off. Ready when you are.";
