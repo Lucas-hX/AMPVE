@@ -63,7 +63,10 @@ Neither a timeout nor compilation proves physical safety. A first USB installati
 
 Run the normal isolated ESP-IDF build from [NATIVE_FIRMWARE.md](NATIVE_FIRMWARE.md). The enabled build fixture uses public-only temporary test trust, retains no private test signing key and is never selected by the public installer. To run the native host checks, compile the resolved libsodium sources outside their managed component:
 
+For a reviewed wireless successor, build with `AMPVE_BUILD_MODE=ota`. This removes the initial USB commissioning interface from the candidate and causes the release manifest to record `network-first-v1`. The default remains `usb-assisted`; the publisher refuses using a USB-assisted binary as an OTA release.
+
 ```bash
+export AMPVE_BUILD_MODE=ota
 AMPVE_OTA_WORK="$HOME/.cache/ampve-firmware/xiaozhi-ota"
 AMPVE_SODIUM_HOST="$HOME/.cache/ampve-firmware/sodium-host"
 mkdir -p "$AMPVE_SODIUM_HOST"
@@ -77,6 +80,18 @@ AMPVE_TESTING=1 .venv/bin/python apps/platform/manage.py test workspace --noinpu
 ```
 
 The native runner checks the dependency lock and compiles the actual policy/client/identity modules with AddressSanitizer and UndefinedBehaviorSanitizer. Policy tests use temporary signed fixtures. Client tests simulate the transport, server and hardware boundary, covering lost claim/progress/verify/reboot/outcome responses, network loss, cancellation, hash/selection/storage faults, process interruption, revoked authorization and unknown boot selection. Identity tests stub ESP-IDF partition/metadata calls. These prove software behavior at those boundaries, not actual flash/HTTP driver operation on the P4. The ESP-IDF build separately checks the native adapter's compilation/linking and image capacity.
+
+## First owner-authorized Wi-Fi trial — 2026-09-14
+
+For the first registered physical 7B only, the owner explicitly authorized a controlled Wi-Fi deployment using the retained matching backups despite the still-pending physical rollback acceptance. This is a bounded development trial, not a general relaxation of release policy or production hardware acceptance. Eligibility is restricted to the device's confirmed 0.1.13 app SHA-256 `ca04872053e00abd412ef9f074ed71f43efa39477487d74e423dd20de964d1b9` and the exact schema-2 profile tuple.
+
+Two clean `AMPVE_BUILD_MODE=ota` workspaces produced identical artifacts for the superseded 0.1.14 candidate. Both generated configurations had USB commissioning disabled. The first signed OTA request was refused by the device before download because its policy contained the 4096-byte stock table-sector digest while the runtime correctly fingerprints the 3072-byte partition-table data. The deployment was cancelled with zero bytes written and sequence 5 was revoked. The publisher now requires an OTA policy's table fingerprint to equal the packaged 3072-byte generated table artifact; sequence 5 will not be reused.
+
+The next sequence-6 request exposed the matching bootloader byte-domain issue: the policy used the complete 24,576-byte reserved region while the runtime fingerprints the 24,160-byte valid ESP image. It also remained queued with report sequence zero and zero bytes written, then was cancelled and revoked. The retained pinned vendor artifact proves the reviewed region hash and the runtime image hash independently. The publisher now requires both OTA runtime fingerprints to match a reviewed stock baseline and still requires the table fingerprint to match the packaged table artifact.
+
+The corrected trial uses candidate `0.1.16-touch-ota-dev` and fresh native build sequence 7. Two clean builds produced the same 2,876,272-byte application, SHA-256 `d21e1a5241e16b3f5bcb02270ad6a8b85f48f5df2d36a366fb4bf36caba8d3b4`, and matching bootloader, 3072-byte table and initial-otadata artifacts. Both configurations disable USB commissioning and leave 30% free in either application slot. Signed release `7e794b2e315c7cea20531e129938d0d7c7747092ba592517703b2e10cd3d0abd` names only the device's confirmed 0.1.13 predecessor.
+
+Deployment `81cc1f31-a682-4ae2-b400-fdc10193b284` advanced through downloading, verifying and rebooting. The device reported 15 ordered events, all 2,876,272 bytes, the exact target hash and confirmed sequence 7 after the 60-second startup check. Its subsequent authenticated heartbeat reports `0.1.16-touch-ota-dev`, configuration acknowledgement 1/1 and Online status. This proves the nominal signed Wi-Fi OTA path on the first 7B. It does not exercise interrupted download, failed boot, automatic rollback, power loss or USB restoration; the retained backups remain the recovery route for those later tests.
 
 ## Earlier foundation evidence
 

@@ -12,13 +12,17 @@
           "name": "bootloader",
           "offset": 8192,
           "size": 24576,
-          "sha256": "4292a0266be4741a53d224ececf62c1e2ca95d09b9e92081e2f3e78f9c5cd051"
+          "sha256": "4292a0266be4741a53d224ececf62c1e2ca95d09b9e92081e2f3e78f9c5cd051",
+          "runtime_fingerprint_size": 24160,
+          "runtime_fingerprint_sha256": "3935d12e32a186a19d5c3f1f465d91635b97803f1b60a8f9efd7911cb64c9cf1"
         },
         {
           "name": "table",
           "offset": 32768,
           "size": 4096,
-          "sha256": "11f4ad270441f47870b3f2202b6f65730682ee1bdc6406aaf726a7a540b8939b"
+          "sha256": "11f4ad270441f47870b3f2202b6f65730682ee1bdc6406aaf726a7a540b8939b",
+          "runtime_fingerprint_size": 3072,
+          "runtime_fingerprint_sha256": "008749f42b6edc628c8dce6719ebb9d9a1d2938205ca58c5ccbcf766e2b42f2e"
         }
       ],
       "evidence": "Exact byte fingerprint of the public vendor image; not source reproduction, C6 identity or hardware validation.",

@@ -56,7 +56,7 @@ Automated device tests cover single claiming, pending/expired exchange, hashed s
 
 ## Next hardware milestone
 
-Validate the prepared 0.1.14 7B touch-coordinate correction on the physical screen, including every edge control and Home/Settings navigation. Then test offline navigation, local mute, the speaker tone, repeated cold boots and the documented original-backup restoration before closing #12. A first Wi-Fi OTA requires the device online, a confirmed imported 0.1.13 image identity, a signed successor release that names that exact predecessor hash and the USB recovery files ready. Opus/Pipecat and physical OTA rollback remain later acceptance work; the browser voice preview remains independently usable.
+Validate the installed 0.1.16 7B touch-coordinate correction on the physical screen, including every edge control and Home/Settings navigation. The nominal signed Wi-Fi OTA from confirmed sequence 4 to sequence 7 completed on the first device. Next test offline navigation, local mute, the speaker tone, repeated cold boots and the documented original-backup restoration before closing #12. Opus/Pipecat, interrupted OTA and physical rollback remain later acceptance work; the browser voice preview remains independently usable.
 
 ## Delivery evidence
 
