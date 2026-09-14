@@ -15,6 +15,8 @@ void companion_mute();
 bool companion_active();
 bool companion_muted();
 CompanionState companion_state();
+bool companion_speaking();
+uint8_t companion_output_level();
 const char* companion_status();
 
 }  // namespace ampve
