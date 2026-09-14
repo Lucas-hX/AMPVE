@@ -1,0 +1,63 @@
+{% extends 'workspace/base.html' %}{% load static %}
+{% block subtitle %}A private window into the controls that live on this device.{% endblock %}
+{% block content %}
+<div class="visual-console" data-console
+  data-start="{% url 'device_console_start' device.pk %}"
+  data-state-template="/devices/{{ device.pk }}/console/session/{session}/"
+  data-command-template="/devices/{{ device.pk }}/console/session/{session}/commands/"
+  data-stop-template="/devices/{{ device.pk }}/console/session/{session}/stop/">
+  <section class="console-stage" aria-labelledby="console-stage-title">
+    <div class="console-stage-heading">
+      <div><p class="eyebrow">LIVE DEVICE SPACE</p><h2 id="console-stage-title">{{ device.name }}</h2></div>
+      <div class="console-signals" aria-live="polite"><span class="signal-dot" data-signal></span><span data-console-status>Session stopped</span></div>
+    </div>
+    <div class="console-frame-shell">
+      <div class="console-frame" tabindex="0" aria-label="AMPVE device screen. Use Tab to move through controls or keyboard shortcuts H, W, D, S and C.">
+        <div class="console-topbar"><span class="console-mark" aria-hidden="true"><i></i></span><strong>AMPVE</strong><span class="console-network"><i></i><span data-device-connection>{{ device.connection_state }}</span></span></div>
+        <div class="console-remote-ribbon" data-remote-ribbon>Remote console is waiting</div>
+        <div class="console-screen-page" data-page="home">
+          <div class="console-welcome"><p>MAKE YOURSELF AT HOME.</p><h3 data-device-name>{{ device.name }}</h3><span>Your device, close even when it is far away.</span></div>
+          <div class="console-tile-grid">
+            <button class="console-tile companion-tile" data-console-target="companion"><img src="{% static 'brandkit/apps/companion-icon-v1.png' %}" alt=""><span><b>Companion</b><small>A little company</small></span></button>
+            <button class="console-tile" data-console-target="wifi"><span class="tile-glyph">⌁</span><span><b>Wi-Fi</b><small>Connection</small></span></button>
+            <button class="console-tile" data-console-target="device"><span class="tile-glyph">▯</span><span><b>My device</b><small>Hardware</small></span></button>
+          </div>
+        </div>
+        <div class="console-screen-page" data-page="wifi" hidden>
+          <p class="console-kicker">CONNECTION</p><h3>Let's get connected.</h3><p>Wi-Fi setup remains local. Account and provider secrets stay on AMPVE.</p>
+          <div class="console-action-row"><button data-console-target="wifi_setup">Open local Wi-Fi setup</button><button data-console-target="pair">Pair with my account</button></div>
+        </div>
+        <div class="console-screen-page" data-page="device" hidden>
+          <p class="console-kicker">HARDWARE</p><h3>My device</h3><dl class="console-facts"><dt>Profile</dt><dd>Waveshare P4 Touch LCD 7B</dd><dt>Software</dt><dd data-firmware>{{ device.firmware_version|default:'Unknown' }}</dd><dt>Display</dt><dd>1024 × 600</dd></dl>
+          <button class="console-inline-action" data-console-target="speaker_test">Play quiet speaker test</button><p class="console-warning">Speaker output is still awaiting a successful physical result.</p>
+        </div>
+        <div class="console-screen-page" data-page="settings" hidden>
+          <p class="console-kicker">COMFORT</p><h3>Comfort comes first.</h3><p>Remote input cannot enable the microphone or remove local control.</p>
+          <div class="console-action-row"><button data-console-target="mute">Keep microphone muted</button><button data-console-target="cancel_update">Cancel firmware download</button></div>
+        </div>
+        <div class="console-screen-page companion-page" data-page="companion" hidden>
+          <img src="{% static 'brandkit/apps/companion-icon-v1.png' %}" alt="Companion face"><div><p class="console-kicker">COMPANION</p><h3>A little company.</h3><p>The visual shell is ready. Native voice still depends on the audio adapter and working speaker output.</p></div>
+        </div>
+        <nav class="console-dock" aria-label="Device screen">
+          <button data-console-target="home"><span>⌂</span>Home</button>
+          <button data-console-target="settings"><span>⚙</span>Settings</button>
+          <span class="console-local-control">Local input stays available</span>
+        </nav>
+      </div>
+      <div class="console-frame-meta"><span data-display-mode>Virtual display preview</span><span>1024 × 600 semantic view</span></div>
+    </div>
+  </section>
+  <aside class="console-panel">
+    <div class="console-panel-art" aria-hidden="true"><span></span><i></i><i></i><b></b></div>
+    <p class="eyebrow">PRIVATE CONTROL</p><h2>Reach it from here.</h2><p>AMPVE sends only named controls and bounded pointer coordinates. No video, microphone stream, terminal or unrestricted code passes through this console.</p>
+    <dl class="console-session-facts"><dt>Owner</dt><dd>{{ request.user.email }}</dd><dt>Session</dt><dd data-session-label>Not started</dd><dt>Device channel</dt><dd data-channel-label>Waiting</dd><dt>Last input</dt><dd data-last-input>None</dd></dl>
+    <button class="button full" type="button" data-start-console>Start 10-minute session</button>
+    <button class="button secondary full" type="button" data-stop-console hidden>Stop remote session</button>
+    <p class="console-help">Keyboard: H Home · W Wi-Fi · D Device · S Settings · C Companion · Escape stops the browser session.</p>
+    <p class="console-error" role="alert" data-console-error hidden></p>
+  </aside>
+</div>
+<section class="console-note"><span class="console-note-icon" aria-hidden="true">◎</span><div><h3>Physical and virtual displays share one language.</h3><p>The browser reconstructs a semantic AMPVE screen instead of recording pixels. A headless device can report the same pages and controls while a device with a screen keeps local touch available. This installed firmware may remain in preview-only mode until it receives the console-capable update.</p></div></section>
+<p><a href="{% url 'device_detail' device.pk %}">← Back to {{ device.name }}</a></p>
+<script src="{% static 'workspace/device-console.js' %}" defer></script>
+{% endblock %}

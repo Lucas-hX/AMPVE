@@ -1,6 +1,6 @@
 # Platform foundation
 
-Current device milestone: browser USB/ROM inspection and the pairing/heartbeat/settings backend are implemented. A native XiaoZhi shell and local audit/build tools now exist as a development candidate; physical installation, validation and board audio/OTA remain pending. See [the device runbook](DEVICES.md).
+Current device milestone: the first 7B completed the signed nominal Wi-Fi OTA to `0.1.16-touch-ota-dev`; the owner confirms display, corrected touch and connectivity. Speaker output, restoration and interrupted-update rollback remain pending. The owner-authenticated semantic [visual console](VISUAL_CONSOLE.md) and compiled `0.1.17-visual-console-dev` client are implemented; physical console behavior remains pending.
 Date: 2026-09-13
 Architecture: [ADR 0001](../decisions/0001-platform-architecture.md) and [ADR 0002](../decisions/0002-provider-audio-and-xiaozhi.md)
 

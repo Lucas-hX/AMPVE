@@ -1,6 +1,6 @@
 # AMPVE — MVP Implementation Brief
 
-Current device milestone: the first physical 7B completed a signed Wi-Fi OTA from 0.1.13 sequence 4 to `0.1.16-touch-ota-dev` sequence 7 and remains Online with settings acknowledgement 1/1. This proves the nominal OTA path. Touch/Home navigation, physical restoration, audio and failure/rollback tests remain pending; this is not production hardware acceptance. See [the device runbook](runbooks/DEVICES.md).
+Current device milestone: the first physical 7B completed a signed Wi-Fi OTA from 0.1.13 sequence 4 to `0.1.16-touch-ota-dev` sequence 7. The owner confirms the display, corrected touch navigation and Wi-Fi work well. Speaker output, physical restoration and failure/rollback tests remain pending; this is not production hardware acceptance. An authenticated semantic visual console and compiled `0.1.17-visual-console-dev` client are implemented; physical console validation remains pending. See [the device](runbooks/DEVICES.md) and [visual console](runbooks/VISUAL_CONSOLE.md) runbooks.
 Current delivery: see [the platform runbook](runbooks/PLATFORM.md) and [ADR 0002](decisions/0002-provider-audio-and-xiaozhi.md). OpenAI browser voice is user-validated; Gemini remains unvalidated; XiaoZhi remains the sole selected firmware foundation.
 
 Date: 2026-09-12
