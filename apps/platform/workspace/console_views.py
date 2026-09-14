@@ -25,6 +25,7 @@ INPUT_SOURCES = {'mouse', 'touch', 'keyboard'}
 ACK_RESULTS = {'applied', 'ignored', 'blocked'}
 SESSION_TTL = timedelta(minutes=10)
 COMMAND_TTL = timedelta(seconds=8)
+DEVICE_SYNC_WINDOW = timedelta(seconds=6)
 
 
 def _json(request, maximum=768):
@@ -118,7 +119,7 @@ def state(request, pk, session_id):
         defaults={'display_mode': _initial_mode(session.device)})
     payload = _state_payload(session.device, state)
     payload.update({'protocol': 1, 'active': True, 'expires_at': session.expires_at.isoformat(),
-        'device_connected': bool(session.device_seen_at and session.device_seen_at > now - timedelta(seconds=2))})
+        'device_connected': bool(session.device_seen_at and session.device_seen_at > now - DEVICE_SYNC_WINDOW)})
     return JsonResponse(payload)
 
 
@@ -155,7 +156,7 @@ def command(request, pk, session_id):
         session = _session(request.user, pk, session_id, lock=True)
         if not _is_live(session, now):
             return JsonResponse({'error': 'Console session expired.'}, status=410)
-        if not session.device_seen_at or session.device_seen_at <= now - timedelta(seconds=2):
+        if not session.device_seen_at or session.device_seen_at <= now - DEVICE_SYNC_WINDOW:
             return JsonResponse({'error': 'The device has not joined this console session.'}, status=409)
         state, _ = DeviceConsoleState.objects.get_or_create(device=session.device,
             defaults={'display_mode': _initial_mode(session.device)})
@@ -257,7 +258,7 @@ def sync(request, data, pk):
         session.device_seen_at = now
         session.save(update_fields=['device_seen_at'])
         session.commands.filter(state='pending', expires_at__lte=now).update(state='expired')
-        if previous_seen and previous_seen <= now - timedelta(seconds=2):
+        if previous_seen and previous_seen <= now - DEVICE_SYNC_WINDOW:
             # Inputs queued before a connection gap never execute after the device returns.
             session.commands.filter(state='pending').update(state='expired')
         command_row = None

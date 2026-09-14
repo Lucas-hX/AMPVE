@@ -63,6 +63,9 @@ class DeviceConsoleTests(TestCase):
         opened = self.start()
         self.assertEqual(opened['screen']['display_mode'], 'virtual')
         self.assertIsNone(self.sync().json()['command'])
+        # A full HTTPS exchange on the physical P4 was measured near 2.5 seconds.
+        DeviceConsoleSession.objects.filter(pk=self.session_id).update(
+            device_seen_at=timezone.now()-timedelta(seconds=3))
         queued = self.command(target='settings', x=900, y=560)
         self.assertEqual(queued.status_code, 202)
         command_id = queued.json()['command_id']
@@ -121,7 +124,7 @@ class DeviceConsoleTests(TestCase):
         queued = self.command(source='keyboard')
         self.assertEqual(queued.status_code, 202)
         DeviceConsoleSession.objects.filter(pk=self.session_id).update(
-            device_seen_at=timezone.now()-timedelta(seconds=3))
+            device_seen_at=timezone.now()-timedelta(seconds=7))
         response = self.sync()
         self.assertIsNone(response.json()['command'])
         self.assertEqual(DeviceConsoleCommand.objects.get(pk=queued.json()['command_id']).state, 'expired')
