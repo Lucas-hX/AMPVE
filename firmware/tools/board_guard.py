@@ -67,6 +67,8 @@ def startup_transform(original):
 
 def transform(original):
     source=startup_transform(original)
+    source=replace(source,'            AUDIO_INPUT_REFERENCE);','''            AUDIO_INPUT_REFERENCE,
+            30.0f, 2, 0.0f);  // 7B schematic: MIC1 plus ADC_MIC3 speaker reference.''')
     source=replace(source,'''            .flags = {
                 .swap_xy = 0,
                 .mirror_x = 0,
@@ -98,6 +100,10 @@ def prepare(work,pin):
         original=subprocess.check_output(['git','-C',str(work),'show',pin+':'+path]).decode()
         updated=transformer(original);target=work/path
         allowed=[original,updated]
-        if path==BOARD:allowed.extend([baseline(original),startup_transform(original)])
+        if path==BOARD:
+            prior=updated.replace('''            AUDIO_INPUT_REFERENCE,
+            30.0f, 2, 0.0f);  // 7B schematic: MIC1 plus ADC_MIC3 speaker reference.''',
+                                  '            AUDIO_INPUT_REFERENCE);')
+            allowed.extend([baseline(original),startup_transform(original),prior])
         if target.read_text() not in allowed:raise ValueError('Refusing unrelated display changes: '+path)
         if target.read_text()!=updated:target.write_text(updated)

@@ -42,5 +42,13 @@ int main() {
     calls=0;fail_at=0;ampve_codec_failed=false;
     {BoxAudioCodec codec(nullptr,16000,16000,0,0,0,0,0,0,0,0,false);assert(!ampve_codec_failed);}
     assert(live.empty() && rx_enabled==0);
+    calls=allocations=rx_enabled=last_input_channel_mask=0;fail_at=0;ampve_codec_failed=false;
+    {
+        BoxAudioCodec codec(nullptr,16000,16000,0,0,0,0,0,0,0,0,true,30.0f,2,0.0f);
+        codec.EnableInput(true);
+        assert(!ampve_codec_failed && last_input_channel_mask==((1<<0) | (1<<2)));
+        codec.EnableInput(false);
+    }
+    assert(live.empty() && rx_enabled==0);
     std::cout << normal_calls+4 << " audio failure/cleanup scenarios passed; microphone is locally gated\n";
 }

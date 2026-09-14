@@ -6,7 +6,7 @@
 #include <cstring>
 inline std::atomic<bool> ampve_codec_failed{false};
 inline bool partial_channel_failure=false;
-inline int calls=0, fail_at=0, allocations=0, rx_enabled=0;
+inline int calls=0, fail_at=0, allocations=0, rx_enabled=0, last_input_channel_mask=0;
 inline std::set<const void*> live;
 inline bool step() { return ++calls!=fail_at; }
 inline void* alloc() { if(!step())return nullptr; auto p=new int(++allocations);live.insert(p);return p; }
@@ -51,6 +51,6 @@ inline void audio_codec_delete_gpio_if(const void* p){free_resource(p);}
 inline void audio_codec_delete_data_if(const void* p){free_resource(p);}
 inline int esp_codec_dev_set_out_vol(void*,int){return step()?0:-1;}
 inline int esp_codec_dev_set_in_channel_gain(void*,int,float){return step()?0:-1;}
-inline int esp_codec_dev_open(void*,const esp_codec_dev_sample_info_t*){return step()?0:-1;}
+inline int esp_codec_dev_open(void*,const esp_codec_dev_sample_info_t* fs){if(fs->channel==4)last_input_channel_mask=fs->channel_mask;return step()?0:-1;}
 inline int esp_codec_dev_write(void*,void*,unsigned){return step()?0:-1;}
 inline int esp_codec_dev_read(void*,void* data,unsigned size){if(!step())return -1;std::memset(data,0,size);return 0;}
