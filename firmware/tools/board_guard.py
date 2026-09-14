@@ -24,7 +24,7 @@ def baseline(source):
     return replace(source,'        static BoxAudioCodec audio_codec(','        if (!ampve_codec_present) return nullptr;\n        static BoxAudioCodec audio_codec(')
 
 
-def transform(original):
+def startup_transform(original):
     source=baseline(original)
     source=replace(source,'#include "ampve/runtime.h"','#include "ampve/runtime.h"\n#include <new>')
     source=replace(source,'    i2c_master_bus_handle_t i2c_bus_;','    i2c_master_bus_handle_t i2c_bus_ = nullptr;')
@@ -65,6 +65,27 @@ def transform(original):
     return source
 
 
+def transform(original):
+    source=startup_transform(original)
+    source=replace(source,'''            .flags = {
+                .swap_xy = 0,
+                .mirror_x = 0,
+                .mirror_y = 0,
+            },''','''            .flags = {
+                .swap_xy = 0,
+#if defined(CONFIG_BOARD_TYPE_WAVESHARE_ESP32_P4_WIFI6_TOUCH_LCD_7B) && CONFIG_BOARD_TYPE_WAVESHARE_ESP32_P4_WIFI6_TOUCH_LCD_7B
+                // The 7B GT911 coordinates are reversed on both axes relative to
+                // the landscape display. Match the board-specific Waveshare BSP.
+                .mirror_x = 1,
+                .mirror_y = 1,
+#else
+                .mirror_x = 0,
+                .mirror_y = 0,
+#endif
+            },''')
+    return source
+
+
 def transform_display(source):
     a=source.index('MipiLcdDisplay::MipiLcdDisplay(');b=source.index('\nLcdDisplay::~LcdDisplay',a)
     block=replace(source[a:b],'    lvgl_port_init(&port_cfg);',
@@ -77,6 +98,6 @@ def prepare(work,pin):
         original=subprocess.check_output(['git','-C',str(work),'show',pin+':'+path]).decode()
         updated=transformer(original);target=work/path
         allowed=[original,updated]
-        if path==BOARD:allowed.append(baseline(original))
+        if path==BOARD:allowed.extend([baseline(original),startup_transform(original)])
         if target.read_text() not in allowed:raise ValueError('Refusing unrelated display changes: '+path)
         if target.read_text()!=updated:target.write_text(updated)

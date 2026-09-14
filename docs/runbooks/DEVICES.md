@@ -1,13 +1,13 @@
 # Device inspection, pairing and management
 
-Date: 2026-09-13. This delivery implements browser ROM inspection and the management server. The [native XiaoZhi shell](NATIVE_FIRMWARE.md) now implements enrollment/heartbeat as a development candidate. A verified installer, physical validation, XiaoZhi audio adapter and OTA remain pending. No physical board is reachable from this VPS. Tests use explicitly named software fixtures.
+Date: 2026-09-14. The owner reports the first physical 7B installed on the signed 0.1.13 development release. Read-only server inspection observed its authenticated Wi-Fi heartbeat, exact schema-2 compatibility tuple and settings acknowledgement 1/1. The device was offline at the latest inspection. Touch/Home navigation, physical restoration, audio and Wi-Fi OTA remain pending. The VPS has no direct USB access to the board; tests use explicitly named software fixtures.
 
 ## What works now
 
 - **My devices → Add a device:** select a local serial port with Web Serial. Browser permission is explicit; no network/USB scan runs on page load. USB VID/PID are local hints, not board identity.
 - **Inspect ESP chip:** after a separate reset notice, the locally bundled esptool-js 0.6.1 synchronizes with the ROM, reads chip identity and P4 revision, attempts a reset, then releases the port. No stub, flash write/erase, bootloader/partition change or eFuse programming is requested. Results stay in the page, not browser storage or the server. Lucas confirmed ESP32-P4 v1.3 through this inspection; flash/layout/security and exact board model still need the local audit. Failure may require BOOT/RESET or power reconnection.
 - Authenticated owners can claim an AMPVE pairing code, view their devices, rename/change desired volume/mute, inspect device-reported software/network state and revoke credentials. Administrators do not bypass owner checks on these routes.
-- Device endpoints implement expiring pairing, credential exchange and authenticated heartbeat/configuration acknowledgement. Stock XiaoZhi does not call them yet. Selecting a port does not create a production device or prove manageability.
+- Device endpoints implement expiring pairing, credential exchange and authenticated heartbeat/configuration acknowledgement. The AMPVE 0.1.13 shell called this path successfully on the first physical 7B. Selecting a port alone does not create a production device or prove manageability.
 - Online requires a heartbeat within 90 seconds. Desired settings are pending until the device explicitly acknowledges their version. Device-reported metadata is not hardware attestation. Refresh pages to see new state.
 
 ## Distinct connections
@@ -56,7 +56,7 @@ Automated device tests cover single claiming, pending/expired exchange, hashed s
 
 ## Next hardware milestone
 
-Follow [the pinned XiaoZhi integration plan](../../firmware/xiaozhi/README.md). First collect the real chip inspection result and confirm the exact 7B unit against its private backup/audit. Then implement the embedded management task, pin the toolchain/component lock, and prepare reproducible firmware plus a curated ESP Web Tools manifest with exact write regions and recovery. Only then approve and perform the first flash. Validate display/touch/audio/Wi-Fi and the full pairing/heartbeat/settings/revocation loop with the physical board. Opus/Pipecat and OTA recovery follow; the browser voice preview remains independently usable.
+Validate the prepared 0.1.14 7B touch-coordinate correction on the physical screen, including every edge control and Home/Settings navigation. Then test offline navigation, local mute, the speaker tone, repeated cold boots and the documented original-backup restoration before closing #12. A first Wi-Fi OTA requires the device online, a confirmed imported 0.1.13 image identity, a signed successor release that names that exact predecessor hash and the USB recovery files ready. Opus/Pipecat and physical OTA rollback remain later acceptance work; the browser voice preview remains independently usable.
 
 ## Delivery evidence
 

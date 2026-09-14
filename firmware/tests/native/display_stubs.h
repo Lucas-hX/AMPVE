@@ -19,6 +19,7 @@ constexpr bool DISPLAY_MIRROR_X=false,DISPLAY_MIRROR_Y=false,DISPLAY_SWAP_XY=fal
 constexpr int AUDIO_CODEC_ES8311_ADDR=48,AUDIO_CODEC_ES7210_ADDR=64;
 inline std::atomic<bool> ampve_touch_ready{false},ampve_codec_present{false};
 inline int calls=0,fail_at=0,null_at=0,later_calls=0;
+inline int touch_swap_xy=-1,touch_mirror_x=-1,touch_mirror_y=-1;
 inline bool missing_default=false;
 inline void* default_display=nullptr;
 inline bool step(){return ++calls!=fail_at;}
@@ -47,6 +48,17 @@ inline void* lvgl_port_add_disp_dsi(const lvgl_port_display_cfg_t* cfg,const lvg
 }
 inline void* lv_display_get_default(){return missing_default?nullptr:default_display;}
 inline void lv_display_set_offset(void* p,int,int){assert(p);}
+using esp_lcd_touch_handle_t=void*;
+constexpr int GPIO_NUM_NC=-1,ESP_LCD_TOUCH_IO_I2C_GT911_ADDRESS=0x5d,ESP_LCD_TOUCH_IO_I2C_GT911_ADDRESS_BACKUP=0x14;
+struct esp_lcd_touch_config_t {int x_max,y_max,rst_gpio_num,int_gpio_num;struct {int reset,interrupt;}levels;struct {int swap_xy,mirror_x,mirror_y;}flags;};
+struct esp_lcd_panel_io_i2c_config_t {int dev_addr,control_phase_bytes,dc_bit_offset,lcd_cmd_bits;struct {int disable_control_phase;}flags;int scl_speed_hz;};
+struct lvgl_port_touch_cfg_t {void* disp;void* handle;};
+inline int esp_lcd_new_panel_io_i2c(void* bus,const esp_lcd_panel_io_i2c_config_t*,void** output_handle){assert(bus);*output_handle=reinterpret_cast<void*>(uintptr_t(2));return ESP_OK;}
+inline int esp_lcd_touch_new_i2c_gt911(void*,const esp_lcd_touch_config_t* cfg,void** output_handle){
+ touch_swap_xy=cfg->flags.swap_xy;touch_mirror_x=cfg->flags.mirror_x;touch_mirror_y=cfg->flags.mirror_y;
+ *output_handle=reinterpret_cast<void*>(uintptr_t(3));return ESP_OK;
+}
+inline void* lvgl_port_add_touch(const lvgl_port_touch_cfg_t* cfg){assert(cfg->disp && cfg->handle);return reinterpret_cast<void*>(uintptr_t(4));}
 // Theme, timer and base-display construction are separate, unvalidated boundaries here.
 class LcdDisplay {
 public:

@@ -1,11 +1,11 @@
 # AMPVE — MVP Implementation Brief
 
-Current device milestone: browser USB/ROM inspection and the pairing/heartbeat/settings backend are implemented. A native XiaoZhi shell and local audit/build tools now exist as a development candidate; physical installation, validation and board audio/OTA remain pending. See [the device runbook](runbooks/DEVICES.md).
+Current device milestone: the first physical 7B runs the signed 0.1.13 development release. The server observed an authenticated Wi-Fi heartbeat and settings acknowledgement 1/1. Touch/Home navigation, physical restoration, audio and Wi-Fi OTA remain pending; this is not production hardware acceptance. A reproducible 0.1.14 touch-transform candidate is prepared but unsigned. See [the device runbook](runbooks/DEVICES.md).
 Current delivery: see [the platform runbook](runbooks/PLATFORM.md) and [ADR 0002](decisions/0002-provider-audio-and-xiaozhi.md). OpenAI browser voice is user-validated; Gemini remains unvalidated; XiaoZhi remains the sole selected firmware foundation.
 
 Date: 2026-09-12
 
-Status: Platform, browser voice and device-management server delivered; native shell candidate implemented; physical validation pending
+Status: Platform, browser voice and device-management server delivered; first 7B onboarded; remaining physical acceptance pending
 
 Audience: Developers and coding agents building AMPVE on a Debian VPS
 
