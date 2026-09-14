@@ -1,9 +1,0 @@
-AMPVE 0.1.10-improv-dev — first-install development candidate
-
-Includes the local AMPVE shell, protected Wi-Fi setup and physically authorized Improv Serial, pairing, management heartbeat/settings, bounded startup recovery, and native signed OTA candidate code.
-
-Targets Waveshare ESP32-P4-WIFI6-Touch-LCD-7B, P4 revision 1.3 with 32 MiB flash and the reviewed original partition layout. Initial installation proposes the empty ota_1 application slot plus one locally generated boot-selection sector. The stock bootloader, partition table, factory image and ota_0 are preserved during installation.
-
-Physical startup, display/touch, C6 Wi-Fi, recovery and OTA are not yet validated. The XiaoZhi audio adapter, board Companion voice and microphone capture are not delivered by this first installation. Camera is outside this milestone.
-
-This unsigned review candidate does not authorize installation. Exact stock bootloader/C6 compatibility, matching current private backups, separate storage, the generated recovery plan and owner approval of the exact writes remain required. Do not manually flash the review archive or use full-chip erase. Automatic rollback on the stock bootloader is unverified.
