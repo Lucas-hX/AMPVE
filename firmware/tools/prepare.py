@@ -104,11 +104,17 @@ def prepare(work):
         replace(cmake,'set(PROJECT_VER "0.1.10-improv-dev")',f'set(PROJECT_VER "{UPSTREAM["candidate_version"]}")')
     if 'set(PROJECT_VER "0.1.11-usb-setup-dev")' in cmake.read_text():
         replace(cmake,'set(PROJECT_VER "0.1.11-usb-setup-dev")',f'set(PROJECT_VER "{UPSTREAM["candidate_version"]}")')
+    if 'set(PROJECT_VER "0.1.13-scheduler-fix-dev")' in cmake.read_text():
+        replace(cmake,'set(PROJECT_VER "0.1.13-scheduler-fix-dev")',f'set(PROJECT_VER "{UPSTREAM["candidate_version"]}")')
     if f'set(PROJECT_VER "{UPSTREAM["candidate_version"]}")' not in cmake.read_text():
         raise RuntimeError('Prepared project version differs from the candidate version')
     component=work/'main/idf_component.yml'
     if 'espressif/libsodium:' not in component.read_text():
         replace(component,'dependencies:\n','dependencies:\n  espressif/libsodium: "==1.0.22~1"\n')
+    if '78/uart-uhci:' not in component.read_text():
+        # This transitive range has newer registry releases. Keep the reviewed
+        # transport bytes fixed when Component Manager must resolve again.
+        replace(component,'dependencies:\n','dependencies:\n  78/uart-uhci: "==0.3.2"\n')
     commissioning_kconfig=work/'main/Kconfig.projbuild'
     if 'config AMPVE_USB_COMMISSIONING' not in commissioning_kconfig.read_text():
         with commissioning_kconfig.open('a') as stream:

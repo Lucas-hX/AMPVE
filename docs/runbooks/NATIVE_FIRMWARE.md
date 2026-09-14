@@ -4,11 +4,11 @@
 
 [ADR 0005](../decisions/0005-usb-assisted-commissioning.md) supersedes the mandatory pre-install C6 check **only for an explicitly signed USB-assisted initial-install release**. The platform prepares the same exact stock-preserving write/recovery plan, then checks the installed core over USB before network provisioning. A failed C6 version query remains a diagnostic finding, not proof of incompatibility or a mandatory gate for this mode. Core confirmation, Wi-Fi initialization, actual network operation, pairing and physical recovery are separate evidence. The browser now exposes explicit original-backup restoration with fresh full-flash comparison; it is not yet physically validated. Other releases retain their existing gates.
 
-Status: native source and build tooling merged in PR #5, followed by the stock-preserving browser flow in PR #39. Hardware installation is **not approved**. See the delivery evidence at the end of this runbook for the actual build result.
+Status: the owner installed the signed 0.1.13 development release on the first physical 7B. Authenticated Wi-Fi registration and settings acknowledgement succeeded. This is limited evidence; physical touch/navigation, restoration, audio and OTA remain open.
 
 ## Stock-preserving successor
 
-The current version is recorded in `firmware/xiaozhi/upstream.json` (`0.1.10-improv-dev` at this update). It includes the [shared hardware contract](HARDWARE_PROFILES.md), checked startup/storage, native OTA client and [Improv provisioning](NATIVE_WIFI.md). Version-specific build evidence appears below and in the linked runbooks. Earlier artifact hashes are historical; they do not identify the latest candidate or approve a release.
+The current candidate version is recorded in `firmware/xiaozhi/upstream.json` (`0.1.14-touch-fix-dev` at this update). It includes the [shared hardware contract](HARDWARE_PROFILES.md), checked startup/storage, native OTA client and [Improv provisioning](NATIVE_WIFI.md). Version-specific build evidence appears below and in the linked runbooks. Earlier artifact hashes are historical; they do not identify the latest candidate or approve a release.
 
 The active build uses `7b-stock-v1.csv`; the previous stock candidate was `0.1.1-stock-dev`. See [browser installation](BROWSER_INSTALLATION.md) and [ADR 0004](../decisions/0004-stock-preserving-browser-installation.md). The original 2026-09-13 layout-migration build and hashes below are historical evidence, not the current write plan. The current installer proposes only the empty stock OTA slot plus locally generated boot selection; it never writes the generated bootloader/table/blank otadata. Lucas reports completed matching physical backups and confirms stock startup after audit; exact local candidate comparison, C6/bootloader review, separate-storage confirmation and write approval remain pending.
 
@@ -176,13 +176,17 @@ This essential display failure does not provide an on-screen recovery UI. The ex
 
 The transformation accepts the pinned original, the earlier documented integration or its exact current output; it refuses unrelated board/display modifications. The upstream source and its notices remain outside Git, with changes archived in the review bundle's integration patch. The checked-in tool records the integration rather than copying an entire board implementation.
 
+Candidate `0.1.14-touch-fix-dev` also makes the 7B GT911 coordinates match [Waveshare's maintained board example](https://github.com/waveshareteam/ESP32-P4-WIFI6-Touch-LCD-7B/blob/main/examples/esp-idf/08_lvgl_display_panel/main/main.c): `swap_xy=0`, `mirror_x=1`, `mirror_y=1`. The prior AMPVE build left both mirrors disabled, so a touch could be delivered at the opposite screen position and make Home or edge controls appear unresponsive. The change is restricted to the 7B build option; other Waveshare display variants retain their previous transform. This diagnosis is source- and host-test evidence until Lucas confirms coordinates and navigation on the physical panel.
+
 Run targeted failure injection:
 
 ```bash
 python3 firmware/tests/native/display_run.py --work "$HOME/.cache/ampve-firmware/xiaozhi-ota"
 ```
 
-The runner compiles the actual transformed I2C/LCD/DSI-power methods, board-constructor body and MIPI constructor with the 7B branch enabled. Driver APIs, base-display/theme construction and later peripheral methods are simulated. Cases cover each checked stage, successful calls returning missing handles, display allocation failure and absent default display, ensuring dependent initialization stops. This is not a test of physical drivers, resource cleanup across resets, full theme/LVGL heap exhaustion, other board branches or C6 startup. Those remain acceptance/review work under #11–#12.
+The runner compiles the actual transformed I2C/LCD/DSI-power/touch methods, board-constructor body and MIPI constructor with the 7B branch enabled. Driver APIs, base-display/theme construction and later peripheral methods are simulated. Cases cover each checked stage, successful calls returning missing handles, display allocation failure, absent default display and the exact 7B touch flags. This is not a test of physical drivers, resource cleanup across resets, full theme/LVGL heap exhaustion, other board branches or C6 startup. Those remain acceptance/review work under #11–#12.
+
+Software evidence (2026-09-14): **19 display/touch scenarios** passed under ASan/UBSan. Two independent same-host builds produced identical app, bootloader, partition table and initial OTA data. App: **2,876,272 bytes**, SHA-256 `bbff470ae03055ea36c93534468e36e979b98b121b75dcb63582351bbe639a22`, with 30% free in the smallest app partition. This candidate is unsigned, non-installable and has not changed the physical device or live release registry.
 
 
 The same candidate removes the Wi-Fi component's inherited NVS-erase fallback. All NVS initialization failures now return an error while preserving state. `WifiBoard` checks the manager's initialization result and stops before callback/connection setup on failure. The local driver-ready flag participates in startup health and the reported Wi-Fi capability; failed initialization cannot be reported as initialized or confirm the new firmware. This requires driver initialization only, not successful association, internet, clock synchronization or provider availability. C6 transport hangs, underlying allocation failure and physical reconnection still require validation.

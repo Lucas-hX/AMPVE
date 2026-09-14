@@ -20,10 +20,17 @@ def method(source,signature):
     return source[a:b]
 board=transform(original(BOARD));display=transform_display(original(DISPLAY))
 methods='\n'.join(method(board,s) for s in ['bool InitializeCodecI2c()', 'static esp_err_t bsp_enable_dsi_phy_power(void)', 'bool InitializeLCD()'])
+touch=method(board,'void InitializeTouch()')
 constructor=method(board,'WaveshareEsp32p4() :');body=constructor[constructor.index('{')+1:-1]
 source='''#include "display_stubs.h"
 #include <iostream>
 '''+method(display,'MipiLcdDisplay::MipiLcdDisplay(')+'''
+class TouchHarness {
+public:
+ void* i2c_bus_=reinterpret_cast<void*>(uintptr_t(1));
+ int i2c_device_probe(int address){return address==ESP_LCD_TOUCH_IO_I2C_GT911_ADDRESS?ESP_OK:ESP_FAIL;}
+'''+touch+'''
+};
 class BoardHarness {
 public:
  void* i2c_bus_=nullptr;LcdDisplay* display_=nullptr;
@@ -50,7 +57,10 @@ int main(){
  }
  ampve_touch_ready=false;ampve_codec_present=false;calls=later_calls=0;fail_at=null_at=0;default_display=nullptr;missing_default=true;
  {BoardHarness board;assert(calls==10 && later_calls==0);}++cases;
- std::cout << cases << " display startup scenarios passed; later initialization stopped on failure\\n";
+ ampve_touch_ready=false;touch_swap_xy=touch_mirror_x=touch_mirror_y=-1;missing_default=false;default_display=reinterpret_cast<void*>(uintptr_t(5));
+ {TouchHarness touch;touch.InitializeTouch();}
+ assert(ampve_touch_ready && touch_swap_xy==0 && touch_mirror_x==1 && touch_mirror_y==1);++cases;
+ std::cout << cases << " display/touch startup scenarios passed; 7B coordinates match the board BSP\\n";
 }
 '''
 with tempfile.TemporaryDirectory(prefix='ampve-display-') as directory:

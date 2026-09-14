@@ -88,7 +88,7 @@ On Lucas's Windows development machine, the elevated Codex sandbox may run as `c
 Never print, persist, or work around this with plaintext `GH_TOKEN`/`GITHUB_TOKEN`. Keep ordinary work in the sandbox. This Windows behavior does not establish authentication on the Debian VPS; inspect that environment separately and follow its authorization.
 
 
-Validation update (2026-09-13): Lucas reports successful OpenAI API-key setup and a real browser voice conversation. Gemini and physical hardware remain unvalidated. The revised Companion instructions discourage prompt disclosure; this is behavioral guidance, not a security guarantee. Provider keys remain outside model context and the model has no device-management tools.
+Validation update (2026-09-14): Lucas reports successful OpenAI API-key setup and a real browser voice conversation. Gemini remains unvalidated. The first 7B completed installation, authenticated Wi-Fi registration and settings acknowledgement; touch/navigation, restoration, audio and OTA remain unvalidated. The revised Companion instructions discourage prompt disclosure; this is behavioral guidance, not a security guarantee. Provider keys remain outside model context and the model has no device-management tools.
 
 
 Device-shell update (2026-09-13): Lucas reports a successful physical ROM inspection: ESP32-P4 v1.3 via USB 0x1a86:0x55d3. This validates chip inspection only. The runtime/UI/recovery design is recorded in [ADR 0003](docs/decisions/0003-device-runtime-and-recovery.md). A browser interface concept and bounded capability-report storage are implemented; native firmware now exists as a stock-preserving candidate; physical peripheral tests remain pending.
