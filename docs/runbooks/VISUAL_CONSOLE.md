@@ -44,7 +44,7 @@ AMPVE_TESTING=1 .venv/bin/python apps/platform/manage.py test workspace --noinpu
 
 The contract tests cover authentication separation, owner isolation, CSRF, session expiry/stop, heartbeat discovery, one-time dispatch, acknowledgement, replay rejection, local stop, schema bounds, invalid coordinates, revocation and oversized requests. These are software fixtures.
 
-The ESP32-P4 OTA build of `0.1.17-visual-console-dev` succeeded with IDF 6.1 and the pinned dependencies. Its app is 2,805,776 bytes, SHA-256 `ac6aedaf15622dc3770f4a3c4d8631d41b4591732e9339e0b778b98005dd1fd7`, leaving 1,323,376 bytes (32%) in either 4 MiB application slot. This proves compilation and fit only. Physical remote navigation, local interruption, 600 ms cadence, heap stability and outage recovery remain acceptance work in #84.
+The release-sequence-8 ESP32-P4 OTA build of `0.1.17-visual-console-dev` succeeded with IDF 6.1 and the pinned dependencies. Two separate workspaces produced byte-identical app, bootloader, partition-table and initial-otadata artifacts from merged source `4daaa45`. The app is 2,881,536 bytes, SHA-256 `ebe00e7fd5327efa57b797b4d921d17e8a8a253e214c7e60c06fdef383075cc6`, leaving 1,312,768 bytes (30%) in either 4 MiB application slot. Both configurations disable USB commissioning. This proves compilation, reproduction and fit only. Physical remote navigation, local interruption, 600 ms cadence, heap stability and outage recovery remain acceptance work in #84.
 
 ## Next acceptance pass
 
