@@ -73,7 +73,10 @@ void BoxAudioCodec::Release() {
             .sample_rate = (uint32_t)input_sample_rate_,
             .mclk_multiple = 0,
         };
-        if (input_reference_) fs.channel_mask |= ESP_CODEC_DEV_MAKE_CHANNEL_MASK(1);
+        if (input_reference_) {
+            const int reference_channel = reference_gain_channel_ >= 0 ? reference_gain_channel_ : 1;
+            fs.channel_mask |= ESP_CODEC_DEV_MAKE_CHANNEL_MASK(reference_channel);
+        }
         AMPVE_AUDIO_CHECK(i2s_channel_enable(rx_handle_));
         AMPVE_AUDIO_CHECK(esp_codec_dev_open(input_dev_, &fs));
         AMPVE_AUDIO_CHECK(esp_codec_dev_set_in_channel_gain(
@@ -122,7 +125,11 @@ def prepare(work, pin):
         current = target.read_text()
         legacy = (path == SOURCE and hashlib.sha256(current.encode()).hexdigest() ==
                   'bb80f2db14705187e08fce97242a553febf03f7cf6a9b5822353471f9f5f3219')
-        if current not in [original, previous, updated] and not legacy:
+        prior_reference = updated.replace('''        if (input_reference_) {
+            const int reference_channel = reference_gain_channel_ >= 0 ? reference_gain_channel_ : 1;
+            fs.channel_mask |= ESP_CODEC_DEV_MAKE_CHANNEL_MASK(reference_channel);
+        }''', '        if (input_reference_) fs.channel_mask |= ESP_CODEC_DEV_MAKE_CHANNEL_MASK(1);')
+        if current not in [original, previous, updated, prior_reference] and not legacy:
             raise ValueError('Refusing to overwrite unrelated audio changes: ' + path)
         if current != updated:
             target.write_text(updated)

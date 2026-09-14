@@ -33,7 +33,25 @@ class BrowserPCMSerializer(FrameSerializer):
 
 class DevicePCMSerializer(BrowserPCMSerializer):
     """Fixed 20 ms, 24 kHz mono PCM contract for the first native Companion."""
+    def __init__(self):
+        super().__init__()
+        self.last_barge_in = 0.0
+
     async def deserialize(self, data):
+        if isinstance(data, str):
+            if len(data) > 64:
+                raise ValueError('Invalid device control frame')
+            try:
+                control = json.loads(data)
+            except json.JSONDecodeError as exc:
+                raise ValueError('Invalid device control frame') from exc
+            if control != {'type': 'barge_in'}:
+                raise ValueError('Invalid device control frame')
+            now = time.monotonic()
+            if now - self.last_barge_in < 0.25:
+                raise ValueError('Device control rate exceeded')
+            self.last_barge_in = now
+            return InterruptionFrame()
         if not isinstance(data, bytes) or len(data) != 960:
             raise ValueError('Invalid device audio frame')
         return await super().deserialize(data)

@@ -99,6 +99,8 @@ class GatewayTests(unittest.TestCase):
             ws.send_json({'ticket': 'fixture'})
             self.assertEqual(ws.receive_json()['type'], 'connecting')
             self.assertEqual(ws.receive_json()['type'], 'ready')
+            ws.send_text('{"type":"barge_in"}')
+            self.assertEqual(ws.receive_json()['type'], 'clear')
             samples = b'\x02\x00' * 480
             ws.send_bytes(samples)
             self.assertEqual(ws.receive_bytes(), samples)
@@ -168,6 +170,16 @@ class SerializerTests(unittest.IsolatedAsyncioTestCase):
         for invalid in [b'', b'\x00' * 958, b'\x00' * 962, 'control']:
             with self.assertRaises(ValueError):
                 await serializer.deserialize(invalid)
+
+    async def test_device_serializer_accepts_bounded_barge_in(self):
+        serializer = DevicePCMSerializer()
+        self.assertIsInstance(await serializer.deserialize('{"type":"barge_in"}'), InterruptionFrame)
+        with self.assertRaisesRegex(ValueError, 'rate exceeded'):
+            await serializer.deserialize('{"type":"barge_in"}')
+        for invalid in ['{}', '{"type":"clear"}', 'x' * 65, '{']:
+            fresh = DevicePCMSerializer()
+            with self.assertRaisesRegex(ValueError, 'Invalid device control frame'):
+                await fresh.deserialize(invalid)
 
     async def test_provider_constructors_and_sanitized_errors(self):
         for provider in ['openai','gemini']:
