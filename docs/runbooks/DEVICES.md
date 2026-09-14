@@ -1,6 +1,6 @@
 # Device inspection, pairing and management
 
-Date: 2026-09-14. The first physical 7B completed a signed Wi-Fi OTA from 0.1.13 to `0.1.16-touch-ota-dev`. The owner confirms its display, corrected touch navigation and Wi-Fi work well. The speaker test still fails; physical restoration and interrupted-update rollback remain pending. The VPS has no direct USB access to the board; tests use explicitly named software fixtures. See [the authenticated visual console](VISUAL_CONSOLE.md) for the next device-control milestone.
+Date: 2026-09-14. The first physical 7B completed signed Wi-Fi OTAs from 0.1.13 through `0.1.17-visual-console-dev` sequence 8. The owner confirms its preceding display, corrected touch navigation and Wi-Fi behavior. A live authenticated console session on sequence 8 reported physical mode and acknowledged mouse, touch and keyboard navigation. The speaker test still fails; local console-stop observation, physical restoration and interrupted-update rollback remain pending. The VPS has no direct USB access to the board. See [the authenticated visual console](VISUAL_CONSOLE.md).
 
 ## What works now
 
@@ -88,4 +88,4 @@ Delivery checks: 42 Django tests passed; public browser checks covered five conc
 
 ## Persistent deployment backend
 
-See [FIRMWARE_DEPLOYMENTS.md](FIRMWARE_DEPLOYMENTS.md) for owner requests, release import, authenticated device reports, cancellation, expiry and restart reconciliation. This backend does not establish physical OTA support; the native client and board recovery tests remain pending.
+See [FIRMWARE_DEPLOYMENTS.md](FIRMWARE_DEPLOYMENTS.md) for owner requests, release import, authenticated device reports, cancellation, expiry and restart reconciliation. The first 7B has completed the nominal signed OTA path through sequence 8. Interrupted transfer, failed boot, automatic rollback and original USB restoration remain separate physical acceptance work.

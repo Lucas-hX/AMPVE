@@ -1,6 +1,6 @@
 # Platform foundation
 
-Current device milestone: the first 7B completed the signed nominal Wi-Fi OTA to `0.1.16-touch-ota-dev`; the owner confirms display, corrected touch and connectivity. Speaker output, restoration and interrupted-update rollback remain pending. The owner-authenticated semantic [visual console](VISUAL_CONSOLE.md) and compiled `0.1.17-visual-console-dev` client are implemented; physical console behavior remains pending.
+Current device milestone: the first 7B completed signed nominal Wi-Fi OTAs through `0.1.17-visual-console-dev` sequence 8. The owner confirms display, corrected touch and connectivity on sequence 7; the owner-authenticated semantic [visual console](VISUAL_CONSOLE.md) then completed a live physical-mode session with four distinct device acknowledgements. Speaker output, local console-stop observation, restoration and interrupted-update rollback remain pending.
 Date: 2026-09-13
 Architecture: [ADR 0001](../decisions/0001-platform-architecture.md) and [ADR 0002](../decisions/0002-provider-audio-and-xiaozhi.md)
 
@@ -8,7 +8,7 @@ Architecture: [ADR 0001](../decisions/0001-platform-architecture.md) and [ADR 00
 
 Implemented: English public landing, private workspace, email/password sign-in, POST logout, CSRF protection, secure database-backed sessions, own-name profile editing, password changes, Django administration, persisted Companion preview catalog, truthful empty device/setup pages, encrypted user-owned provider connections, and an experimental FastAPI/Pipecat browser voice preview. No public registration. Lucas is a normal user; administration is a separate account.
 
-Current browser/native delivery: the stock-preserving native candidate, local browser audit/backups and a gated USB writer are implemented; see [BROWSER_INSTALLATION.md](BROWSER_INSTALLATION.md). No physical installation or approved firmware release exists yet. The persistent owner-authorized OTA backend is implemented; see [FIRMWARE_DEPLOYMENTS.md](FIRMWARE_DEPLOYMENTS.md). Not implemented/validated: the XiaoZhi audio adapter, Companion activation on hardware, physical OTA, or camera. The native OTA client is a compiled development candidate; see [NATIVE_OTA.md](NATIVE_OTA.md). The pairing/management server is implemented; physical enrollment is unvalidated. Lucas reports successful OpenAI key setup and browser voice; Gemini remains unvalidated. No fake production devices or successful integrations are created.
+Current browser/native delivery: the stock-preserving browser installer, original-backup recovery UI, signed release pipeline, persistent deployment backend and native OTA client are implemented. The first 7B is physically enrolled and has completed the nominal signed OTA path twice, most recently to sequence 8. The authenticated visual console is deployed and its outbound device channel has acknowledged bounded live input. Not implemented or validated: the XiaoZhi audio adapter, Companion activation on hardware, working speaker output, camera, physical original restoration, interrupted OTA or automatic rollback. Lucas reports successful OpenAI key setup and browser voice; Gemini remains unvalidated. See [BROWSER_INSTALLATION.md](BROWSER_INSTALLATION.md), [FIRMWARE_DEPLOYMENTS.md](FIRMWARE_DEPLOYMENTS.md), [NATIVE_OTA.md](NATIVE_OTA.md) and [VISUAL_CONSOLE.md](VISUAL_CONSOLE.md).
 
 ## Runtime
 
