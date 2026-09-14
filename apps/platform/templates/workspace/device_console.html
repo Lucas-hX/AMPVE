@@ -64,7 +64,7 @@
     <p class="console-error" role="alert" data-console-error hidden></p>
   </aside>
 </div>
-<section class="console-note"><span class="console-note-icon" aria-hidden="true">{% include 'workspace/icon.html' with name='console' %}</span><div><h3>Physical and virtual displays share one language.</h3><p>The browser reconstructs a semantic AMPVE screen instead of recording pixels. A headless device can report the same pages and controls while a device with a screen keeps local touch available. This installed firmware may remain in preview-only mode until it receives the console-capable update.</p></div></section>
+<section class="console-note"><span class="console-note-icon" aria-hidden="true">{% include 'workspace/icon.html' with name='console' %}</span><div><h3>Physical and virtual displays share one language.</h3><p>The browser reconstructs a semantic AMPVE screen instead of recording pixels. A headless device can report the same pages and controls while a device with a screen keeps local touch available.</p></div></section>
 <p><a href="{% url 'device_detail' device.pk %}">← Back to {{ device.name }}</a></p>
 <script src="{% static 'workspace/device-console.js' %}" defer></script>
 {% endblock %}
