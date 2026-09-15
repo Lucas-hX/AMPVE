@@ -113,38 +113,57 @@ class DeploymentTests(TestCase):
 
     def test_update_page_shows_verified_release_details(self):
         response=self.client.get(reverse('device_updates',args=[self.device.pk]))
-        self.assertContains(response,'Queue firmware update')
+        self.assertContains(response,'Start Wi-Fi update')
         self.assertContains(response,'128.0\u00a0KB')
         self.assertContains(response,self.target.pk)
         self.assertContains(response,self.target.policy['app']['sha256'])
         self.assertContains(response,'Software fixture only')
         self.assertContains(response,self.target.policy['expires_at'])
 
+    def test_device_detail_offers_matching_update_then_progress(self):
+        url=reverse('device_detail',args=[self.device.pk])
+        response=self.client.get(url)
+        self.assertContains(response,'Firmware update available: fixture-2')
+        job=self.queue()
+        response=self.client.get(url)
+        self.assertContains(response,'Firmware update in progress')
+        self.assertNotContains(response,'Firmware update available: fixture-2')
+
+    def test_authenticated_ota_poll_is_distinct_from_heartbeat(self):
+        state=DeviceFirmware.objects.get(device=self.device)
+        self.assertIsNone(state.last_poll_at)
+        self.assertEqual(self.api('updates/poll/',self.running()).status_code,200)
+        state.refresh_from_db();checked=state.last_poll_at
+        self.assertIsNotNone(checked)
+        wrong={**self.running(),'app_sha256':self.target.policy['app']['sha256']}
+        self.assertEqual(self.api('updates/poll/',wrong).status_code,409)
+        state.refresh_from_db();self.assertEqual(state.last_poll_at,checked)
+
     def test_update_page_distinguishes_missing_identity_and_incompatible_reports(self):
         DeviceFirmware.objects.filter(device=self.device).delete()
         url=reverse('device_updates',args=[self.device.pk])
         response=self.client.get(url)
         self.assertContains(response,'version name alone cannot enable updates')
-        self.assertNotContains(response,'Queue firmware update')
+        self.assertNotContains(response,'Start Wi-Fi update')
         self.device.transport='serial';self.device.save(update_fields=['transport'])
         response=self.client.get(url)
         self.assertContains(response,'does not match this update profile')
-        self.assertNotContains(response,'Queue firmware update')
+        self.assertNotContains(response,'Start Wi-Fi update')
 
     def test_update_page_distinguishes_revocation_and_unavailable_upgrade(self):
         url=reverse('device_updates',args=[self.device.pk])
         self.target.revoked_at=timezone.now();self.target.save(update_fields=['revoked_at'])
         response=self.client.get(url)
         self.assertContains(response,'No newer verified release is eligible')
-        self.assertNotContains(response,'Queue firmware update')
+        self.assertNotContains(response,'Start Wi-Fi update')
         self.device.revoked_at=timezone.now();self.device.save(update_fields=['revoked_at'])
         response=self.client.get(url)
         self.assertContains(response,'This device has been revoked')
-        self.assertNotContains(response,'Queue firmware update')
+        self.assertNotContains(response,'Start Wi-Fi update')
         self.device.revoked_at=None;self.device.credential_hash='';self.device.save(update_fields=['revoked_at','credential_hash'])
         response=self.client.get(url)
         self.assertContains(response,'no active pairing credential')
-        self.assertNotContains(response,'Queue firmware update')
+        self.assertNotContains(response,'Start Wi-Fi update')
 
     def test_update_history_does_not_turn_pending_or_failed_states_into_success(self):
         # Rendering fixtures only. Device/API state-transition tests below remain authoritative.
@@ -162,7 +181,7 @@ class DeploymentTests(TestCase):
             response=self.client.get(url)
             self.assertContains(response,message)
             if state!='confirmed':self.assertNotContains(response,'expected image and a confirmed startup')
-            if state in FirmwareDeployment.ACTIVE:self.assertNotContains(response,'Queue firmware update')
+            if state in FirmwareDeployment.ACTIVE:self.assertNotContains(response,'Start Wi-Fi update')
             if state=='failed':self.assertContains(response,'The network connection was interrupted.')
 
     def test_owner_can_download_exact_previous_image_only_for_attention_job(self):
@@ -206,6 +225,22 @@ class DeploymentTests(TestCase):
         self.assertEqual(client.post(reverse('device_updates',args=[self.device.pk]),{}).status_code,403)
         self.assertEqual(client.post(reverse('device_update_cancel',args=[self.device.pk,job.pk]),{}).status_code,403)
         self.assertEqual(client.get(reverse('device_update_cancel',args=[self.device.pk,job.pk])).status_code,405)
+
+    def test_progress_log_uses_ordered_device_events_and_owner_isolation(self):
+        job=self.queue()
+        self.assertEqual(self.report(job,'downloading')[0].status_code,200)
+        url=reverse('device_update_progress',args=[self.device.pk,job.pk])
+        response=self.client.get(url)
+        self.assertEqual(response.status_code,200)
+        data=response.json()
+        self.assertEqual(data['state'],'downloading')
+        self.assertEqual([event['sequence'] for event in data['events']],[0,1])
+        self.assertEqual([event['state'] for event in data['events']],['queued','downloading'])
+        self.assertEqual(data['events'][1]['app_sha256'],self.initial.policy['app']['sha256'])
+        for user in [self.other,self.admin]:
+            client=Client();client.force_login(user)
+            self.assertEqual(client.get(url).status_code,404)
+        self.assertEqual(Client().get(url).status_code,302)
 
     def test_cookie_wrong_credential_and_cross_device_cannot_poll_report_or_download(self):
         job=self.queue()

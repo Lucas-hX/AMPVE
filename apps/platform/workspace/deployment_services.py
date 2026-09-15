@@ -158,6 +158,8 @@ def poll_update(device, app_hash):
     resumed_target=job and job.state=='rebooting' and app_hash==job.release.policy['app']['sha256']
     if not current or current.app_sha256 != app_hash and not resumed_target:
         raise DeploymentError('Confirm the running image before polling for an update.')
+    current.last_poll_at=timezone.now()
+    current.save(update_fields=['last_poll_at'])
     if not job:
         return {'deployment':None}
     expire_queued(job)

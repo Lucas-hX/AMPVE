@@ -1,5 +1,6 @@
 import json
 import re
+from datetime import timedelta
 from functools import wraps
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
@@ -12,7 +13,8 @@ from django.views.decorators.cache import never_cache
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.debug import sensitive_post_parameters, sensitive_variables
 from django.views.decorators.http import require_POST
-from .models import Device, DeviceEnrollment
+from .models import Device, DeviceEnrollment, DeviceFirmware, FirmwareDeployment
+from .deployment_services import eligible_releases
 from .forms import ClaimDeviceForm, DeviceSettingsForm
 from .device_services import PROFILE, HARDWARE_NAME, allowed, begin_enrollment, claim, exchange, digest
 from .security import client_ip
@@ -68,7 +70,14 @@ def detail(request, pk):
                 device.save()
                 messages.success(request, 'Settings saved. They take effect only after device acknowledgement.')
                 return redirect('device_detail', pk=pk)
+    update_pending=device.firmware_deployments.filter(state__in=FirmwareDeployment.ACTIVE).exists()
+    update_offer=next(iter(eligible_releases(device)),None) if not update_pending else None
+    firmware_state=DeviceFirmware.objects.filter(device=device).first()
+    ota_last_poll=firmware_state.last_poll_at if firmware_state else None
     return render(request, 'workspace/device_detail.html', context(title=device.name, device=device, form=form,
+        update_offer=update_offer,update_pending=update_pending,
+        ota_last_poll=ota_last_poll,
+        ota_recent=bool(ota_last_poll and ota_last_poll>=timezone.now()-timedelta(seconds=90)),
         capabilities=display_report(device.hardware_report),
         compatibility_reasons=[REASON_LABELS[key] for key in runtime_reasons(device)]))
 
