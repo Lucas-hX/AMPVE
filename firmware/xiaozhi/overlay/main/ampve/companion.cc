@@ -3,14 +3,18 @@
 #include "ampve/companion_audio_gate.h"
 #include "ampve/runtime.h"
 #include "audio_codec.h"
+#if CONFIG_USE_DEVICE_AEC
 #include "audio/engines/afe_audio_engine.h"
+#endif
 #include "board.h"
 #include "network_interface.h"
 #include "web_socket.h"
 #include "cJSON.h"
+#if CONFIG_USE_DEVICE_AEC
 #include "esp_ae_rate_cvt.h"
 #include "esp_audio_types.h"
 #include "esp_log.h"
+#endif
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
@@ -50,23 +54,27 @@ std::unique_ptr<WebSocket> socket;
 std::mutex socket_mutex;
 QueueHandle_t playback_queue = nullptr;
 
+#if CONFIG_USE_DEVICE_AEC
 std::unique_ptr<AfeAudioEngine> audio_processor;
 esp_ae_rate_cvt_handle_t input_rate_converter = nullptr;
 esp_ae_rate_cvt_handle_t output_rate_converter = nullptr;
 std::mutex input_converter_mutex, output_converter_mutex;
 std::vector<int16_t> uplink_buffer;
+#endif
 
 CompanionAudioGate uplink_gate;
 std::deque<std::vector<int16_t>> pre_roll;
 std::deque<UplinkFrame> pending_uplink;
 std::mutex uplink_mutex;
 
+#if CONFIG_USE_DEVICE_AEC
 std::deque<int64_t> capture_times;
 std::mutex latency_mutex;
 uint64_t latency_total_us = 0;
 uint32_t latency_samples = 0;
 int64_t latency_max_us = 0;
 bool latency_reported = false;
+#endif
 
 void fail() {
     output_level = 0; last_output_at = 0;
@@ -95,6 +103,7 @@ bool send_control(const char* data) {
     return socket && socket->IsConnected() && socket->Send(data);
 }
 
+#if CONFIG_USE_DEVICE_AEC
 void record_processed_latency() {
     const int64_t now = esp_timer_get_time();
     std::lock_guard<std::mutex> lock(latency_mutex);
@@ -131,6 +140,7 @@ bool convert_rate(esp_ae_rate_cvt_handle_t converter, const std::vector<int16_t>
     output.resize(actual_output * channels);
     return true;
 }
+#endif
 
 void processed_uplink_frame(std::vector<int16_t>&& frame) {
     if (frame.size() != kPcmFrameSamples || muted.load() || stop_requested.load() ||
@@ -178,6 +188,7 @@ void drain_pending_uplink() {
     }
 }
 
+#if CONFIG_USE_DEVICE_AEC
 void processed_audio_16k(std::vector<int16_t>&& data) {
     record_processed_latency();
     std::vector<int16_t> converted;
@@ -284,6 +295,12 @@ void stop_audio_processor() {
     local_speech = false;
     if (audio_processor) audio_processor->EnableVoiceProcessing(false);
 }
+#else
+bool initialize_audio_processor(AudioCodec*) { return false; }
+void reset_audio_processor_session() {}
+bool feed_audio_processor(std::vector<int16_t>&&) { return false; }
+void stop_audio_processor() { local_speech = false; }
+#endif
 
 void receive(const char* data, size_t length, bool binary) {
     if (binary) {
