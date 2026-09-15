@@ -27,6 +27,7 @@ urlpatterns = [
     path('devices/<uuid:pk>/console/session/<uuid:session_id>/stop/', console_views.stop, name='device_console_stop'),
     path('devices/<uuid:pk>/revoke/', device_views.revoke, name='device_revoke'),
     path('devices/<uuid:pk>/updates/', deployment_views.updates, name='device_updates'),
+    path('devices/<uuid:pk>/updates/<uuid:job_id>/recovery.bin', deployment_views.recovery_artifact, name='device_update_recovery_artifact'),
     path('devices/<uuid:pk>/updates/<uuid:job_id>/cancel/', deployment_views.cancel, name='device_update_cancel'),
     path('api/devices/v1/<uuid:pk>/firmware/identity/', deployment_views.identity),
     path('api/devices/v1/<uuid:pk>/updates/poll/', deployment_views.poll),
