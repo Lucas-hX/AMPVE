@@ -137,6 +137,8 @@ class CoreCapabilityTests(TestCase):
         self.assertEqual(self.device_post('diagnostics/events/',payload).status_code,200)
         self.assertEqual(self.device_post('diagnostics/events/',payload).status_code,200)
         self.assertEqual(DeviceDiagnosticEvent.objects.filter(device=self.device).count(),1)
+        capture=self.event(2);capture['kind']='operation';capture['operation']='companion_capture'
+        self.assertEqual(self.device_post('diagnostics/events/',{'protocol':1,'events':[capture]}).status_code,200)
         changed=self.event();changed['operation']='companion_start'
         self.assertEqual(self.device_post('diagnostics/events/',{'protocol':1,'events':[changed]}).status_code,409)
         raw=self.event(1);raw['uart_text']='password=fixture'
@@ -146,7 +148,7 @@ class CoreCapabilityTests(TestCase):
         self.assertContains(self.client.get(url),'abcdef0123456789')
         self.client.force_login(self.other);self.assertEqual(self.client.get(url).status_code,404)
         self.client.force_login(self.admin);self.assertEqual(self.client.get(url).status_code,404)
-        for sequence in range(1,135):
+        for sequence in [1,*range(3,135)]:
             DeviceDiagnosticEvent.objects.create(device=self.device,**self.event(sequence))
         self.assertEqual(self.device_post('diagnostics/events/',{'protocol':1,'events':[self.event(200)]}).status_code,200)
         self.assertLessEqual(DeviceDiagnosticEvent.objects.filter(device=self.device).count(),128)

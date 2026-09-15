@@ -31,7 +31,7 @@ nvs_handle_t store = 0;
 const char* operation_name(CoreOperation operation) {
     switch (operation) {
     case CoreOperation::CompanionStart: return "companion_start";
-    case CoreOperation::CompanionSpeech: return "companion_speech";
+    case CoreOperation::CompanionCapture: return "companion_capture";
     case CoreOperation::CompanionStop: return "companion_stop";
     case CoreOperation::AppDownload: return "app_download";
     case CoreOperation::AppActivate: return "app_activate";

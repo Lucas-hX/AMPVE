@@ -7,7 +7,7 @@ from .device_services import allowed
 from .models import DeviceDiagnosticEvent
 
 KINDS = {'boot', 'operation', 'error', 'snapshot', 'app'}
-OPERATIONS = {'idle', 'companion_start', 'companion_speech', 'companion_stop',
+OPERATIONS = {'idle', 'companion_start', 'companion_capture', 'companion_stop',
               'app_download', 'app_activate', 'app_rollback', 'core_ota'}
 ERRORS = {'', 'ssl_stack_fault', 'audio_queue', 'audio_io', 'network', 'package_rejected',
           'package_interrupted', 'package_revoked', 'ota_journal', 'storage', 'unknown'}

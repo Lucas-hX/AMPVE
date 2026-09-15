@@ -5,7 +5,7 @@ struct cJSON;
 
 namespace ampve {
 enum class CoreOperation : unsigned char {
-    Idle, CompanionStart, CompanionSpeech, CompanionStop, AppDownload,
+    Idle, CompanionStart, CompanionCapture, CompanionStop, AppDownload,
     AppActivate, AppRollback, CoreOta
 };
 void diagnostic_boot(const std::string& core_version);

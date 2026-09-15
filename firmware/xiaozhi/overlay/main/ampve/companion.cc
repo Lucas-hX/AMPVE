@@ -54,6 +54,7 @@ std::atomic<bool> response_playback_active{false}, local_speech{false};
 std::atomic<uint8_t> output_level{0};
 std::atomic<uint32_t> received_frames{0};
 std::atomic<bool> failure_reported{false};
+std::atomic<bool> capture_reported{false};
 std::unique_ptr<WebSocket> socket;
 std::mutex socket_mutex;
 QueueHandle_t playback_queue = nullptr;
@@ -388,6 +389,10 @@ void audio_task(void*) {
         if (should_capture != input_open) {
             codec->EnableInput(should_capture);
             input_open = should_capture && codec->input_enabled() && !ampve_codec_failed;
+            if (input_open && !capture_reported.exchange(true)) {
+                diagnostic_operation(CoreOperation::CompanionCapture);
+                diagnostic_event("operation", "");
+            }
         }
         PlaybackFrame output{};
         bool played_output = false;
@@ -455,7 +460,7 @@ bool companion_start(const std::string& url, const std::string& ticket, int volu
              static_cast<unsigned>(sizeof(PlaybackFrame)),
              static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_8BIT)));
     xQueueReset(playback_queue); stop_requested = false; muted = start_muted;
-    failure_reported = false; received_frames = 0;
+    failure_reported = false; capture_reported = false; received_frames = 0;
     diagnostic_operation(CoreOperation::CompanionStart);
     response_playback_active = false; output_level = 0; last_output_at = 0;
     {
