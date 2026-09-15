@@ -152,6 +152,28 @@ def updates(request,pk):
 
 @never_cache
 @login_required
+def recovery_artifact(request,pk,job_id):
+    """Return the signed previous app only for an owner-visible failed OTA."""
+    job=get_object_or_404(FirmwareDeployment.objects.select_related('device','previous_release'),
+        pk=job_id,device_id=pk,device__owner=request.user,needs_attention=True)
+    try:
+        policy,_,_,_=service.verified_release(job.previous_release)
+        if policy['app']['sha256']!=job.previous_app_sha256:
+            raise service.DeploymentError('The recovery image does not match the recorded previous application.')
+        app=read_bounded(Path(job.previous_release.directory)/'xiaozhi.bin',policy['app']['size'])
+        if len(app)!=policy['app']['size'] or sha256(app)!=job.previous_app_sha256:
+            raise service.DeploymentError('The signed recovery artifact changed.')
+    except service.DeploymentError:
+        raise Http404() from None
+    response=FileResponse(BytesIO(app),content_type='application/octet-stream',as_attachment=True,
+        filename='ampve-recovery-'+policy['firmware_version']+'.bin')
+    response['X-Content-Type-Options']='nosniff'
+    response['X-AMPVE-App-SHA256']=job.previous_app_sha256
+    return response
+
+
+@never_cache
+@login_required
 @require_POST
 def cancel(request,pk,job_id):
     get_object_or_404(Device,pk=pk,owner=request.user)

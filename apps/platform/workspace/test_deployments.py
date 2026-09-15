@@ -165,6 +165,27 @@ class DeploymentTests(TestCase):
             if state in FirmwareDeployment.ACTIVE:self.assertNotContains(response,'Queue firmware update')
             if state=='failed':self.assertContains(response,'The network connection was interrupted.')
 
+    def test_owner_can_download_exact_previous_image_only_for_attention_job(self):
+        job=self.rebooting();job.needs_attention=True;job.save(update_fields=['needs_attention'])
+        url=reverse('device_update_recovery_artifact',args=[self.device.pk,job.pk])
+        response=self.client.get(url)
+        self.assertEqual(response.status_code,200)
+        self.assertEqual(b''.join(response.streaming_content),Path(self.initial.directory,'xiaozhi.bin').read_bytes())
+        self.assertEqual(response['X-AMPVE-App-SHA256'],self.initial.policy['app']['sha256'])
+        other=Client();other.force_login(self.other)
+        self.assertEqual(other.get(url).status_code,404)
+        job.needs_attention=False;job.save(update_fields=['needs_attention'])
+        self.assertEqual(self.client.get(url).status_code,404)
+
+    def test_recovery_download_fails_closed_for_changed_or_withdrawn_previous_release(self):
+        job=self.rebooting();job.needs_attention=True;job.save(update_fields=['needs_attention'])
+        url=reverse('device_update_recovery_artifact',args=[self.device.pk,job.pk])
+        Path(self.initial.directory,'xiaozhi.bin').write_bytes(b'changed')
+        self.assertEqual(self.client.get(url).status_code,404)
+        Path(self.initial.directory,'xiaozhi.bin').write_bytes(('firmware-fixture-1').encode().ljust(131072,b'!'))
+        self.initial.revoked_at=timezone.now();self.initial.save(update_fields=['revoked_at'])
+        self.assertEqual(self.client.get(url).status_code,404)
+
     def test_queue_is_idempotent_offline_and_rejects_conflicts(self):
         key=uuid.uuid4();job=self.queue(key)
         self.assertEqual(self.queue(key).pk,job.pk)
