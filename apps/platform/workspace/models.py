@@ -233,6 +233,7 @@ class DeviceFirmware(models.Model):
     app_sha256 = models.CharField(max_length=64)
     confirmed_sequence = models.PositiveIntegerField()
     confirmed_at = models.DateTimeField()
+    last_poll_at = models.DateTimeField(null=True, editable=False)
 
 
 class FirmwareDeployment(models.Model):

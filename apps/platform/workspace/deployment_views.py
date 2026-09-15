@@ -1,19 +1,22 @@
 import uuid
+from datetime import timedelta
 from functools import wraps
 from io import BytesIO
 from pathlib import Path
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.db import transaction
+from django.db.models import Prefetch
 from django.http import FileResponse, JsonResponse, Http404
 from django.shortcuts import get_object_or_404, redirect, render
+from django.utils import timezone
 from django.utils.crypto import constant_time_compare
 from django.views.decorators.cache import never_cache
-from django.views.decorators.http import require_POST
+from django.views.decorators.http import require_GET, require_POST
 from . import deployment_services as service
 from .device_services import digest as credential_digest, allowed
 from .device_views import bearer, device_api, context
-from .models import Device, DeviceFirmware, FirmwareRelease, FirmwareDeployment
+from .models import Device, DeviceFirmware, FirmwareRelease, FirmwareDeployment, FirmwareDeploymentEvent
 from .release_contract import digest, read_bounded, sha256
 
 
@@ -126,6 +129,8 @@ def updates(request,pk):
                 messages.success(request,'Update request recorded. Completion requires a confirmed report from the device.')
             return redirect('device_updates',pk=pk)
     confirmed=DeviceFirmware.objects.filter(device=device).select_related('release').first()
+    ota_recent=bool(confirmed and confirmed.last_poll_at and
+        confirmed.last_poll_at>=timezone.now()-timedelta(seconds=90))
     pending=device.firmware_deployments.filter(state__in=FirmwareDeployment.ACTIVE).exists()
     releases=service.eligible_releases(device)
     if device.revoked_at:
@@ -142,13 +147,41 @@ def updates(request,pk):
         availability='No newer verified release is eligible for this confirmed image. Releases can expire, be withdrawn or require a different starting version.'
     else:
         availability='Choose a verified release and review its size and recovery requirements before queuing the update.'
-    deployments=list(device.firmware_deployments.select_related('release').all()[:20])
+    deployments=list(device.firmware_deployments.select_related('release').prefetch_related(
+        Prefetch('events',queryset=FirmwareDeploymentEvent.objects.order_by('sequence'))).all()[:20])
     for job in deployments:
         job.failure_message=UPDATE_ERRORS.get(job.error_code,'The device reported an update error. Inspect it locally.') if job.error_code else ''
     return render(request,'workspace/device_updates.html',context(title='Firmware updates',device=device,
         releases=releases,request_key=uuid.uuid4(),availability=availability,
-        pending=pending,confirmed=confirmed,
+        pending=pending,confirmed=confirmed,ota_recent=ota_recent,
+        active_states=FirmwareDeployment.ACTIVE,
         deployments=deployments))
+
+
+@never_cache
+@login_required
+@require_GET
+def progress(request,pk,job_id):
+    """Bounded owner-visible OTA timeline; only device reports and public digests."""
+    job=get_object_or_404(FirmwareDeployment.objects.select_related('release','device'),
+        pk=job_id,device_id=pk,device__owner=request.user)
+    size=job.release.policy['app']['size']
+    firmware_state=DeviceFirmware.objects.filter(device=job.device).first()
+    events=[]
+    for event in job.events.order_by('sequence')[:129]:
+        report=event.report
+        events.append({'sequence':event.sequence,'at':event.created_at.isoformat(),
+            'state':report.get('state',''),'source':report.get('source','device'),
+            'bytes_written':report.get('bytes_written',0),
+            'boot_confirmed':report.get('boot_confirmed',False),
+            'error_code':report.get('error_code',''),
+            'app_sha256':report.get('app_sha256','')})
+    return JsonResponse({'state':job.state,'state_label':job.get_state_display(),
+        'bytes_written':job.bytes_written,'app_size':size,'needs_attention':job.needs_attention,
+        'error_code':job.error_code,'events':events,
+        'last_report_at':job.updated_at.isoformat(),
+        'device_last_seen':job.device.last_seen.isoformat() if job.device.last_seen else None,
+        'ota_last_poll_at':firmware_state.last_poll_at.isoformat() if firmware_state and firmware_state.last_poll_at else None})
 
 
 @never_cache

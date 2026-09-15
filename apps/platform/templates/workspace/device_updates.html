@@ -1,21 +1,49 @@
-{% extends 'workspace/base.html' %}
-{% block subtitle %}Verified releases, with progress reported by your device.{% endblock %}
+{% extends 'workspace/base.html' %}{% load static %}
+{% block subtitle %}Verified releases and progress reported by your device.{% endblock %}
 {% block content %}
 <p><a href="{% url 'device_detail' device.pk %}">← {{ device.name }}</a> · {{ device.connection_state }}</p>
-<section class="form-card"><h2>Choose an update</h2>
-{% if confirmed %}<p>Last confirmed firmware: {{ confirmed.release.policy.firmware_version }} · sequence {{ confirmed.confirmed_sequence }}.</p>{% else %}<p>No confirmed firmware image has been reported. The board must identify a trusted AMPVE installation before updates become available.</p>{% endif %}
-<p role="status">{{ availability }}</p>
-{% if not pending and releases %}<form method="post">{% csrf_token %}<input type="hidden" name="request_key" value="{{ request_key }}"><label for="release-choice">Compatible release</label><select name="release_id" id="release-choice" required>{% for release in releases %}<option value="{{ release.pk }}">{{ release.policy.firmware_version }} · sequence {{ release.sequence }}</option>{% endfor %}</select><p>Keep the board powered during the update. An offline device waits for reconnection while release approval remains valid.</p><button class="button" type="submit">Queue firmware update</button></form>{% endif %}
-{% for release in releases %}<details><summary>{{ release.policy.firmware_version }} · {{ release.policy.app.size|filesizeformat }}</summary><dl class="device-facts"><dt>Release ID</dt><dd>{{ release.pk }}</dd><dt>Application SHA-256</dt><dd>{{ release.policy.app.sha256 }}</dd><dt>Release notes</dt><dd>{% if release.release_notes %}{{ release.release_notes|linebreaksbr }}{% else %}No verified release notes are available for this version.{% endif %}</dd><dt>Reviewed recovery requirements</dt><dd>{{ release.policy.ota_review }}</dd><dt>Approval expires (UTC)</dt><dd>{{ release.policy.expires_at }}</dd></dl><p class="helptext">Compatibility is checked again before download and boot selection. Size is the application download; progress does not establish successful startup.</p></details>{% endfor %}</section>
-<section class="form-card"><h2>Update history</h2>{% for job in deployments %}<article><h3>{{ job.release.policy.firmware_version }}</h3><p><strong>{{ job.get_state_display }}</strong> · {{ job.bytes_written|filesizeformat }} / {{ job.release.policy.app.size|filesizeformat }} downloaded</p>
-{% if job.needs_attention %}<p class="notice">The outcome is not confirmed. Check the board locally and retain its recovery files. A timeout does not prove success or rollback.</p><p><a class="button secondary" href="{% url 'device_update_recovery_artifact' device.pk job.pk %}">Download previous verified firmware</a></p><p class="helptext">For assisted USB recovery only. This application image does not erase the flash or include device credentials. Expected SHA-256: {{ job.previous_app_sha256 }}.</p>{% endif %}
-{% if job.state == 'queued' %}<p>Waiting for the device to claim this update. Keep it powered and connected to Wi-Fi; an offline device waits while release approval remains valid.</p>{% endif %}
-{% if job.state == 'rebooting' %}<p>Waiting for a confirmed startup or recovery report.</p>{% endif %}
-{% if job.state == 'confirmed' %}<p>The device reported the expected image and a confirmed startup.</p>{% endif %}
-{% if job.state == 'rolled_back' %}<p>The device reported a confirmed return to its previous image.</p>{% endif %}
-{% if job.state == 'failed' %}<p>The device reported a failed update. Its previous confirmed image remains recorded. Check the board locally before requesting a fresh update.</p>{% endif %}
-{% if job.state == 'cancelled' %}<p>This request was cancelled before download. Review current eligibility before queuing another update.</p>{% endif %}
-{% if job.failure_message %}<p class="helptext">{{ job.failure_message }}</p>{% endif %}
-<p class="helptext">Requested {{ job.created_at|date:'M j, Y H:i:s' }} UTC · last change {{ job.updated_at|date:'M j, Y H:i:s' }} UTC.</p>
-{% if job.state == 'queued' %}<form method="post" action="{% url 'device_update_cancel' device.pk job.pk %}">{% csrf_token %}<button class="button secondary" type="submit">Cancel queued update</button></form>{% endif %}</article>{% empty %}<p>No firmware updates requested.</p>{% endfor %}</section>
+<section class="form-card">
+  <h2>Choose an update</h2>
+  {% if confirmed %}<p>Last confirmed firmware: {{ confirmed.release.policy.firmware_version }} · sequence {{ confirmed.confirmed_sequence }}.</p>{% else %}<p>No confirmed firmware image has been reported. The board must identify a trusted AMPVE installation before updates become available.</p>{% endif %}
+  <p role="status">{{ availability }}</p>
+  <p class="helptext">{% if ota_recent %}<strong>OTA channel active.</strong> {% else %}<strong>Waiting for the OTA client.</strong> {% endif %}{% if confirmed.last_poll_at %}Last authenticated check: {{ confirmed.last_poll_at|date:'M j, Y H:i:s' }} UTC.{% else %}No authenticated OTA check has been recorded yet. The board may be online while its update client is idle.{% endif %}</p>
+  {% if not pending and releases %}
+  <form method="post">{% csrf_token %}<input type="hidden" name="request_key" value="{{ request_key }}">
+    <label for="release-choice">Compatible release</label>
+    <select name="release_id" id="release-choice" required>{% for release in releases %}<option value="{{ release.pk }}">{{ release.policy.firmware_version }} · sequence {{ release.sequence }}</option>{% endfor %}</select>
+    <p>Keep the board powered during the update. It will start when the device's OTA client checks in; you can cancel while the request is still queued.</p>
+    <button class="button" type="submit">Start Wi-Fi update</button>
+  </form>
+  {% endif %}
+  {% for release in releases %}
+  <details><summary>{{ release.policy.firmware_version }} · {{ release.policy.app.size|filesizeformat }}</summary>
+    <dl class="device-facts"><dt>Release ID</dt><dd>{{ release.pk }}</dd><dt>Application SHA-256</dt><dd>{{ release.policy.app.sha256 }}</dd><dt>Release notes</dt><dd>{% if release.release_notes %}{{ release.release_notes|linebreaksbr }}{% else %}No verified release notes are available for this version.{% endif %}</dd><dt>Reviewed recovery requirements</dt><dd>{{ release.policy.ota_review }}</dd><dt>Approval expires (UTC)</dt><dd>{{ release.policy.expires_at }}</dd></dl>
+    <p class="helptext">Compatibility is checked again before download and boot selection. Download progress does not establish successful startup.</p>
+  </details>
+  {% endfor %}
+</section>
+<section class="form-card" id="update-history">
+  <h2>Update history & event log</h2>
+  <p class="helptext">The device reports download, verification and startup steps. This page refreshes active updates automatically; a missing report remains visible as waiting.</p>
+  {% for job in deployments %}
+  <article class="update-job" data-progress-url="{% url 'device_update_progress' device.pk job.pk %}" data-active="{% if job.state in active_states %}true{% else %}false{% endif %}">
+    <h3>{{ job.release.policy.firmware_version }}</h3>
+    <p class="update-summary" role="status"><strong>{{ job.get_state_display }}</strong> · {{ job.bytes_written|filesizeformat }} / {{ job.release.policy.app.size|filesizeformat }} downloaded</p>
+    <progress class="update-progress" max="{{ job.release.policy.app.size }}" value="{{ job.bytes_written }}" aria-label="Application download progress"></progress>
+    <p class="update-refresh-note helptext" aria-live="polite">Last server change: {{ job.updated_at|date:'M j, Y H:i:s' }} UTC.</p>
+    <details><summary>Device event log</summary><ol class="update-events">{% for event in job.events.all %}<li><time datetime="{{ event.created_at|date:'c' }}">{{ event.created_at|date:'M j, Y H:i:s' }} UTC</time> · #{{ event.sequence }} · {{ event.report.state|default:'Event' }}{% if event.report.bytes_written %} · {{ event.report.bytes_written|filesizeformat }} written{% endif %}{% if event.report.error_code %} · {{ event.report.error_code }}{% endif %}{% if event.report.state == 'confirmed' and event.report.boot_confirmed %} · target startup confirmed{% elif event.report.state == 'rolled_back' and event.report.boot_confirmed %} · previous image startup confirmed{% endif %}{% if event.report.app_sha256 %}<code>reported app SHA-256: {{ event.report.app_sha256 }}</code>{% endif %}</li>{% empty %}<li>Waiting for the first device report.</li>{% endfor %}</ol></details>
+    {% if job.needs_attention %}<p class="notice">The outcome is not confirmed. Check the board locally and retain its recovery files. A timeout does not prove success or rollback.</p><p><a class="button secondary" href="{% url 'device_update_recovery_artifact' device.pk job.pk %}">Download previous verified firmware</a></p><p class="helptext">For assisted USB recovery only. This application image does not erase flash or include device credentials. Expected SHA-256: {{ job.previous_app_sha256 }}.</p>{% endif %}
+    {% if job.state == 'queued' %}<p>Waiting for the device to claim this update. Keep it powered and connected to Wi-Fi.</p>{% endif %}
+    {% if job.state == 'rebooting' %}<p>Waiting for a confirmed startup or recovery report.</p>{% endif %}
+    {% if job.state == 'confirmed' %}<p>The device reported the expected image and a confirmed startup.</p>{% endif %}
+    {% if job.state == 'rolled_back' %}<p>The device reported a confirmed return to its previous image.</p>{% endif %}
+    {% if job.state == 'failed' %}<p>{% if job.error_code == 'local_recovery' %}A later signed image was confirmed after local recovery; this earlier request was superseded.{% else %}The device reported a failed update. Its previous confirmed image remains recorded. Check the board locally before requesting a fresh update.{% endif %}</p>{% endif %}
+    {% if job.state == 'cancelled' %}<p>This request was cancelled before download. Review current eligibility before queuing another update.</p>{% endif %}
+    {% if job.failure_message %}<p class="helptext">{{ job.failure_message }}</p>{% endif %}
+    <p class="helptext">Requested {{ job.created_at|date:'M j, Y H:i:s' }} UTC · last change {{ job.updated_at|date:'M j, Y H:i:s' }} UTC.</p>
+    {% if job.state == 'queued' %}<form method="post" action="{% url 'device_update_cancel' device.pk job.pk %}">{% csrf_token %}<button class="button secondary" type="submit">Cancel queued update</button></form>{% endif %}
+  </article>
+  {% empty %}<p>No firmware updates requested.</p>{% endfor %}
+</section>
+<script src="{% static 'workspace/device-updates.js' %}" defer></script>
 {% endblock %}
