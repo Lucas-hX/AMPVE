@@ -27,7 +27,7 @@ def generate(path=None,config=None):
             raise ValueError('Invalid bounded publisher trust')
         import re
         for key_id,key in trust['keys'].items():
-            if not re.fullmatch('[a-z0-9][a-z0-9-]{0,63}',key_id) or not isinstance(key,dict) or set(key)!={'public_key','channels','purposes','revoked'} or not digest(key['public_key']) or type(key['revoked']) is not bool or not isinstance(key['channels'],list) or not isinstance(key['purposes'],list) or any(v!='development' for v in key['channels']) or any(v not in ('initial-install','ota') for v in key['purposes']):
+            if not re.fullmatch('[a-z0-9][a-z0-9-]{0,63}',key_id) or not isinstance(key,dict) or set(key)!={'public_key','channels','purposes','revoked'} or not digest(key['public_key']) or type(key['revoked']) is not bool or not isinstance(key['channels'],list) or not isinstance(key['purposes'],list) or any(v!='development' for v in key['channels']) or any(v not in ('initial-install','ota','local-recovery') for v in key['purposes']):
                 raise ValueError('Invalid public publisher entry')
         if not any(not key['revoked'] and 'development' in key['channels'] and 'ota' in key['purposes'] for key in trust['keys'].values()):
             raise ValueError('An active OTA publisher is required for a release build')

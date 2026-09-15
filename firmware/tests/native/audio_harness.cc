@@ -7,18 +7,24 @@ int main() {
         {
         BoxAudioCodec codec(nullptr,16000,16000,0,0,0,0,0,0,0,0,false);
         std::vector<int16_t> tone(4000,20);
-        if(!ampve_codec_failed) codec.EnableInput(true);
-        if(!ampve_codec_failed) {bool read=codec.InputData(tone);if(require_success)assert(read);}
-        if(!ampve_codec_failed) codec.EnableInput(false);
         if(!ampve_codec_failed) codec.SetOutputVolume(10);
-        if(!ampve_codec_failed) codec.EnableOutput(true);
-        if(!ampve_codec_failed) codec.OutputData(tone);
-        if(!ampve_codec_failed) codec.EnableOutput(false);
+        // A local mute, ordinary stop and next Start must all reopen RX.
+        for(int turn=0;turn<3 && !ampve_codec_failed;++turn) {
+            codec.EnableInput(true);
+            if(!ampve_codec_failed) {bool read=codec.InputData(tone);if(require_success)assert(read);}
+            if(!ampve_codec_failed) codec.EnableOutput(true);
+            if(!ampve_codec_failed) codec.OutputData(tone);
+            if(!ampve_codec_failed) codec.EnableOutput(false);
+            if(!ampve_codec_failed) codec.EnableInput(false);
+            if(!ampve_codec_failed) codec.EnableInput(false); // idempotent second close
+            if(require_success)assert(!ampve_codec_failed && rx_enabled==0);
+        }
+        if(require_success)assert(manual_rx_enable_calls==0 && manual_rx_disable_calls==0);
         operational_calls=calls;
         }
         return operational_calls;
     };
-    calls=allocations=rx_enabled=0;fail_at=0;ampve_codec_failed=false;
+    calls=allocations=rx_enabled=manual_rx_enable_calls=manual_rx_disable_calls=0;fail_at=0;ampve_codec_failed=false;
     int normal_calls=0;
     {
         normal_calls=exercise(true);
@@ -26,7 +32,7 @@ int main() {
     }
     assert(live.empty());
     for(int failure=1;failure<=normal_calls;++failure) {
-        calls=allocations=rx_enabled=0;fail_at=failure;ampve_codec_failed=false;
+        calls=allocations=rx_enabled=manual_rx_enable_calls=manual_rx_disable_calls=0;fail_at=failure;ampve_codec_failed=false;
         {
             exercise(false);
             assert(ampve_codec_failed);

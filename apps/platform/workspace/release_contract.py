@@ -50,14 +50,16 @@ def validate_policy(policy, now=None):
     fields = {'schema','key_id','sequence','channel','purpose','installable','profile','compatibility',
               'chip_revision','flash_bytes','expires_at','repository_commit','firmware_version','app',
               'bootloader_sha256','table_sha256','bootloader_review','c6_review','recovery_review','provenance'}
-    if not isinstance(policy, dict) or policy.get('purpose') not in ('initial-install', 'ota'):
+    if not isinstance(policy, dict) or policy.get('purpose') not in ('initial-install', 'ota', 'local-recovery'):
         raise ValueError('Unknown release purpose')
     if 'commissioning' in policy or 'usb_review' in policy:
-        if policy['purpose'] != 'initial-install' or policy.get('commissioning') != 'usb-assisted-v1' or not text(policy.get('usb_review')):
+        if policy['purpose'] not in ('initial-install', 'local-recovery') or policy.get('commissioning') != 'usb-assisted-v1' or not text(policy.get('usb_review')):
             raise ValueError('Invalid USB commissioning review or purpose')
         fields |= {'commissioning','usb_review'}
     if policy['purpose'] == 'ota':
         fields |= {'ota_review', 'from_app_sha256'}
+    if policy['purpose'] == 'local-recovery':
+        fields |= {'local_recovery_review'}
     if set(policy) != fields or type(policy['schema']) is not int or policy['schema'] != 2:
         raise ValueError('Unknown release schema or fields')
     if not isinstance(policy['key_id'], str) or not re.fullmatch('[a-z0-9][a-z0-9-]{0,63}', policy['key_id']):
@@ -65,7 +67,7 @@ def validate_policy(policy, now=None):
     if not sequence(policy['sequence']) or policy['channel'] != 'development':
         raise ValueError('Invalid sequence or unsupported release channel')
     if policy['installable'] is not (policy['purpose'] == 'initial-install'):
-        raise ValueError('USB and OTA release purposes cannot be substituted')
+        raise ValueError('Installable initial release, OTA and local recovery purposes cannot be substituted')
     if policy['profile'] != PROFILE['installation_id'] or not matches_contract(policy['compatibility']):
         raise ValueError('Profile contract mismatch')
     if type(policy['chip_revision']) is not int or policy['chip_revision'] != PROFILE['chip']['revision_min'] or policy['flash_bytes'] != PROFILE['resources']['flash_bytes']:
@@ -101,6 +103,8 @@ def validate_policy(policy, now=None):
         previous = policy['from_app_sha256']
         if not text(policy['ota_review']) or not isinstance(previous, list) or not 1 <= len(previous) <= 32 or any(not digest(item) for item in previous) or len(set(previous)) != len(previous) or app['sha256'] in previous:
             raise ValueError('OTA requires reviewed recovery and explicit predecessor app hashes')
+    if policy['purpose'] == 'local-recovery' and not text(policy['local_recovery_review']):
+        raise ValueError('Local recovery requires a documented app-only USB review')
     return policy
 
 

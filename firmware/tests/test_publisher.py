@@ -58,7 +58,7 @@ class PublisherTests(unittest.TestCase):
         self.key=Ed25519PrivateKey.generate()
         (self.root/'private.key').write_bytes(self.key.private_bytes(Encoding.Raw,PrivateFormat.Raw,NoEncryption()))
         self.trust={'schema':1,'keys':{'fixture-key':{'public_key':self.key.public_key().public_bytes(Encoding.Raw,PublicFormat.Raw).hex(),
-                    'channels':['development'],'purposes':['initial-install','ota'],'revoked':False}},'minimum_sequence':1,'revoked_releases':[]}
+                    'channels':['development'],'purposes':['initial-install','ota','local-recovery'],'revoked':False}},'minimum_sequence':1,'revoked_releases':[]}
         self.bind_build_sequence(self.review['sequence'])
 
     def bind_build_sequence(self,sequence):
@@ -162,6 +162,29 @@ class PublisherTests(unittest.TestCase):
             self.assertFalse(eligible_upgrade(policy,old_sequence,old_hash))
         for previous in [[],[policy['app']['sha256']],['a'*64,'a'*64]]:
             with self.assertRaises(ValueError):validate_policy({**policy,'from_app_sha256':previous})
+
+    def test_usb_recovery_is_signed_but_cannot_be_queued_as_ota(self):
+        sdk=b'CONFIG_AMPVE_USB_COMMISSIONING=y\n'
+        (self.candidate/'sdkconfig').write_bytes(sdk)
+        path=self.candidate/'review-manifest.json';manifest=json.loads(path.read_bytes())
+        manifest.update(sdkconfig_sha256=hashlib.sha256(sdk).hexdigest(),
+                        commissioning='usb-assisted-v1')
+        path.write_bytes(canonical(manifest))
+        self.review.update(purpose='local-recovery',commissioning='usb-assisted-v1',
+            usb_review='The exact USB application bytes are preserved for local review.',
+            local_recovery_review='This only attests the already installed fixture image; no OTA is queued.',
+            table_sha256=self.table_sha256)
+        self.bind_build_sequence(self.review['sequence'])
+        runtime_pair={(self.review['bootloader_sha256'],self.table_sha256)}
+        with patch('publish_release.reviewed_runtime_fingerprints',return_value=runtime_pair):
+            policy,output=self.run_publish()
+        verified,_,_=verify_envelope(strict_json((output/'approved-release.json').read_bytes()),self.trust)
+        self.assertEqual(verified,policy)
+        self.assertFalse(policy['installable'])
+        self.assertNotIn('offset',policy['app'])
+        self.assertFalse((output/'esp-web-tools-reference.json').exists())
+        self.assertFalse(eligible_upgrade(policy,1,'a'*64))
+        with self.assertRaises(ValueError):validate_policy({**policy,'purpose':'ota'})
 
     def test_reviewed_runtime_fingerprint_domains_match_the_native_adapter(self):
         from publish_release import reviewed_runtime_fingerprints

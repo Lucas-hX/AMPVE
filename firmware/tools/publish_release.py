@@ -49,6 +49,7 @@ def publish(candidate, review_file, key_file, output, ledger_file):
             'expires_at','app_sha256','key_id','sequence','channel','purpose'}
     if 'commissioning' in review or 'usb_review' in review:fields|={'commissioning','usb_review'}
     if review.get('purpose')=='ota':fields|={'ota_review','from_app_sha256'}
+    if review.get('purpose')=='local-recovery':fields|={'local_recovery_review'}
     if set(review)!=fields:
         raise ValueError('Supply the exact documented review fields for the release purpose')
     public_bytes=(candidate/'native-public-trust.json').read_bytes()
@@ -63,14 +64,14 @@ def publish(candidate, review_file, key_file, output, ledger_file):
     sdk=(candidate/'sdkconfig').read_bytes()
     if sha256(sdk)!=manifest['sdkconfig_sha256']:raise ValueError('Candidate SDK configuration changed')
     usb_build='CONFIG_AMPVE_USB_COMMISSIONING=y' in sdk.decode().splitlines()
-    if usb_build != (review.get('commissioning')=='usb-assisted-v1') or (usb_build and review.get('purpose')!='initial-install'):
+    if usb_build != (review.get('commissioning')=='usb-assisted-v1') or (usb_build and review.get('purpose') not in ('initial-install','local-recovery')):
         raise ValueError('USB commissioning must match the actual build and initial-install policy')
     if usb_build and manifest.get('commissioning')!='usb-assisted-v1':raise ValueError('Missing commissioning build provenance')
     app=(candidate/'xiaozhi.bin').read_bytes()
     recorded=manifest['proposed_regions_not_approved_writes']
     if len(recorded)!=1 or recorded[0]['sha256']!=sha256(app) or review['app_sha256']!=sha256(app) or recorded[0]['offset']!=0xe00000 or not 24<=len(app)<=0x3f0000:
         raise ValueError('Review does not match the actual candidate app')
-    if review['purpose']=='ota':
+    if review['purpose'] in ('ota','local-recovery'):
         if (review['bootloader_sha256'],review['table_sha256']) not in reviewed_runtime_fingerprints():
             raise ValueError('OTA runtime fingerprints must match one reviewed stock baseline')
         tables=[item for item in manifest.get('build_artifacts_not_installation_plan',[])

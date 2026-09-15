@@ -2,12 +2,16 @@
 #include <cstdint>
 #include <cassert>
 #include <set>
+#include <map>
 #include <atomic>
 #include <cstring>
 inline std::atomic<bool> ampve_codec_failed{false};
 inline bool partial_channel_failure=false;
 inline int calls=0, fail_at=0, allocations=0, rx_enabled=0, last_input_channel_mask=0;
+inline int manual_rx_enable_calls=0, manual_rx_disable_calls=0;
 inline std::set<const void*> live;
+inline std::map<const void*,int> device_caps;
+inline std::set<const void*> opened_devices;
 inline bool step() { return ++calls!=fail_at; }
 inline void* alloc() { if(!step())return nullptr; auto p=new int(++allocations);live.insert(p);return p; }
 inline void free_resource(const void* p) { assert(p && live.erase(p)==1);delete static_cast<const int*>(p); }
@@ -28,8 +32,8 @@ using i2s_tdm_config_t=i2s_std_config_t;
 inline int i2s_new_channel(const i2s_chan_config_t*,void** tx,void** rx) {if(!step()){if(partial_channel_failure){*tx=new int(1);live.insert(*tx);allocations++;}return -1;}*tx=new int(1);*rx=new int(2);live.insert(*tx);live.insert(*rx);allocations+=2;return 0;}
 inline int i2s_channel_init_std_mode(void*,const i2s_std_config_t*) { return step()?0:-1; }
 inline int i2s_channel_init_tdm_mode(void*,const i2s_tdm_config_t*) { return step()?0:-1; }
-inline int i2s_channel_enable(void* p) {if(*static_cast<int*>(p)==2)rx_enabled++;return step()?0:-1;}
-inline int i2s_channel_disable(void* p) {if(p && *static_cast<int*>(p)==2 && rx_enabled)rx_enabled--;return 0;}
+inline int i2s_channel_enable(void* p) {if(*static_cast<int*>(p)==2){manual_rx_enable_calls++;if(rx_enabled)return -1;rx_enabled++;}return step()?0:-1;}
+inline int i2s_channel_disable(void* p) {if(p && *static_cast<int*>(p)==2){manual_rx_disable_calls++;if(!rx_enabled)return -1;rx_enabled--;}return 0;}
 inline int i2s_del_channel(void* p) {free_resource(p);return 0;}
 struct audio_codec_i2s_cfg_t {int port;void* rx_handle;void* tx_handle;};
 struct audio_codec_i2c_cfg_t {int port,addr;void* bus_handle;};
@@ -42,15 +46,15 @@ inline const void* audio_codec_new_i2c_ctrl(const audio_codec_i2c_cfg_t*){return
 inline const void* audio_codec_new_gpio(){return alloc();}
 inline const void* es8311_codec_new(const es8311_codec_cfg_t*){return alloc();}
 inline const void* es7210_codec_new(const es7210_codec_cfg_t*){return alloc();}
-inline void* esp_codec_dev_new(const esp_codec_dev_cfg_t*){return alloc();}
-inline int esp_codec_dev_close(void*){return ampve_codec_failed?-1:step()?0:-1;}
-inline void esp_codec_dev_delete(void* p){free_resource(p);}
+inline void* esp_codec_dev_new(const esp_codec_dev_cfg_t* cfg){auto p=alloc();if(p)device_caps[p]=cfg->dev_type;return p;}
+inline int esp_codec_dev_close(void* p){if(!opened_devices.count(p))return ESP_OK;if(!step())return -1;opened_devices.erase(p);if(device_caps.at(p)==ESP_CODEC_DEV_TYPE_IN){assert(rx_enabled==1);rx_enabled--;}return ESP_OK;}
+inline void esp_codec_dev_delete(void* p){opened_devices.erase(p);device_caps.erase(p);free_resource(p);}
 inline void audio_codec_delete_codec_if(const void* p){free_resource(p);}
 inline void audio_codec_delete_ctrl_if(const void* p){free_resource(p);}
 inline void audio_codec_delete_gpio_if(const void* p){free_resource(p);}
 inline void audio_codec_delete_data_if(const void* p){free_resource(p);}
 inline int esp_codec_dev_set_out_vol(void*,int){return step()?0:-1;}
 inline int esp_codec_dev_set_in_channel_gain(void*,int,float){return step()?0:-1;}
-inline int esp_codec_dev_open(void*,const esp_codec_dev_sample_info_t* fs){if(fs->channel==4)last_input_channel_mask=fs->channel_mask;return step()?0:-1;}
+inline int esp_codec_dev_open(void* p,const esp_codec_dev_sample_info_t* fs){if(fs->channel==4)last_input_channel_mask=fs->channel_mask;if(opened_devices.count(p))return ESP_OK;if(!step())return -1;opened_devices.insert(p);if(device_caps.at(p)==ESP_CODEC_DEV_TYPE_IN){assert(rx_enabled==0);rx_enabled++;}return ESP_OK;}
 inline int esp_codec_dev_write(void*,void*,unsigned){return step()?0:-1;}
 inline int esp_codec_dev_read(void*,void* data,unsigned size){if(!step())return -1;std::memset(data,0,size);return 0;}

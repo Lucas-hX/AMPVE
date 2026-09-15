@@ -55,6 +55,7 @@ std::atomic<uint8_t> output_level{0};
 std::atomic<uint32_t> received_frames{0};
 std::atomic<bool> failure_reported{false};
 std::atomic<bool> capture_reported{false};
+std::atomic<uint32_t> session_generation{0};
 std::unique_ptr<WebSocket> socket;
 std::mutex socket_mutex;
 QueueHandle_t playback_queue = nullptr;
@@ -192,7 +193,7 @@ void drain_pending_uplink() {
         const bool sent = frame.barge_in
             ? send_control(kBargeInMessage)
             : send_socket(frame.audio.data(), kPcmFrameBytes, true);
-        if (!sent) { fail("network"); return; }
+        if (!sent) { fail("uplink_send"); return; }
     }
 }
 
@@ -357,7 +358,12 @@ void receive(const char* data, size_t length, bool binary) {
         std::lock_guard<std::mutex> lock(uplink_mutex);
         uplink_gate.Reset(); pre_roll.clear();
     }
-    else if (!strcmp(type->valuestring, "result") || !strcmp(type->valuestring, "error")) fail();
+    else if (!strcmp(type->valuestring, "result")) {
+        if (!stop_requested) fail("server_result");
+    }
+    else if (!strcmp(type->valuestring, "error")) {
+        if (!stop_requested) fail("server_error");
+    }
     else if (strcmp(type->valuestring, "connecting")) fail();
     cJSON_Delete(message);
 }
@@ -369,14 +375,20 @@ void audio_task(void*) {
     auto codec = Board::GetInstance().GetAudioCodec();
     if (!codec || ampve_codec_failed) { fail("audio_io"); task_active = false; vTaskDelete(nullptr); return; }
     bool input_open = false;
+    uint32_t stack_sample_interval = 0;
+    diagnostic_audio_stack_sample(uxTaskGetStackHighWaterMark(nullptr));
     codec->SetOutputVolume(std::clamp(codec->output_volume(), 0, 80));
     codec->EnableOutput(true);
     const bool processor_ready = initialize_audio_processor(codec);
     if (processor_ready) reset_audio_processor_session();
     const int64_t started = esp_timer_get_time();
     while (!stop_requested && !ampve_codec_failed) {
+        if (++stack_sample_interval >= 50) {
+            stack_sample_interval = 0;
+            diagnostic_audio_stack_sample(uxTaskGetStackHighWaterMark(nullptr));
+        }
         if (state == CompanionState::Connecting) {
-            if (esp_timer_get_time() - started > 30000000) fail();
+            if (esp_timer_get_time() - started > 30000000) fail("ws_timeout");
             vTaskDelay(pdMS_TO_TICKS(20)); continue;
         }
         if (state != CompanionState::Listening) break;
@@ -434,8 +446,13 @@ void audio_task(void*) {
         drain_pending_uplink();
     }
     stop_audio_processor();
+    diagnostic_audio_stack_sample(uxTaskGetStackHighWaterMark(nullptr));
     if (input_open) codec->EnableInput(false);
     codec->EnableOutput(false);
+    {
+        std::lock_guard<std::mutex> guard(socket_mutex);
+        if (socket) socket->Close();
+    }
     output_level = 0; last_output_at = 0;
     task_active = false;
     ESP_LOGI(kLogTag, "Audio task stop: free heap %u bytes, stack high-water %u bytes",
@@ -459,9 +476,12 @@ bool companion_start(const std::string& url, const std::string& ticket, int volu
              static_cast<unsigned>(6 * sizeof(PlaybackFrame)),
              static_cast<unsigned>(sizeof(PlaybackFrame)),
              static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_8BIT)));
+    const uint32_t generation = session_generation.fetch_add(1) + 1;
     xQueueReset(playback_queue); stop_requested = false; muted = start_muted;
     failure_reported = false; capture_reported = false; received_frames = 0;
+    diagnostic_audio_stack_reset();
     diagnostic_operation(CoreOperation::CompanionStart);
+    diagnostic_event("operation");
     response_playback_active = false; output_level = 0; last_output_at = 0;
     {
         std::lock_guard<std::mutex> lock(uplink_mutex);
@@ -469,20 +489,27 @@ bool companion_start(const std::string& url, const std::string& ticket, int volu
     }
     state = CompanionState::Connecting;
     auto candidate = Board::GetInstance().GetNetwork()->CreateWebSocket(2);
-    if (!candidate) { fail(); return false; }
+    if (!candidate) { fail("ws_error"); return false; }
     candidate->SetReceiveBufferSize(4096);
-    candidate->OnData(receive);
-    candidate->OnDisconnected([] { if (!stop_requested) fail("network"); });
-    candidate->OnError([](const NetworkError&) { fail("network"); });
-    candidate->OnConnected([ticket] {
+    candidate->OnData([generation](const char* data, size_t length, bool binary) {
+        if (session_generation == generation && !stop_requested) receive(data, length, binary);
+    });
+    candidate->OnDisconnected([generation] {
+        if (session_generation == generation && !stop_requested) fail("ws_disconnect");
+    });
+    candidate->OnError([generation](const NetworkError&) {
+        if (session_generation == generation && !stop_requested) fail("ws_error");
+    });
+    candidate->OnConnected([ticket, generation] {
+        if (session_generation != generation || stop_requested) return;
         cJSON* payload = cJSON_CreateObject(); cJSON_AddStringToObject(payload, "ticket", ticket.c_str());
         char* raw = cJSON_PrintUnformatted(payload); cJSON_Delete(payload);
         bool sent = raw && socket && socket->Send(raw); cJSON_free(raw);
-        if (!sent) fail();
+        if (!sent) fail("uplink_send");
     });
     {
         std::lock_guard<std::mutex> lock(socket_mutex); socket = std::move(candidate);
-        if (!socket->Connect(url.c_str())) { socket.reset(); fail(); return false; }
+        if (!socket->Connect(url.c_str())) { socket.reset(); fail("ws_error"); return false; }
     }
     auto codec = Board::GetInstance().GetAudioCodec();
     if (!codec || ampve_codec_failed) { fail(); socket.reset(); return false; }
@@ -496,6 +523,8 @@ bool companion_start(const std::string& url, const std::string& ticket, int volu
 
 void companion_stop() {
     diagnostic_operation(CoreOperation::CompanionStop);
+    diagnostic_event("operation");
+    session_generation.fetch_add(1);
     stop_requested = true; muted = true; response_playback_active = false;
     output_level = 0; last_output_at = 0;
     stop_audio_processor();

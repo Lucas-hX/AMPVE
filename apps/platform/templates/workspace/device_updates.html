@@ -22,6 +22,23 @@
   </details>
   {% endfor %}
 </section>
+{% if observation and confirmed and observation.app_sha256 != confirmed.app_sha256 %}
+<section class="form-card">
+  <h2>Review a USB-installed Core image</h2>
+  <p>The device authenticated and reported a boot-confirmed image that differs from the last signed update recorded by this platform. This observation does not itself authorize an OTA.</p>
+  <dl class="device-facts"><dt>Reported version</dt><dd>{{ observation.firmware_version }}</dd><dt>Observed app SHA-256</dt><dd><code>{{ observation.app_sha256 }}</code></dd><dt>Last observation</dt><dd>{{ observation.observed_at|date:'M j, Y H:i:s' }} UTC</dd></dl>
+  {% if local_release %}
+  <p>The exact app and version match a signed, non-installable local recovery record, sequence {{ local_release.sequence }}. Compare the hash with your USB installation artifact and confirm the board started successfully before updating server state.</p>
+  <form method="post" action="{% url 'device_update_reconcile_usb' device.pk %}">{% csrf_token %}
+    <input type="hidden" name="release_id" value="{{ local_release.pk }}">
+    <input type="hidden" name="observed_hash" value="{{ observation.app_sha256 }}">
+    <label class="check-label"><input type="checkbox" name="reviewed" value="yes" required> I physically verified this USB image and its SHA-256 on my board.</label>
+    <button class="button secondary" type="submit">Record this local recovery</button>
+  </form>
+  {% else %}<p>No matching signed local recovery record is available. Keep Wi-Fi OTA disabled and review the local artifact first.</p>{% endif %}
+</section>
+{% endif %}
+{% if recovery_events %}<section class="form-card"><h2>Reviewed USB recovery history</h2><ol>{% for event in recovery_events %}<li>{{ event.created_at|date:'M j, Y H:i:s' }} UTC · signed sequence {{ event.previous_release.sequence }} → {{ event.new_release.sequence }} · app <code>{{ event.new_app_sha256 }}</code></li>{% endfor %}</ol></section>{% endif %}
 <section class="form-card" id="update-history">
   <h2>Update history & event log</h2>
   <p class="helptext">The device reports download, verification and startup steps. This page refreshes active updates automatically; a missing report remains visible as waiting.</p>

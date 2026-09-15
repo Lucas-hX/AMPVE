@@ -6,7 +6,9 @@ from django.db import transaction
 from django.db.models import F
 from django.utils import timezone
 from .hardware_profiles import PROFILE, matches_contract
-from .models import Device, DeviceFirmware, FirmwareRelease, FirmwareDeployment, FirmwareDeploymentEvent
+from .models import (Device, DeviceFirmware, DeviceImageObservation,
+                     DeviceFirmwareRecoveryEvent, FirmwareRelease, FirmwareDeployment,
+                     FirmwareDeploymentEvent)
 from .release_contract import canonical, digest, eligible_upgrade, read_release, sha256
 
 
@@ -71,6 +73,73 @@ def confirm_initial(device, app_hash):
         return DeviceFirmware.objects.create(device=device,release=release,app_sha256=app_hash,
             confirmed_sequence=release.sequence,confirmed_at=timezone.now())
     raise DeploymentError('No trusted initial-install release matches this confirmed image.')
+
+
+def observe_or_confirm_image(device, app_hash):
+    """A changed USB image is observed, never silently promoted to confirmed."""
+    current = DeviceFirmware.objects.filter(device=device).first()
+    if current and current.app_sha256 != app_hash:
+        if not 1 <= len(device.firmware_version) <= 31:
+            raise DeploymentError('Report a bounded firmware version before local recovery.')
+        DeviceImageObservation.objects.update_or_create(device=device, defaults={
+            'app_sha256':app_hash, 'firmware_version':device.firmware_version})
+        return None
+    return confirm_initial(device, app_hash)
+
+
+def local_recovery_release(device):
+    """Only an exact signed image and version may be offered for owner review."""
+    observation = DeviceImageObservation.objects.filter(device=device).first()
+    if not observation or observation.observed_at < timezone.now()-timedelta(minutes=10):
+        return None
+    for release in FirmwareRelease.objects.filter(revoked_at=None,
+            policy__purpose='local-recovery',policy__app__sha256=observation.app_sha256,
+            policy__firmware_version=observation.firmware_version).order_by('-sequence')[:10]:
+        try:
+            policy, _, _, _ = verified_release(release,'local-recovery')
+        except DeploymentError:
+            continue
+        if compatible(device) and policy['app']['sha256'] == observation.app_sha256:
+            return release
+    return None
+
+
+def reconcile_local_recovery(owner, device_id, release_id, observed_hash):
+    """Owner-approved metadata correction after authenticated local USB proof."""
+    with transaction.atomic():
+        device = Device.objects.select_for_update().get(pk=device_id, owner=owner)
+        if not owner.is_active or device.revoked_at or not device.credential_hash or not compatible(device):
+            raise DeploymentError('Device ownership or hardware confirmation is unavailable.')
+        if FirmwareDeployment.objects.filter(device=device,
+                state__in=FirmwareDeployment.ACTIVE).exists():
+            raise DeploymentError('Cancel or finish the earlier update before local recovery.')
+        observation = DeviceImageObservation.objects.select_for_update().filter(device=device).first()
+        if (not observation or observation.observed_at < timezone.now()-timedelta(minutes=10)
+                or observation.app_sha256 != observed_hash
+                or observation.firmware_version != device.firmware_version):
+            raise DeploymentError('Refresh the authenticated running-image observation.')
+        release = FirmwareRelease.objects.get(pk=release_id)
+        policy, _, _, _ = verified_release(release,'local-recovery')
+        if (policy['app']['sha256'] != observation.app_sha256
+                or policy['firmware_version'] != observation.firmware_version):
+            raise DeploymentError('The signed local recovery image does not match this device.')
+        current = DeviceFirmware.objects.select_for_update().select_related('release').get(device=device)
+        if current.app_sha256 == observed_hash and current.release_id == release.pk:
+            return current
+        if release.sequence <= current.confirmed_sequence:
+            raise DeploymentError('Local recovery must advance the confirmed sequence.')
+        DeviceFirmwareRecoveryEvent.objects.create(device=device, owner=owner,
+            previous_release=current.release, new_release=release,
+            previous_app_sha256=current.app_sha256,
+            new_app_sha256=observed_hash, observed_at=observation.observed_at)
+        current.release = release
+        current.app_sha256 = observed_hash
+        current.confirmed_sequence = release.sequence
+        current.confirmed_at = timezone.now()
+        current.last_poll_at = None
+        current.save(update_fields=['release','app_sha256','confirmed_sequence',
+                                    'confirmed_at','last_poll_at'])
+        return current
 
 
 def eligible_releases(device):

@@ -9,8 +9,8 @@ from django.views.decorators.http import require_GET, require_POST
 from . import app_services, diagnostic_services
 from .deployment_views import firmware_api
 from .device_views import context
-from .models import (AppPackage, Device, DeviceAdminCommand, DeviceAppAssignment,
-                     DeviceCoreStatus, DeviceDiagnosticEvent)
+from .models import (AppPackage, AudioSession, Device, DeviceAdminCommand,
+                     DeviceAppAssignment, DeviceCoreStatus, DeviceDiagnosticEvent)
 
 
 @never_cache
@@ -21,7 +21,7 @@ def core(request, pk):
     status = DeviceCoreStatus.objects.filter(device=device).first()
     assignment = DeviceAppAssignment.objects.select_related('package','previous_package').filter(device=device).first()
     packages = []
-    if status and status.api_version == 1 and status.core_version.startswith('0.1.23'):
+    if status and status.api_version == 1 and app_services.supports_api_v1(status.core_version):
         for package in AppPackage.objects.filter(revoked_at=None).order_by('policy__name')[:20]:
             try:
                 policy = app_services.verified(package)
@@ -30,9 +30,11 @@ def core(request, pk):
             if app_services.hardware_compatible(device, policy):
                 packages.append(package)
     events = DeviceDiagnosticEvent.objects.filter(device=device).order_by('-created_at')[:40]
+    audio_sessions = AudioSession.objects.filter(device=device,mode='device').order_by('-started_at')[:20]
     commands = DeviceAdminCommand.objects.filter(device=device,owner=request.user)[:20]
     return render(request,'workspace/device_core.html',context(title='AMPVE Core',device=device,
         status=status,assignment=assignment,packages=packages,events=events,
+        audio_sessions=audio_sessions,
         commands=commands,assign_key=uuid.uuid4(),kill_key=uuid.uuid4(),
         rollback_key=uuid.uuid4(),snapshot_key=uuid.uuid4()))
 

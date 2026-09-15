@@ -8,6 +8,7 @@
 #include "freertos/task.h"
 #include "nvs.h"
 #include <algorithm>
+#include <atomic>
 #include <cstdio>
 #include <cstring>
 #include <deque>
@@ -21,6 +22,7 @@ struct Event {
     const char *kind = "operation", *operation = "idle", *error = "", *reset = "";
     std::string core_version, app_version;
     unsigned heap_free = 0, stack_min = 0;
+    unsigned dma_free = 0, dma_largest = 0, audio_stack_min = 0;
 };
 std::mutex lock;
 std::deque<Event> queue;
@@ -28,6 +30,7 @@ std::string boot_id, version;
 unsigned next_sequence = 0;
 CoreOperation last_operation = CoreOperation::Idle;
 nvs_handle_t store = 0;
+std::atomic<unsigned> audio_stack_min{0};
 const char* operation_name(CoreOperation operation) {
     switch (operation) {
     case CoreOperation::CompanionStart: return "companion_start";
@@ -57,6 +60,9 @@ bool allowed_kind(const char* kind) {
 bool allowed_error(const char* code) {
     return code && (!*code || !strcmp(code,"audio_queue") || !strcmp(code,"audio_io") ||
         !strcmp(code,"network") || !strcmp(code,"package_rejected") ||
+        !strcmp(code,"uplink_send") || !strcmp(code,"ws_disconnect") ||
+        !strcmp(code,"ws_error") || !strcmp(code,"ws_timeout") ||
+        !strcmp(code,"server_result") || !strcmp(code,"server_error") ||
         !strcmp(code,"package_interrupted") || !strcmp(code,"package_revoked") ||
         !strcmp(code,"ota_journal") || !strcmp(code,"storage") || !strcmp(code,"unknown"));
 }
@@ -67,6 +73,11 @@ void append(const char* kind, const char* error, const std::string& app, const c
     event.core_version = version; event.app_version = app.size() <= 31 ? app : "";
     event.heap_free = std::min<size_t>(33554432, heap_caps_get_free_size(MALLOC_CAP_8BIT));
     event.stack_min = std::min<unsigned>(65536, uxTaskGetStackHighWaterMark(nullptr));
+    const unsigned dma_caps = MALLOC_CAP_INTERNAL | MALLOC_CAP_DMA;
+    event.dma_free = std::min<size_t>(33554432, heap_caps_get_free_size(dma_caps));
+    event.dma_largest = std::min<size_t>(event.dma_free,
+        heap_caps_get_largest_free_block(dma_caps));
+    event.audio_stack_min = audio_stack_min.load();
     queue.push_back(std::move(event));
 }
 }
@@ -99,6 +110,14 @@ void diagnostic_event(const char* kind, const char* error_code, const std::strin
     std::lock_guard<std::mutex> guard(lock);
     append(kind,error_code,app_version);
 }
+void diagnostic_audio_stack_reset() { audio_stack_min = 0; }
+void diagnostic_audio_stack_sample(unsigned high_water_bytes) {
+    if (!high_water_bytes) return;
+    high_water_bytes = std::min<unsigned>(65536, high_water_bytes);
+    unsigned previous = audio_stack_min.load();
+    while ((!previous || high_water_bytes < previous) &&
+           !audio_stack_min.compare_exchange_weak(previous, high_water_bytes)) {}
+}
 cJSON* diagnostic_batch(size_t maximum) {
     std::lock_guard<std::mutex> guard(lock);
     if (queue.empty() || !maximum) return nullptr;
@@ -117,6 +136,11 @@ cJSON* diagnostic_batch(size_t maximum) {
         cJSON_AddStringToObject(item,"app_version",event.app_version.c_str());
         cJSON_AddNumberToObject(item,"heap_free_bytes",event.heap_free);
         cJSON_AddNumberToObject(item,"stack_min_bytes",event.stack_min);
+        cJSON_AddNumberToObject(item,"dma_free_bytes",event.dma_free);
+        cJSON_AddNumberToObject(item,"dma_largest_bytes",event.dma_largest);
+        if (event.audio_stack_min)
+            cJSON_AddNumberToObject(item,"audio_stack_min_bytes",event.audio_stack_min);
+        else cJSON_AddNullToObject(item,"audio_stack_min_bytes");
     }
     return root;
 }

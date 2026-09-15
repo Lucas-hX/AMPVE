@@ -14,7 +14,9 @@ from django.urls import reverse
 from django.utils import timezone
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
-from .models import User, Device, DeviceFirmware, FirmwareRelease, FirmwareDeployment, FirmwareDeploymentEvent
+from .models import (User, Device, DeviceFirmware, DeviceImageObservation,
+                     DeviceFirmwareRecoveryEvent, FirmwareRelease,
+                     FirmwareDeployment, FirmwareDeploymentEvent)
 from .hardware_profiles import CONTRACT, PROFILE
 from .release_contract import canonical, sha256
 from .device_services import digest
@@ -34,7 +36,7 @@ class DeploymentTests(TestCase):
         self.key=Ed25519PrivateKey.generate()
         self.trust={'schema':1,'minimum_sequence':1,'revoked_releases':[],
             'keys':{'fixture-key':{'public_key':self.key.public_key().public_bytes(Encoding.Raw,PublicFormat.Raw).hex(),
-                    'channels':['development'],'purposes':['initial-install','ota'],'revoked':False}}}
+                    'channels':['development'],'purposes':['initial-install','ota','local-recovery'],'revoked':False}}}
         (self.root/'trust.json').write_bytes(canonical(self.trust))
         override=override_settings(FIRMWARE_PUBLISHER_TRUST=str(self.root/'trust.json'))
         override.enable();self.addCleanup(override.disable)
@@ -63,6 +65,9 @@ class DeploymentTests(TestCase):
         policy['provenance']['archive_sha256']=sha256(archive)
         if purpose=='ota':
             del policy['app']['offset'];policy.update(ota_review='Software fixture only',from_app_sha256=[self.initial.policy['app']['sha256']])
+        if purpose=='local-recovery':
+            del policy['app']['offset']
+            policy['local_recovery_review']='Signed fixture for a previously installed app image; no remote write.'
         payload=canonical(policy);envelope={'payload':base64.b64encode(payload).decode(),'signature':base64.b64encode(self.key.sign(payload)).decode()}
         root=self.root/str(sequence);root.mkdir()
         (root/'approved-release.json').write_bytes(canonical(envelope));(root/'xiaozhi.bin').write_bytes(content);(root/'review.zip').write_bytes(archive)
@@ -138,6 +143,45 @@ class DeploymentTests(TestCase):
         wrong={**self.running(),'app_sha256':self.target.policy['app']['sha256']}
         self.assertEqual(self.api('updates/poll/',wrong).status_code,409)
         state.refresh_from_db();self.assertEqual(state.last_poll_at,checked)
+
+    def test_owner_reconciles_authenticated_usb_image_before_ota(self):
+        local=self.release(3,'local-recovery')
+        self.device.firmware_version='fixture-3'
+        self.device.save(update_fields=['firmware_version'])
+        proof={'protocol':1,'app_sha256':local.policy['app']['sha256'],'boot_confirmed':True}
+        self.assertEqual(self.api('firmware/identity/',proof,token=secrets.token_urlsafe(32)).status_code,401)
+        self.assertFalse(DeviceImageObservation.objects.filter(device=self.device).exists())
+        self.assertEqual(self.api('firmware/identity/',proof).status_code,409)
+        observation=DeviceImageObservation.objects.get(device=self.device)
+        self.assertEqual(observation.app_sha256,proof['app_sha256'])
+        url=reverse('device_update_reconcile_usb',args=[self.device.pk])
+        self.assertContains(self.client.get(reverse('device_updates',args=[self.device.pk])),
+                            'Review a USB-installed Core image')
+        form={'release_id':local.pk,'observed_hash':proof['app_sha256'],'reviewed':'yes'}
+        self.client.force_login(self.other)
+        self.assertEqual(self.client.post(url,form).status_code,404)
+        self.client.force_login(self.admin)
+        self.assertEqual(self.client.post(url,form).status_code,404)
+        self.client.force_login(self.owner)
+        self.client.post(url,{**form,'reviewed':''})
+        self.assertEqual(DeviceFirmware.objects.get(device=self.device).confirmed_sequence,1)
+        queued=self.queue()
+        self.client.post(url,form)
+        self.assertEqual(DeviceFirmware.objects.get(device=self.device).confirmed_sequence,1)
+        service.cancel_update(self.owner,self.device.pk,queued.pk)
+        self.client.post(url,{**form,'observed_hash':'0'*64})
+        self.assertEqual(DeviceFirmware.objects.get(device=self.device).confirmed_sequence,1)
+        self.assertEqual(self.client.post(url,form).status_code,302)
+        state=DeviceFirmware.objects.get(device=self.device)
+        self.assertEqual((state.confirmed_sequence,state.app_sha256),(3,proof['app_sha256']))
+        self.assertEqual(DeviceFirmwareRecoveryEvent.objects.filter(device=self.device).count(),1)
+        self.assertEqual(self.api('firmware/identity/',proof).status_code,200)
+        self.assertEqual(self.api('updates/poll/',proof).status_code,200)
+        self.assertEqual(self.api('updates/poll/',self.running()).status_code,409)
+        self.assertEqual(service.eligible_releases(self.device),[])
+        self.assertEqual(service.reconcile_local_recovery(self.owner,self.device.pk,local.pk,
+            proof['app_sha256']).confirmed_sequence,3)
+        self.assertEqual(DeviceFirmwareRecoveryEvent.objects.filter(device=self.device).count(),1)
 
     def test_update_page_distinguishes_missing_identity_and_incompatible_reports(self):
         DeviceFirmware.objects.filter(device=self.device).delete()

@@ -21,7 +21,12 @@
 <section class="form-card">
   <h2>Recent typed diagnostics</h2>
   <p class="helptext">Core sends IDs, reset reason, last operation, allowlisted error codes and bounded health figures. No audio, Wi-Fi secrets, provider keys, device token or unrestricted serial log is retained. A stock 7B has no coredump partition; a panic may have no full backtrace here.</p>
-  <ol>{% for event in events %}<li><time datetime="{{ event.created_at|date:'c' }}">{{ event.created_at|date:'M j, Y H:i:s' }} UTC</time> · {{ event.kind }} · {{ event.operation }}{% if event.reset_reason %} · reset {{ event.reset_reason }}{% endif %}{% if event.error_code %} · {{ event.error_code }}{% endif %} · boot {{ event.boot_id }} #{{ event.sequence }}</li>{% empty %}<li>No authenticated Core event has been received.</li>{% endfor %}</ol>
+  <ol>{% for event in events %}<li><time datetime="{{ event.created_at|date:'c' }}">{{ event.created_at|date:'M j, Y H:i:s' }} UTC</time> · {{ event.kind }} · {{ event.operation }}{% if event.reset_reason %} · reset {{ event.reset_reason }}{% endif %}{% if event.error_code %} · {{ event.error_code }}{% endif %} · boot {{ event.boot_id }} #{{ event.sequence }}{% if event.dma_free_bytes != None %} · DMA free {{ event.dma_free_bytes|filesizeformat }}, largest block {{ event.dma_largest_bytes|filesizeformat }}{% endif %}{% if event.audio_stack_min_bytes != None %} · Companion stack minimum {{ event.audio_stack_min_bytes|filesizeformat }}{% endif %}</li>{% empty %}<li>No authenticated Core event has been received.</li>{% endfor %}</ol>
+</section>
+<section class="form-card">
+  <h2>Recent Companion audio sessions</h2>
+  <p class="helptext">The server result code records how its WebSocket session ended. Compare it with the device's typed event; a disconnect code alone does not establish which endpoint closed first.</p>
+  <ol>{% for session in audio_sessions %}<li><time datetime="{{ session.started_at|date:'c' }}">{{ session.started_at|date:'M j, Y H:i:s' }} UTC</time> · {{ session.status }} · result <code>{{ session.result_code|default:'pending' }}</code>{% if session.ended_at %} · ended {{ session.ended_at|date:'M j, Y H:i:s' }} UTC{% endif %}</li>{% empty %}<li>No Companion audio session has been recorded for this device.</li>{% endfor %}</ol>
 </section>
 <section class="form-card"><h2>Administration history</h2><ol>{% for job in commands %}<li>{{ job.kind }} · {{ job.state }}{% if job.result_code %} · {{ job.result_code }}{% endif %} · expires {{ job.expires_at|date:'M j, Y H:i:s' }} UTC</li>{% empty %}<li>No Core commands requested.</li>{% endfor %}</ol></section>
 {% endblock %}

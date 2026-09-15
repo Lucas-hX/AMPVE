@@ -16,7 +16,9 @@ from django.views.decorators.http import require_GET, require_POST
 from . import deployment_services as service
 from .device_services import digest as credential_digest, allowed
 from .device_views import bearer, device_api, context
-from .models import Device, DeviceFirmware, FirmwareRelease, FirmwareDeployment, FirmwareDeploymentEvent
+from .models import (Device, DeviceFirmware, DeviceImageObservation,
+                     DeviceFirmwareRecoveryEvent, FirmwareRelease,
+                     FirmwareDeployment, FirmwareDeploymentEvent)
 from .release_contract import digest, read_bounded, sha256
 
 
@@ -64,7 +66,9 @@ def running_image(data):
 
 @firmware_api
 def identity(request,data,device):
-    current=service.confirm_initial(device,running_image(data))
+    current=service.observe_or_confirm_image(device,running_image(data))
+    if current is None:
+        return JsonResponse({'error':'A locally changed image awaits owner review.'},status=409)
     return JsonResponse({'release_id':current.release_id,'confirmed_sequence':current.confirmed_sequence,
                          'app_sha256':current.app_sha256})
 
@@ -129,6 +133,8 @@ def updates(request,pk):
                 messages.success(request,'Update request recorded. Completion requires a confirmed report from the device.')
             return redirect('device_updates',pk=pk)
     confirmed=DeviceFirmware.objects.filter(device=device).select_related('release').first()
+    observation=DeviceImageObservation.objects.filter(device=device).first()
+    local_release=service.local_recovery_release(device)
     ota_recent=bool(confirmed and confirmed.last_poll_at and
         confirmed.last_poll_at>=timezone.now()-timedelta(seconds=90))
     pending=device.firmware_deployments.filter(state__in=FirmwareDeployment.ACTIVE).exists()
@@ -154,8 +160,32 @@ def updates(request,pk):
     return render(request,'workspace/device_updates.html',context(title='Firmware updates',device=device,
         releases=releases,request_key=uuid.uuid4(),availability=availability,
         pending=pending,confirmed=confirmed,ota_recent=ota_recent,
+        observation=observation,local_release=local_release,
+        recovery_events=DeviceFirmwareRecoveryEvent.objects.filter(device=device).order_by('-created_at')[:5],
         active_states=FirmwareDeployment.ACTIVE,
         deployments=deployments))
+
+
+@never_cache
+@login_required
+@require_POST
+def reconcile_local(request,pk):
+    get_object_or_404(Device,pk=pk,owner=request.user)
+    if request.POST.get('reviewed') != 'yes':
+        messages.error(request,'Confirm the physical USB image and its SHA-256 before reconciling it.')
+        return redirect('device_updates',pk=pk)
+    release_id=request.POST.get('release_id','')
+    observed_hash=request.POST.get('observed_hash','')
+    if not digest(release_id) or not digest(observed_hash):
+        messages.error(request,'The signed local recovery identity is invalid.')
+        return redirect('device_updates',pk=pk)
+    try:
+        service.reconcile_local_recovery(request.user,pk,release_id,observed_hash)
+    except (service.DeploymentError,FirmwareRelease.DoesNotExist,DeviceFirmware.DoesNotExist) as error:
+        messages.error(request,str(error)[:160] or 'The local image could not be reconciled.')
+    else:
+        messages.success(request,'The verified USB image is recorded. No device write was performed.')
+    return redirect('device_updates',pk=pk)
 
 
 @never_cache
