@@ -118,8 +118,13 @@ def artifact(request,data,device,job_id):
 @login_required
 def updates(request,pk):
     device=get_object_or_404(Device,pk=pk,owner=request.user)
+    confirmed=DeviceFirmware.objects.filter(device=device).select_related('release').first()
+    ota_recent=bool(confirmed and confirmed.last_poll_at and
+        confirmed.last_poll_at>=timezone.now()-timedelta(seconds=90))
     if request.method=='POST':
-        if not allowed('firmware-owner:'+str(request.user.pk),30,86400):
+        if not ota_recent:
+            messages.error(request,'The device OTA client has not checked in recently. Use local recovery or wait for a fresh authenticated OTA check.')
+        elif not allowed('firmware-owner:'+str(request.user.pk),30,86400):
             messages.error(request,'Too many update requests. Retry later.')
         else:
             try:
@@ -131,12 +136,9 @@ def updates(request,pk):
                 messages.error(request,'This update cannot be queued. Refresh and check the device and release status.')
             else:
                 messages.success(request,'Update request recorded. Completion requires a confirmed report from the device.')
-            return redirect('device_updates',pk=pk)
-    confirmed=DeviceFirmware.objects.filter(device=device).select_related('release').first()
+        return redirect('device_updates',pk=pk)
     observation=DeviceImageObservation.objects.filter(device=device).first()
     local_release=service.local_recovery_release(device)
-    ota_recent=bool(confirmed and confirmed.last_poll_at and
-        confirmed.last_poll_at>=timezone.now()-timedelta(seconds=90))
     pending=device.firmware_deployments.filter(state__in=FirmwareDeployment.ACTIVE).exists()
     releases=service.eligible_releases(device)
     if device.revoked_at:

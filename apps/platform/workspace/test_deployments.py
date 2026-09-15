@@ -118,12 +118,23 @@ class DeploymentTests(TestCase):
 
     def test_update_page_shows_verified_release_details(self):
         response=self.client.get(reverse('device_updates',args=[self.device.pk]))
-        self.assertContains(response,'Start Wi-Fi update')
+        self.assertContains(response,"board's OTA client has not checked in recently")
+        self.assertNotContains(response,'Start Wi-Fi update')
         self.assertContains(response,'128.0\u00a0KB')
         self.assertContains(response,self.target.pk)
         self.assertContains(response,self.target.policy['app']['sha256'])
         self.assertContains(response,'Software fixture only')
         self.assertContains(response,self.target.policy['expires_at'])
+        self.assertEqual(self.api('updates/poll/',self.running()).status_code,200)
+        self.assertContains(self.client.get(reverse('device_updates',args=[self.device.pk])),
+                            'Start Wi-Fi update')
+
+    def test_owner_cannot_queue_update_without_recent_authenticated_ota_poll(self):
+        url=reverse('device_updates',args=[self.device.pk])
+        response=self.client.post(url,{'request_key':str(uuid.uuid4()),'release_id':self.target.pk})
+        self.assertEqual(response.status_code,302)
+        self.assertEqual(FirmwareDeployment.objects.count(),0)
+        self.assertContains(self.client.get(url),'OTA client has not checked in recently')
 
     def test_device_detail_offers_matching_update_then_progress(self):
         url=reverse('device_detail',args=[self.device.pk])

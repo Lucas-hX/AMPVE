@@ -7,13 +7,15 @@
   {% if confirmed %}<p>Last confirmed firmware: {{ confirmed.release.policy.firmware_version }} · sequence {{ confirmed.confirmed_sequence }}.</p>{% else %}<p>No confirmed firmware image has been reported. The board must identify a trusted AMPVE installation before updates become available.</p>{% endif %}
   <p role="status">{{ availability }}</p>
   <p class="helptext">{% if ota_recent %}<strong>OTA channel active.</strong> {% else %}<strong>Waiting for the OTA client.</strong> {% endif %}{% if confirmed.last_poll_at %}Last authenticated check: {{ confirmed.last_poll_at|date:'M j, Y H:i:s' }} UTC.{% else %}No authenticated OTA check has been recorded yet. The board may be online while its update client is idle.{% endif %}</p>
-  {% if not pending and releases %}
+  {% if not pending and releases and ota_recent %}
   <form method="post">{% csrf_token %}<input type="hidden" name="request_key" value="{{ request_key }}">
     <label for="release-choice">Compatible release</label>
     <select name="release_id" id="release-choice" required>{% for release in releases %}<option value="{{ release.pk }}">{{ release.policy.firmware_version }} · sequence {{ release.sequence }}</option>{% endfor %}</select>
     <p>Keep the board powered during the update. It will start when the device's OTA client checks in; you can cancel while the request is still queued.</p>
     <button class="button" type="submit">Start Wi-Fi update</button>
   </form>
+  {% elif not pending and releases %}
+  <p class="helptext">A matching release is ready, but the board's OTA client has not checked in recently. Keep this image for USB recovery and retry Wi-Fi only after an authenticated OTA check appears here.</p>
   {% endif %}
   {% for release in releases %}
   <details><summary>{{ release.policy.firmware_version }} · {{ release.policy.app.size|filesizeformat }}</summary>
