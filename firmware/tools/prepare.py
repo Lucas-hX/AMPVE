@@ -8,6 +8,7 @@ from board_guard import prepare as prepare_board
 from audio_guard import prepare as prepare_audio
 from native_trust import generate as generate_native_trust
 import json
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -30,6 +31,26 @@ def stage_overlay(source, destination):
     # the repository source timestamp predates the last compilation. copy2 can
     # otherwise preserve an old timestamp and silently reuse a stale object.
     shutil.copytree(source, destination, dirs_exist_ok=True, copy_function=shutil.copyfile)
+
+
+def normalize_ampve_sources(component_cmake):
+    # Older prepared workdirs and clean checkouts insert modules in different
+    # orders. Link order changes ELF bytes even when every source/config matches.
+    ordered = ('diagnostics.cc', 'app_runtime.cc', 'app_package.cc',
+               'companion_face.cc', 'companion.cc', 'improv_service.cc',
+               'improv_platform.cc', 'boot_guard.cc', 'ota_client.cc',
+               'ota_platform.cc', 'image_identity.cc', 'ota_policy.cc',
+               'runtime.cc', 'brand_assets.c')
+    text = component_cmake.read_text()
+    pattern = r'set\(SOURCES (?P<ampve>(?:"ampve/[^"]+" )+)"audio/audio_codec.cc"'
+    match = re.search(pattern, text)
+    expected = [f'ampve/{name}' for name in ordered]
+    if not match or sorted(re.findall(r'"(ampve/[^"]+)"', match.group('ampve'))) != sorted(expected):
+        raise RuntimeError('Prepared AMPVE source list is incomplete or duplicated')
+    canonical = ' '.join(f'"{name}"' for name in expected) + ' '
+    if match.group('ampve') != canonical:
+        component_cmake.write_text(text[:match.start('ampve')] + canonical +
+                                   text[match.end('ampve'):])
 
 
 def prepare(work, mode='usb-assisted'):
@@ -164,6 +185,7 @@ def prepare(work, mode='usb-assisted'):
     if '"ampve/improv_service.cc"' not in component_cmake.read_text():
         replace(component_cmake,'set(SOURCES ', 'set(SOURCES "ampve/improv_service.cc" "ampve/improv_platform.cc" ')
         replace(component_cmake,'PRIV_REQUIRES\n','PRIV_REQUIRES\n                        ampve_improv_sdk esp_driver_uart\n')
+    normalize_ampve_sources(component_cmake)
     prepare_wifi(work)
     prepare_credentials(work)
     prepare_improv(work)
