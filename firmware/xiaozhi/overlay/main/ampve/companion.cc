@@ -1,6 +1,7 @@
 #include "ampve/companion.h"
 
 #include "ampve/companion_audio_gate.h"
+#include "ampve/diagnostics.h"
 #include "ampve/runtime.h"
 #include "audio_codec.h"
 #if CONFIG_USE_DEVICE_AEC
@@ -13,9 +14,10 @@
 #if CONFIG_USE_DEVICE_AEC
 #include "esp_ae_rate_cvt.h"
 #include "esp_audio_types.h"
-#include "esp_log.h"
 #endif
 #include "esp_timer.h"
+#include "esp_heap_caps.h"
+#include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
 #include "freertos/task.h"
@@ -50,9 +52,13 @@ std::atomic<bool> muted{true}, stop_requested{false}, task_active{false};
 std::atomic<int64_t> last_output_at{0};
 std::atomic<bool> response_playback_active{false}, local_speech{false};
 std::atomic<uint8_t> output_level{0};
+std::atomic<uint32_t> received_frames{0};
+std::atomic<bool> failure_reported{false};
 std::unique_ptr<WebSocket> socket;
 std::mutex socket_mutex;
 QueueHandle_t playback_queue = nullptr;
+PlaybackFrame* callback_frame = nullptr;  // One reusable 8-bit heap buffer, never on ssl_receive's stack.
+std::mutex callback_frame_mutex;
 
 #if CONFIG_USE_DEVICE_AEC
 std::unique_ptr<AfeAudioEngine> audio_processor;
@@ -76,7 +82,8 @@ int64_t latency_max_us = 0;
 bool latency_reported = false;
 #endif
 
-void fail() {
+void fail(const char* code = "unknown") {
+    if (!failure_reported.exchange(true)) diagnostic_event("error", code);
     output_level = 0; last_output_at = 0;
     state = CompanionState::Error;
     stop_requested = true;
@@ -157,7 +164,7 @@ void processed_uplink_frame(std::vector<int16_t>&& frame) {
         if (decision == CompanionAudioGate::Decision::Hold) return;
         if (decision == CompanionAudioGate::Decision::InterruptAndForward) {
             if (pending_uplink.size() + pre_roll.size() + 1 > kMaximumPendingUplinkFrames) {
-                fail(); return;
+                fail("audio_queue"); return;
             }
             pending_uplink.push_back({.barge_in = true});
             while (!pre_roll.empty()) {
@@ -168,7 +175,7 @@ void processed_uplink_frame(std::vector<int16_t>&& frame) {
             response_playback_active = false;
         } else {
             pre_roll.clear();
-            if (pending_uplink.size() >= kMaximumPendingUplinkFrames) { fail(); return; }
+            if (pending_uplink.size() >= kMaximumPendingUplinkFrames) { fail("audio_queue"); return; }
             pending_uplink.push_back({.audio = std::move(frame)});
         }
     }
@@ -184,7 +191,7 @@ void drain_pending_uplink() {
         const bool sent = frame.barge_in
             ? send_control(kBargeInMessage)
             : send_socket(frame.audio.data(), kPcmFrameBytes, true);
-        if (!sent) { fail(); return; }
+        if (!sent) { fail("network"); return; }
     }
 }
 
@@ -303,21 +310,32 @@ void stop_audio_processor() { local_speech = false; }
 #endif
 
 void receive(const char* data, size_t length, bool binary) {
+    if (stop_requested.load()) return;
     if (binary) {
         if (!data || !length || length > kMaximumServerFrameBytes || length % sizeof(int16_t)) {
             fail(); return;
         }
-        PlaybackFrame frame{}; frame.size = length;
-        memcpy(frame.data, data, length);
-        if (!playback_queue) { fail(); return; }
-        if (xQueueSend(playback_queue, &frame, 0) != pdTRUE) {
+        std::lock_guard<std::mutex> lock(callback_frame_mutex);
+        if (!playback_queue || !callback_frame) { fail("audio_queue"); return; }
+        const auto frame_number = ++received_frames;
+        if (frame_number == 1 || frame_number % 200 == 0) {
+            ESP_LOGI(kLogTag, "ssl_receive: stack high-water %u bytes, free heap %u bytes",
+                     static_cast<unsigned>(uxTaskGetStackHighWaterMark(nullptr)),
+                     static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_8BIT)));
+        }
+        callback_frame->size = length;
+        memcpy(callback_frame->data, data, length);
+        if (xQueueSend(playback_queue, callback_frame, 0) != pdTRUE) {
             // A short network burst must not tear down the conversation. Keep
             // the newest audio and let the codec catch up with the live stream.
-            PlaybackFrame stale{};
-            if (xQueueReceive(playback_queue, &stale, 0) != pdTRUE ||
-                xQueueSend(playback_queue, &frame, 0) != pdTRUE) {
-                fail(); return;
+            // Reuse the same buffer to discard the oldest item, then restore
+            // the bounded newest frame before the second enqueue.
+            if (xQueueReceive(playback_queue, callback_frame, 0) != pdTRUE) {
+                fail("audio_queue"); return;
             }
+            callback_frame->size = length;
+            memcpy(callback_frame->data, data, length);
+            if (xQueueSend(playback_queue, callback_frame, 0) != pdTRUE) { fail("audio_queue"); return; }
         }
         if (!response_playback_active.exchange(true)) {
             std::lock_guard<std::mutex> lock(uplink_mutex);
@@ -344,8 +362,11 @@ void receive(const char* data, size_t length, bool binary) {
 }
 
 void audio_task(void*) {
+    ESP_LOGI(kLogTag, "Audio task start: free heap %u bytes, stack high-water %u bytes",
+             static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_8BIT)),
+             static_cast<unsigned>(uxTaskGetStackHighWaterMark(nullptr)));
     auto codec = Board::GetInstance().GetAudioCodec();
-    if (!codec || ampve_codec_failed) { fail(); task_active = false; vTaskDelete(nullptr); return; }
+    if (!codec || ampve_codec_failed) { fail("audio_io"); task_active = false; vTaskDelete(nullptr); return; }
     bool input_open = false;
     codec->SetOutputVolume(std::clamp(codec->output_volume(), 0, 80));
     codec->EnableOutput(true);
@@ -391,9 +412,9 @@ void audio_task(void*) {
         }
         if (!input_open) { vTaskDelay(pdMS_TO_TICKS(20)); continue; }
         const int channels = codec->input_channels();
-        if (channels < 1 || channels > 2 || codec->input_sample_rate() != 24000) { fail(); break; }
+        if (channels < 1 || channels > 2 || codec->input_sample_rate() != 24000) { fail("audio_io"); break; }
         std::vector<int16_t> captured(480 * channels);
-        if (!codec->InputData(captured)) { fail(); break; }
+        if (!codec->InputData(captured)) { fail("audio_io"); break; }
         if (processor_ready) {
             if (!feed_audio_processor(std::move(captured))) { fail(); break; }
         } else {
@@ -412,18 +433,30 @@ void audio_task(void*) {
     codec->EnableOutput(false);
     output_level = 0; last_output_at = 0;
     task_active = false;
+    ESP_LOGI(kLogTag, "Audio task stop: free heap %u bytes, stack high-water %u bytes",
+             static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_8BIT)),
+             static_cast<unsigned>(uxTaskGetStackHighWaterMark(nullptr)));
     if (state != CompanionState::Error) state = CompanionState::Idle;
     vTaskDelete(nullptr);
 }
 
 }  // namespace
 
-bool companion_start(const std::string& url, const std::string& ticket, int volume) {
+bool companion_start(const std::string& url, const std::string& ticket, int volume, bool start_muted) {
     if (companion_active() || url.size() > 160 || ticket.size() != 43 ||
         url != "wss://ampve.com/audio/device/ws" || ampve_codec_failed) return false;
     if (!playback_queue) playback_queue = xQueueCreate(6, sizeof(PlaybackFrame));
     if (!playback_queue) return false;
-    xQueueReset(playback_queue); stop_requested = false; muted = false;
+    if (!callback_frame) callback_frame = static_cast<PlaybackFrame*>(
+        heap_caps_malloc(sizeof(PlaybackFrame), MALLOC_CAP_8BIT));
+    if (!callback_frame) { fail(); return false; }
+    ESP_LOGI(kLogTag, "Playback queue %u bytes, receive heap buffer %u bytes, free heap %u bytes",
+             static_cast<unsigned>(6 * sizeof(PlaybackFrame)),
+             static_cast<unsigned>(sizeof(PlaybackFrame)),
+             static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_8BIT)));
+    xQueueReset(playback_queue); stop_requested = false; muted = start_muted;
+    failure_reported = false; received_frames = 0;
+    diagnostic_operation(CoreOperation::CompanionStart);
     response_playback_active = false; output_level = 0; last_output_at = 0;
     {
         std::lock_guard<std::mutex> lock(uplink_mutex);
@@ -434,8 +467,8 @@ bool companion_start(const std::string& url, const std::string& ticket, int volu
     if (!candidate) { fail(); return false; }
     candidate->SetReceiveBufferSize(4096);
     candidate->OnData(receive);
-    candidate->OnDisconnected([] { if (!stop_requested) fail(); });
-    candidate->OnError([](const NetworkError&) { fail(); });
+    candidate->OnDisconnected([] { if (!stop_requested) fail("network"); });
+    candidate->OnError([](const NetworkError&) { fail("network"); });
     candidate->OnConnected([ticket] {
         cJSON* payload = cJSON_CreateObject(); cJSON_AddStringToObject(payload, "ticket", ticket.c_str());
         char* raw = cJSON_PrintUnformatted(payload); cJSON_Delete(payload);
@@ -457,6 +490,7 @@ bool companion_start(const std::string& url, const std::string& ticket, int volu
 }
 
 void companion_stop() {
+    diagnostic_operation(CoreOperation::CompanionStop);
     stop_requested = true; muted = true; response_playback_active = false;
     output_level = 0; last_output_at = 0;
     stop_audio_processor();

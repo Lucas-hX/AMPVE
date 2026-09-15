@@ -8,10 +8,10 @@ ROOT = Path(__file__).resolve().parents[2]
 
 def generate(destination):
     lines = ['/* Generated from original AMPVE brand assets. */', '#include "lvgl.h"']
-    for name, relative in [('ampve_symbol', 'brand/ampve-symbol-avatar-v1.png'),
-                           ('ampve_companion', 'apps/companion-icon-v1.png')]:
+    for name, relative, size in [('ampve_symbol', 'brand/ampve-symbol-avatar-v1.png', 32),
+                                 ('ampve_companion', 'apps/companion-icon-v1.png', 80)]:
         with Image.open(ROOT/'images/ampve-brand-kit-v1'/relative) as original:
-            rgba = original.convert('RGBA').resize((80, 80), Image.Resampling.LANCZOS)
+            rgba = original.convert('RGBA').resize((size, size), Image.Resampling.LANCZOS)
             background = Image.new('RGBA', rgba.size, '#F7F5EE')
             background.alpha_composite(rgba)
             pixels = []
@@ -22,7 +22,7 @@ def generate(destination):
         lines.extend(','.join(str(v) for v in pixels[i:i+32])+',' for i in range(0, len(pixels), 32))
         lines.append('};')
         lines.append(f'const lv_image_dsc_t {name} = {{.header = {{.magic = LV_IMAGE_HEADER_MAGIC, '
-                     '.cf = LV_COLOR_FORMAT_RGB565, .w = 80, .h = 80, .stride = 160}, '
+                     f'.cf = LV_COLOR_FORMAT_RGB565, .w = {size}, .h = {size}, .stride = {size * 2}}}, '
                      f'.data_size = {len(pixels)}, .data = {name}_data}};')
     destination.parent.mkdir(parents=True, exist_ok=True)
     destination.write_text('\n'.join(lines)+'\n')

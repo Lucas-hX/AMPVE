@@ -119,7 +119,7 @@ def prepare(work, mode='usb-assisted'):
     if 'set(PROJECT_VER "0.1.18-companion-dev")' in cmake.read_text():
         replace(cmake,'set(PROJECT_VER "0.1.18-companion-dev")',f'set(PROJECT_VER "{UPSTREAM["candidate_version"]}")')
     for previous in ('0.1.19-companion-aec-dev', '0.1.19-companion-face-dev',
-                     '0.1.21-companion-face-safe-dev'):
+                     '0.1.21-companion-face-safe-dev', '0.1.22-companion-playback-dev'):
         if f'set(PROJECT_VER "{previous}")' in cmake.read_text():
             replace(cmake, f'set(PROJECT_VER "{previous}")',
                     f'set(PROJECT_VER "{UPSTREAM["candidate_version"]}")')
@@ -152,6 +152,9 @@ def prepare(work, mode='usb-assisted'):
         replace(component_cmake,'set(SOURCES ', 'set(SOURCES "ampve/companion_face.cc" ')
     if '"ampve/boot_guard.cc"' not in component_cmake.read_text():
         replace(component_cmake,'set(SOURCES ', 'set(SOURCES "ampve/boot_guard.cc" ')
+    for source in ('app_package.cc', 'app_runtime.cc', 'diagnostics.cc'):
+        if f'"ampve/{source}"' not in component_cmake.read_text():
+            replace(component_cmake,'set(SOURCES ',f'set(SOURCES "ampve/{source}" ')
     wifi_board=work/'main/boards/common/wifi_board.cc'
     if '#include "ampve/runtime.h"' not in wifi_board.read_text():
         replace(wifi_board,'#include "wifi_board.h"','#include "wifi_board.h"\n#include "ampve/runtime.h"')
