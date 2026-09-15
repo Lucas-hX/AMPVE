@@ -25,6 +25,7 @@ UPDATE_ERRORS={
     'approval_unavailable':'Release approval is no longer available.',
     'boot_failed':'Startup or boot selection was not confirmed.',
     'local_cancelled':'The update was cancelled using the board control.',
+    'local_recovery':'A later signed image was confirmed after local recovery; this update is superseded.',
 }
 
 

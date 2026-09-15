@@ -118,7 +118,8 @@ def prepare(work, mode='usb-assisted'):
         replace(cmake,'set(PROJECT_VER "0.1.17-visual-console-dev")',f'set(PROJECT_VER "{UPSTREAM["candidate_version"]}")')
     if 'set(PROJECT_VER "0.1.18-companion-dev")' in cmake.read_text():
         replace(cmake,'set(PROJECT_VER "0.1.18-companion-dev")',f'set(PROJECT_VER "{UPSTREAM["candidate_version"]}")')
-    for previous in ('0.1.19-companion-aec-dev', '0.1.19-companion-face-dev'):
+    for previous in ('0.1.19-companion-aec-dev', '0.1.19-companion-face-dev',
+                     '0.1.21-companion-face-safe-dev'):
         if f'set(PROJECT_VER "{previous}")' in cmake.read_text():
             replace(cmake, f'set(PROJECT_VER "{previous}")',
                     f'set(PROJECT_VER "{UPSTREAM["candidate_version"]}")')
