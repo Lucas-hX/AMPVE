@@ -309,8 +309,15 @@ void receive(const char* data, size_t length, bool binary) {
         }
         PlaybackFrame frame{}; frame.size = length;
         memcpy(frame.data, data, length);
-        if (!playback_queue || xQueueSend(playback_queue, &frame, 0) != pdTRUE) {
-            fail(); return;
+        if (!playback_queue) { fail(); return; }
+        if (xQueueSend(playback_queue, &frame, 0) != pdTRUE) {
+            // A short network burst must not tear down the conversation. Keep
+            // the newest audio and let the codec catch up with the live stream.
+            PlaybackFrame stale{};
+            if (xQueueReceive(playback_queue, &stale, 0) != pdTRUE ||
+                xQueueSend(playback_queue, &frame, 0) != pdTRUE) {
+                fail(); return;
+            }
         }
         if (!response_playback_active.exchange(true)) {
             std::lock_guard<std::mutex> lock(uplink_mutex);
@@ -353,22 +360,34 @@ void audio_task(void*) {
         if (state != CompanionState::Listening) break;
         drain_pending_uplink();
         if (stop_requested || state != CompanionState::Listening) break;
-        const bool should_capture = !muted.load();
+        // Stop RX DMA as well as uplink in the half-duplex fallback. Otherwise
+        // stale speaker echo may remain in the codec buffer when listening resumes.
+        const bool should_capture = !muted.load() &&
+            (processor_ready || !response_playback_active.load());
         if (should_capture != input_open) {
             codec->EnableInput(should_capture);
             input_open = should_capture && codec->input_enabled() && !ampve_codec_failed;
         }
         PlaybackFrame output{};
+        bool played_output = false;
         if (playback_queue && xQueueReceive(playback_queue, &output, 0) == pdTRUE) {
             std::vector<int16_t> pcm(output.size / sizeof(int16_t));
             memcpy(pcm.data(), output.data, output.size);
             output_level = level(pcm.data(), pcm.size());
             codec->OutputData(pcm); last_output_at = esp_timer_get_time();
+            played_output = true;
         }
         if (response_playback_active.load() && playback_queue &&
             uxQueueMessagesWaiting(playback_queue) == 0 &&
             esp_timer_get_time() - last_output_at.load() >= kPlaybackTailUs) {
             response_playback_active = false;
+        }
+        // Without AEC there is no useful uplink during playback. Reading a
+        // second 20 ms codec frame here makes playout slower than the server's
+        // 20 ms cadence and can overflow the six-frame queue.
+        if (!processor_ready && response_playback_active.load()) {
+            if (!played_output) vTaskDelay(pdMS_TO_TICKS(1));
+            continue;
         }
         if (!input_open) { vTaskDelay(pdMS_TO_TICKS(20)); continue; }
         const int channels = codec->input_channels();
