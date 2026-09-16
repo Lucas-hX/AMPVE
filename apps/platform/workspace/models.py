@@ -273,3 +273,70 @@ class FirmwareDeploymentEvent(models.Model):
 
     class Meta:
         constraints = [models.UniqueConstraint(fields=['deployment','sequence'], name='firmware_event_sequence_unique')]
+
+
+class DeviceDiagnosticEvent(models.Model):
+    """Only typed Core facts; no UART text, audio, credentials or free-form payload."""
+    device = models.ForeignKey(Device, on_delete=models.CASCADE, related_name='diagnostic_events')
+    boot_id = models.CharField(max_length=16)
+    sequence = models.PositiveSmallIntegerField()
+    kind = models.CharField(max_length=20)
+    operation = models.CharField(max_length=24)
+    error_code = models.CharField(max_length=32, blank=True)
+    reset_reason = models.CharField(max_length=24, blank=True)
+    core_version = models.CharField(max_length=31, blank=True)
+    app_version = models.CharField(max_length=31, blank=True)
+    heap_free_bytes = models.PositiveIntegerField(null=True)
+    stack_min_bytes = models.PositiveIntegerField(null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=['device','boot_id','sequence'], name='diagnostic_boot_event_unique')]
+        ordering = ['-created_at']
+
+
+class AppPackage(models.Model):
+    """Immutable signed declarative payload for Core capability API v1."""
+    id = models.CharField(primary_key=True, max_length=64)
+    policy = models.JSONField()
+    envelope = models.JSONField()
+    created_at = models.DateTimeField(auto_now_add=True)
+    revoked_at = models.DateTimeField(null=True, blank=True)
+
+
+class DeviceAppAssignment(models.Model):
+    device = models.OneToOneField(Device, primary_key=True, on_delete=models.CASCADE, related_name='app_assignment')
+    package = models.ForeignKey(AppPackage, null=True, on_delete=models.PROTECT, related_name='+')
+    previous_package = models.ForeignKey(AppPackage, null=True, on_delete=models.PROTECT, related_name='+')
+    disabled = models.BooleanField(default=False)
+    updated_at = models.DateTimeField(auto_now=True)
+
+
+class DeviceCoreStatus(models.Model):
+    device = models.OneToOneField(Device, primary_key=True, on_delete=models.CASCADE, related_name='core_status')
+    core_version = models.CharField(max_length=31)
+    api_version = models.PositiveSmallIntegerField()
+    app_id = models.CharField(max_length=64, blank=True)
+    app_version = models.CharField(max_length=31, blank=True)
+    heap_free_bytes = models.PositiveIntegerField()
+    stack_min_bytes = models.PositiveIntegerField()
+    reported_at = models.DateTimeField(auto_now=True)
+
+
+class DeviceAdminCommand(models.Model):
+    import uuid
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    device = models.ForeignKey(Device, on_delete=models.CASCADE, related_name='admin_commands')
+    owner = models.ForeignKey(User, on_delete=models.CASCADE)
+    idempotency_key = models.UUIDField()
+    kind = models.CharField(max_length=20)
+    package = models.ForeignKey(AppPackage, null=True, on_delete=models.PROTECT)
+    state = models.CharField(max_length=12, default='queued')
+    result_code = models.CharField(max_length=24, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField()
+    acknowledged_at = models.DateTimeField(null=True)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=['device','idempotency_key'], name='admin_command_idempotent')]
+        ordering = ['-created_at']

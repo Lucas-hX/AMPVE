@@ -9,9 +9,13 @@
 #include "wifi_board.h"
 #include "audio_codec.h"
 #include "ampve/boot_guard.h"
+#include "ampve/app_package.h"
+#include "ampve/app_runtime.h"
 #include "ampve/companion.h"
 #include "ampve/companion_face.h"
+#include "ampve/diagnostics.h"
 #include "ampve/improv_platform.h"
+#include "ampve/publisher_trust.h"
 #include "wifi_manager.h"
 #include "display.h"
 #include "esp_lvgl_port.h"
@@ -32,6 +36,7 @@
 #include "nvs.h"
 #include "cJSON.h"
 #include "mbedtls/base64.h"
+#include "freertos/task.h"
 #include <algorithm>
 #include <cmath>
 #include <ctime>
@@ -49,8 +54,12 @@ static std::atomic<bool> wifi_requested{false}, pair_requested{false}, tone_requ
 static std::atomic<bool> companion_start_requested{false}, companion_stop_requested{false};
 static std::atomic<bool> local_muted{true}, heard_tone{false}, tone_played{false};
 static std::atomic<bool> companion_enabled{false};
+static std::atomic<bool> platform_paired{false}, platform_online{false};
+static std::atomic<bool> companion_package_killed{false};
 static std::atomic<int> local_volume{-1};
 static std::atomic<uint32_t> ui_ticks{0};
+static std::atomic<int64_t> app_timer_deadline{0};
+static std::atomic<uint32_t> app_ui_revision{0};
 static std::atomic<bool> management_started{false}, boot_confirmed{false}, image_verified{false}, usb_ready{false};
 static std::mutex ui_mutex;
 static std::string network_text="Starting Wi-Fi", management_text="Not paired", pair_code;
@@ -62,8 +71,9 @@ static std::atomic<const char*> usb_phase{"starting"};
 static std::atomic<bool> usb_display_ready{false};
 extern "C" const char* ampve_wifi_password() { return setup_password.c_str(); }
 static std::atomic<int> displayed_volume{40};
-static lv_obj_t *screen, *header, *body, *network_label, *status_label, *nav;
-static lv_obj_t *home_name=nullptr, *remote_label=nullptr, *companion_controls=nullptr;
+static lv_obj_t *screen, *header, *body, *network_label, *platform_label, *header_name, *status_label, *nav;
+static lv_obj_t *remote_label=nullptr, *companion_controls=nullptr;
+static lv_obj_t *app_timer_label=nullptr;
 static lv_obj_t *companion_status_label=nullptr, *companion_action_label=nullptr, *companion_mute_label=nullptr;
 static std::atomic<int> current_page{0};
 static std::atomic<bool> remote_allowed{true}, remote_active{false};
@@ -73,6 +83,21 @@ static std::string console_ack_id, console_ack_result;
 static uint32_t flash_bytes=0;
 static esp_chip_info_t chip;
 static nvs_handle_t store_handle=0;
+static ampve::AppRuntime live_app;
+static std::mutex app_mutex;
+static std::string last_admin_id, last_admin_result;
+static std::mutex core_link_mutex;
+static std::string core_link_device, core_link_token;
+
+static ampve::AppPackage active_app() {
+    std::lock_guard<std::mutex> guard(app_mutex); return live_app.active();
+}
+static bool identifier(const std::string& value, size_t size, bool uuid);
+static bool app_session_idle() {
+    const auto deadline=app_timer_deadline.load();
+    if(deadline && esp_timer_get_time()>=deadline)app_timer_deadline=0;
+    return !ampve::companion_active() && app_timer_deadline.load()==0;
+}
 
 
 void ampve_request_wifi() { wifi_requested=true; }
@@ -156,6 +181,159 @@ static int post(const std::string& path,const std::string& token,cJSON* payload,
     if(status<0)reply.clear();
     return status;
 }
+static bool app_id(const std::string& value) {
+    return value.size()==64 && std::all_of(value.begin(),value.end(),[](char c) {
+        return (c>='0' && c<='9') || (c>='a' && c<='f');
+    });
+}
+static void flush_diagnostics(const std::string& device,const std::string& token) {
+    auto payload=ampve::diagnostic_batch();if(!payload)return;
+    const int count=cJSON_GetArraySize(cJSON_GetObjectItemCaseSensitive(payload,"events"));
+    std::string reply;const int status=post(device+"/diagnostics/events/",token,payload,reply);
+    cJSON_Delete(payload);
+    auto response=cJSON_Parse(reply.c_str());int accepted=0;
+    if(status==200 && response && number(response,"accepted",count,count,accepted))
+        ampve::diagnostic_ack(count);
+    cJSON_Delete(response);
+}
+static void acknowledge_admin(const std::string& device,const std::string& token) {
+    if(last_admin_id.empty() || last_admin_result.empty())return;
+    auto report=cJSON_CreateObject();cJSON_AddNumberToObject(report,"protocol",1);
+    cJSON_AddStringToObject(report,"result",last_admin_result.c_str());
+    std::string reply;const int status=post(device+"/core/commands/"+last_admin_id+"/ack/",token,report,reply);
+    cJSON_Delete(report);
+    if(status==200){last_admin_id.clear();last_admin_result.clear();}
+}
+static void core_app_tick(const std::string& device,const std::string& token) {
+    auto package=active_app();
+    auto report=cJSON_CreateObject();cJSON_AddNumberToObject(report,"protocol",1);
+    cJSON_AddNumberToObject(report,"api_version",1);
+    cJSON_AddStringToObject(report,"core_version",esp_app_get_description()->version);
+    cJSON_AddStringToObject(report,"active_id",package.id.c_str());
+    cJSON_AddStringToObject(report,"app_version",package.version.c_str());
+    cJSON_AddNumberToObject(report,"heap_free_bytes",
+        std::min<size_t>(33554432,heap_caps_get_free_size(MALLOC_CAP_8BIT)));
+    cJSON_AddNumberToObject(report,"stack_min_bytes",
+        std::min<unsigned>(65536,uxTaskGetStackHighWaterMark(nullptr)));
+    std::string reply;const int status=post(device+"/apps/sync/",token,report,reply);cJSON_Delete(report);
+    if(status!=200)return;
+    auto response=cJSON_Parse(reply.c_str());
+    int protocol=0,api=0;
+    if(!response || !cJSON_IsObject(response) ||
+       !number(response,"protocol",1,1,protocol) ||
+       !number(response,"api_version",1,1,api)) {
+        cJSON_Delete(response);return;
+    }
+    const auto desired=json_string(response,"desired_id",64);
+    auto disabled=cJSON_GetObjectItemCaseSensitive(response,"disabled");
+    auto killed_kind=json_string(response,"disabled_kind",16);
+    auto revoked_active=cJSON_GetObjectItemCaseSensitive(response,"revoked_active");
+    if(!cJSON_IsBool(disabled) || (!desired.empty() && !app_id(desired))) {
+        cJSON_Delete(response);return;
+    }
+    if(!cJSON_IsBool(revoked_active)) { cJSON_Delete(response);return; }
+    companion_package_killed=(cJSON_IsTrue(disabled) && killed_kind=="companion") ||
+        (cJSON_IsTrue(revoked_active) && active_app().kind=="companion");
+    if(companion_package_killed && ampve::companion_active())ampve::companion_stop();
+    if((cJSON_IsTrue(disabled) || cJSON_IsTrue(revoked_active)) && app_timer_deadline.load())
+        app_timer_deadline=0;
+    const auto revoked=cJSON_GetObjectItemCaseSensitive(response,"revoked_ids");
+    if(cJSON_IsArray(revoked) && cJSON_GetArraySize(revoked)<=2) {
+        for(auto item=revoked->child;item;item=item->next) {
+            if(!cJSON_IsString(item) || !item->valuestring || !app_id(item->valuestring))continue;
+            std::lock_guard<std::mutex> guard(app_mutex);
+            if(live_app.revoke(item->valuestring,app_session_idle())) {
+                ampve::diagnostic_event("error","package_revoked");app_ui_revision++;
+            }
+        }
+    }
+    bool failed=false,blocked=false;
+    if(cJSON_IsTrue(disabled) || desired.empty()) {
+        std::lock_guard<std::mutex> guard(app_mutex);
+        if(!live_app.active().id.empty()) {
+            if(live_app.disable(app_session_idle()))app_ui_revision++;
+            else blocked=true;
+        }
+    } else {
+        {
+            std::lock_guard<std::mutex> guard(app_mutex);
+            if(live_app.previous().id==desired && live_app.rollback(app_session_idle())) {
+                ampve::diagnostic_operation(ampve::CoreOperation::AppRollback);
+                ampve::diagnostic_event("app","",live_app.active().version);
+                app_ui_revision++;
+            }
+        }
+        bool need_download=false;
+        {
+            std::lock_guard<std::mutex> guard(app_mutex);
+            need_download=live_app.active().id!=desired && live_app.staged().id!=desired &&
+                live_app.previous().id!=desired;
+        }
+        if(need_download) {
+            ampve::diagnostic_operation(ampve::CoreOperation::AppDownload);
+            auto request=cJSON_CreateObject();cJSON_AddNumberToObject(request,"protocol",1);
+            std::string envelope;const int download_status=post(device+"/apps/"+desired+"/package/",token,request,envelope);
+            cJSON_Delete(request);
+            ampve::OtaContext context; ampve_publisher_trust(context);
+            context.now_utc=time(nullptr);context.profile_id=AMPVE_PROFILE_ID;
+            context.profile_version=AMPVE_PROFILE_VERSION;context.layout_id=AMPVE_LAYOUT_ID;
+            context.chip_revision=chip.revision;context.flash_bytes=flash_bytes;
+            ampve::AppPackage candidate;
+            if(download_status!=200 || !ampve::verify_app_package(envelope,desired,
+                context,esp_psram_get_size(),candidate)) {
+                failed=true;ampve::diagnostic_event("error",download_status==200?
+                    "package_rejected":"package_interrupted");
+            } else {
+                std::lock_guard<std::mutex> guard(app_mutex);
+                if(!live_app.stage(candidate))failed=true;
+            }
+        }
+        if(!failed) {
+            std::lock_guard<std::mutex> guard(app_mutex);
+            if(live_app.staged().id==desired) {
+                if(live_app.activate(app_session_idle())) {
+                    ampve::diagnostic_operation(ampve::CoreOperation::AppActivate);
+                    ampve::diagnostic_event("app","",live_app.active().version);
+                    app_ui_revision++;
+                } else blocked=true;
+            } else if(live_app.active().id!=desired)blocked=true;
+        }
+    }
+    const auto command=cJSON_GetObjectItemCaseSensitive(response,"command");
+    if(cJSON_IsObject(command)) {
+        const auto id=json_string(command,"id",36);
+        const auto kind=json_string(command,"kind",20);
+        if(identifier(id,36,true) && (kind=="assign_app" || kind=="kill_app" ||
+            kind=="rollback_app" || kind=="snapshot")) {
+            if(last_admin_id!=id) {
+                last_admin_id=id;
+                if(kind=="snapshot") {
+                    ampve::diagnostic_event("snapshot","",active_app().version);
+                    last_admin_result="applied";
+                } else if(failed)last_admin_result="failed";
+                else if(blocked)last_admin_result="blocked";
+                else if(kind=="kill_app")last_admin_result=active_app().id.empty()?"applied":"blocked";
+                else last_admin_result=active_app().id==desired?"applied":"blocked";
+            }
+            acknowledge_admin(device,token);
+        }
+    }
+    cJSON_Delete(response);
+}
+static void core_network_task(void*) {
+    while(true) {
+        std::string device,token;
+        {
+            std::lock_guard<std::mutex> guard(core_link_mutex);
+            device=core_link_device;token=core_link_token;
+        }
+        if(platform_online && boot_confirmed && !device.empty() && !token.empty()) {
+            core_app_tick(device,token);
+            flush_diagnostics(device,token);
+        }
+        vTaskDelay(pdMS_TO_TICKS(30000));
+    }
+}
 static cJSON* hardware_report() {
     auto report=cJSON_CreateObject();
     cJSON_AddNumberToObject(report,"schema",2);
@@ -198,7 +376,7 @@ static void toggle_companion_controls(lv_event_t*) {
 }
 static void page(int id) {
     ampve::companion_face_hide();
-    home_name=nullptr;companion_controls=nullptr;companion_status_label=nullptr;companion_action_label=nullptr;companion_mute_label=nullptr;
+    companion_controls=nullptr;companion_status_label=nullptr;companion_action_label=nullptr;companion_mute_label=nullptr;app_timer_label=nullptr;
     if(current_page.exchange(id)!=id)console_revision++;
     const bool immersive=id==4;
     lv_obj_set_style_pad_all(screen,immersive?0:20,0);
@@ -209,8 +387,7 @@ static void page(int id) {
     lv_obj_set_style_pad_all(body,immersive?0:8,0);
     lv_obj_clean(body);
     if(id==0) {
-        auto symbol=lv_image_create(body);lv_image_set_src(symbol,&ampve_symbol);
-        home_name=label(body,"Make yourself at home.",&lv_font_montserrat_36);
+        const auto package=active_app();
         auto row=lv_obj_create(body);lv_obj_set_size(row,LV_PCT(100),154);lv_obj_set_style_pad_all(row,6,0);
         lv_obj_set_flex_flow(row,LV_FLEX_FLOW_ROW);lv_obj_set_style_border_width(row,0,0);
         lv_obj_set_style_bg_opa(row,LV_OPA_TRANSP,0);
@@ -218,12 +395,16 @@ static void page(int id) {
         lv_obj_set_style_bg_color(companion,lv_color_hex(0xE8ECDD),0);
         auto icon=lv_image_create(companion);lv_image_set_src(icon,&ampve_companion);
         lv_obj_align(icon,LV_ALIGN_LEFT_MID,0,0);
-        auto title=label(companion,"Companion",&lv_font_montserrat_28);
+        auto title=label(companion,package.kind=="companion"?package.title.c_str():"Companion",&lv_font_montserrat_28);
         lv_obj_set_width(title,180);lv_obj_align(title,LV_ALIGN_RIGHT_MID,0,0);
         lv_obj_add_flag(companion,LV_OBJ_FLAG_CLICKABLE);
         lv_obj_add_event_cb(companion,go,LV_EVENT_CLICKED,reinterpret_cast<void*>(4));
         auto wifi=button(row,"Wi-Fi",go,1);lv_obj_set_size(wifi,245,140);
         auto info=button(row,"My device",go,2);lv_obj_set_size(info,245,140);
+        if(package.kind=="status" || package.kind=="timer") {
+            auto open=button(body,("Open "+package.title).c_str(),go,5);
+            lv_obj_set_width(open,400);
+        }
     } else if(id==1) {
         label(body,"Let's get connected.",&lv_font_montserrat_36);
         label(body,"Wi-Fi setup stays local. Your provider keys stay on AMPVE.");
@@ -246,7 +427,7 @@ static void page(int id) {
         if(tone_played && !ampve_codec_failed)button(body,"I heard the tone",[](lv_event_t*){if(tone_played && !ampve_codec_failed)heard_tone=true;page(2);});
     } else if(id==3) {
         label(body,"Comfort comes first.",&lv_font_montserrat_36);
-        label(body,"Microphone capture is disabled in this first shell.");
+        label(body,"Only local Companion Start can begin microphone capture.");
         label(body,"Desired volume (0-80). Test tones always start quietly.");
         auto slider=lv_slider_create(body);lv_obj_set_size(slider,850,36);lv_slider_set_range(slider,0,80);
         lv_slider_set_value(slider,displayed_volume,LV_ANIM_OFF);
@@ -255,7 +436,8 @@ static void page(int id) {
         },LV_EVENT_RELEASED,nullptr);
         button(body,"Wi-Fi and pairing",go,1);
         button(body,"Cancel firmware download",[](lv_event_t*){ampve_cancel_update();message("Cancellation requested before firmware restart.");});
-    } else {
+    } else if(id==4) {
+        const auto package=active_app();
         auto face=ampve::companion_face_show(body);
         lv_obj_add_event_cb(face,toggle_companion_controls,LV_EVENT_CLICKED,nullptr);
         companion_controls=lv_obj_create(face);lv_obj_set_size(companion_controls,760,142);
@@ -266,10 +448,13 @@ static void page(int id) {
         lv_obj_set_style_radius(companion_controls,18,0);
         lv_obj_set_style_pad_all(companion_controls,12,0);
         lv_obj_set_flex_flow(companion_controls,LV_FLEX_FLOW_COLUMN);
-        if(!companion_enabled) {
-            label(companion_controls,"Activate Companion at ampve.com to begin.");
+        if(!companion_enabled || companion_package_killed) {
+            label(companion_controls,companion_package_killed?
+                  "Assigned Companion is disabled from your workspace.":
+                  "Activate Companion at ampve.com to begin.");
             auto home=button(companion_controls,"Home",go,0);lv_obj_set_height(home,58);
         } else {
+            if(package.kind=="companion")label(companion_controls,package.body.c_str());
             companion_status_label=label(companion_controls,ampve::companion_status());
             lv_obj_set_height(companion_status_label,30);
             auto actions=lv_obj_create(companion_controls);lv_obj_set_size(actions,LV_PCT(100),68);
@@ -289,6 +474,30 @@ static void page(int id) {
             auto home=button(actions,"Home",go,0);lv_obj_set_size(home,220,58);
         }
         if(ampve::companion_active())lv_obj_add_flag(companion_controls,LV_OBJ_FLAG_HIDDEN);
+    } else {
+        const auto package=active_app();
+        if(package.kind!="status" && package.kind!="timer") {
+            label(body,"No portable app is active. Companion remains available from Home.");
+        } else {
+            label(body,package.title.c_str(),&lv_font_montserrat_36);
+            label(body,package.body.c_str());
+            if(package.kind=="status") {
+                label(body,platform_online?"AMPVE platform connected":"AMPVE platform offline");
+                label(body,ampve_wifi_initialized?"Wi-Fi driver ready":"Wi-Fi driver unavailable");
+            } else {
+                app_timer_label=label(body,"Timer ready");
+                auto start=button(body,"Start local timer",[](lv_event_t*) {
+                    const auto current=active_app();
+                    if(current.kind=="timer" && current.duration_s>=1 &&
+                       !app_timer_deadline.load())
+                        app_timer_deadline=esp_timer_get_time()+int64_t(current.duration_s)*1000000;
+                });
+                lv_obj_set_width(start,320);
+                auto stop=button(body,"Stop local timer",[](lv_event_t*){app_timer_deadline=0;});
+                lv_obj_set_width(stop,320);
+            }
+        }
+        auto home=button(body,"Home",go,0);lv_obj_set_width(home,220);
     }
 }
 static void create_ui() {
@@ -297,8 +506,15 @@ static void create_ui() {
     lv_obj_set_flex_flow(screen,LV_FLEX_FLOW_COLUMN);lv_obj_set_style_pad_all(screen,20,0);
     header=lv_obj_create(screen);lv_obj_set_size(header,LV_PCT(100),52);
     lv_obj_set_flex_flow(header,LV_FLEX_FLOW_ROW);lv_obj_set_style_pad_all(header,8,0);
-    auto brand=label(header,"AMPVE",&lv_font_montserrat_28);lv_obj_set_width(brand,180);
-    network_label=label(header,"Starting Wi-Fi");lv_obj_set_flex_grow(network_label,1);
+    auto symbol=lv_image_create(header);lv_image_set_src(symbol,&ampve_symbol);
+    lv_obj_set_size(symbol,32,32);
+    auto brand=label(header,"AMPVE",&lv_font_montserrat_20);lv_obj_set_width(brand,92);
+    header_name=label(header,"My AMPVE",&lv_font_montserrat_20);
+    lv_obj_set_width(header_name,206);lv_label_set_long_mode(header_name,LV_LABEL_LONG_DOT);
+    network_label=label(header,"Starting Wi-Fi",&lv_font_montserrat_20);
+    lv_obj_set_width(network_label,230);lv_label_set_long_mode(network_label,LV_LABEL_LONG_DOT);
+    platform_label=label(header,"Not paired",&lv_font_montserrat_20);
+    lv_obj_set_width(platform_label,172);
     body=lv_obj_create(screen);lv_obj_set_width(body,LV_PCT(100));lv_obj_set_flex_grow(body,1);
     lv_obj_set_style_bg_opa(body,LV_OPA_TRANSP,0);lv_obj_set_style_border_width(body,0,0);lv_obj_set_style_pad_all(body,8,0);
     lv_obj_set_flex_flow(body,LV_FLEX_FLOW_COLUMN);
@@ -322,14 +538,30 @@ static void create_ui() {
     lv_screen_load(screen);page(0);
     lv_timer_create([](lv_timer_t*) {
         ui_ticks++;
-        std::lock_guard<std::mutex> lock(ui_mutex);
-        lv_label_set_text(network_label,network_text.c_str());
-        lv_label_set_text(status_label,management_text.c_str());
-        if(home_name)lv_label_set_text(home_name,device_name.c_str());
-        if(remote_label)lv_label_set_text(remote_label,!remote_allowed?"Remote control stopped":remote_active?"Remote active · tap to stop":"Remote control allowed");
-        if(companion_status_label)lv_label_set_text(companion_status_label,ampve::companion_status());
-        if(companion_action_label)lv_label_set_text(companion_action_label,ampve::companion_active()?"Stop":"Start");
-        if(companion_mute_label)lv_label_set_text(companion_mute_label,ampve::companion_active()&&ampve::companion_muted()?"Unmute":"Mute");
+        {
+            std::lock_guard<std::mutex> lock(ui_mutex);
+            lv_label_set_text(network_label,network_text.c_str());
+            lv_label_set_text(platform_label,!platform_paired?"Not paired":platform_online?"Paired":"Paired offline");
+            lv_label_set_text(status_label,management_text.c_str());
+            lv_label_set_text(header_name,device_name.c_str());
+            if(remote_label)lv_label_set_text(remote_label,!remote_allowed?"Remote control stopped":remote_active?"Remote active · tap to stop":"Remote control allowed");
+            if(companion_status_label)lv_label_set_text(companion_status_label,ampve::companion_status());
+            if(companion_action_label)lv_label_set_text(companion_action_label,ampve::companion_active()?"Stop":"Start");
+            if(companion_mute_label)lv_label_set_text(companion_mute_label,ampve::companion_active()&&ampve::companion_muted()?"Unmute":"Mute");
+        }
+        if(app_timer_label) {
+            const auto deadline=app_timer_deadline.load();
+            const auto remaining=deadline?std::max<int64_t>(0,(deadline-esp_timer_get_time()+999999)/1000000):0;
+            if(deadline && !remaining)app_timer_deadline=0;
+            const auto text=deadline?"Timer: "+std::to_string(remaining)+" seconds":"Timer ready";
+            lv_label_set_text(app_timer_label,text.c_str());
+        }
+        static uint32_t shown_revision=0;
+        if(shown_revision!=app_ui_revision.load()) {
+            shown_revision=app_ui_revision.load();
+            const int id=current_page.load();
+            if(id==0 || id==4 || id==5)page(id);
+        }
     },500,nullptr);
     lvgl_port_unlock();
 }
@@ -428,6 +660,9 @@ static void startup_check(void*) {
     vTaskDelete(nullptr);
 }
 static void worker(void*) {
+    ampve::diagnostic_boot(esp_app_get_description()->version);
+    if(xTaskCreate(core_network_task,"ampve_core_net",12288,nullptr,2,nullptr)!=pdPASS)
+        ampve::diagnostic_event("error","storage");
     std::string running_hash; size_t running_size=0;
     image_verified=ampve::running_image_identity(running_hash,running_size);
     {std::lock_guard<std::mutex> lock(ui_mutex);usb_image_hash=running_hash;}
@@ -440,6 +675,11 @@ static void worker(void*) {
     auto device=json_string(state,"device_id",36);
     if((!token.empty() && !identifier(token,43)) || (!device.empty() && (!identifier(device,36,true) || token.empty()))) {
         storage_ok=false;message("Stored identity invalid. Data preserved.");
+    }
+    platform_paired=!device.empty() && identifier(device,36,true) && !token.empty();
+    {
+        std::lock_guard<std::mutex> guard(core_link_mutex);
+        core_link_device=device;core_link_token=token;
     }
     {std::lock_guard<std::mutex> lock(ui_mutex);auto name=json_string(state,"name",80);if(!name.empty())device_name=name;}
     int ack=0,volume=40;
@@ -457,6 +697,7 @@ static void worker(void*) {
     while(true) {
         const auto now=esp_timer_get_time();
         if(!ampve_wifi_initialized){
+            platform_online=false;
             if(wifi_requested.exchange(false))message("Wi-Fi is not ready. Keep USB connected for setup.");
             {std::lock_guard<std::mutex> lock(ui_mutex);network_text="Wi-Fi pending · USB setup available";}
             vTaskDelay(pdMS_TO_TICKS(100));continue;
@@ -469,6 +710,7 @@ static void worker(void*) {
         }
         auto& wifi=WifiManager::GetInstance();
         const bool connected=wifi.IsConnected();
+        if(!connected)platform_online=false;
         if(connected && console_open && !device.empty() && now>=console_next){
             int interval=600;console_open=console_sync(device,token,interval);
             console_next=esp_timer_get_time()+static_cast<int64_t>(interval)*1000;
@@ -519,7 +761,8 @@ static void worker(void*) {
             ampve::companion_stop();local_muted=true;message("Companion stopped. Microphone off.");
         }
         if(companion_start_requested.exchange(false)){
-            if(!companion_enabled){message("Activate Companion at ampve.com before starting.");}
+            if(companion_package_killed){message("Assigned Companion is disabled from your workspace.");}
+            else if(!companion_enabled){message("Activate Companion at ampve.com before starting.");}
             else if(device.empty() || token.empty() || !connected){message("Companion needs an authenticated Wi-Fi connection.");}
             else if(ampve_codec_failed || !ampve_codec_present){message("Companion audio is unavailable. Run the speaker diagnostic first.");}
             else if(!ampve::companion_active()){
@@ -532,8 +775,12 @@ static void worker(void*) {
                 bool contract=response && status==200 && ticket.size()==43 && path=="/audio/device/ws" &&
                     number(response,"sample_rate",24000,24000,sample_rate) && number(response,"channels",1,1,channels) &&
                     number(response,"frame_samples",480,480,frame_samples) && number(response,"max_seconds",1,300,max_seconds);
-                if(contract && ampve::companion_start("wss://ampve.com"+path,ticket,volume)){
-                    local_muted=false;message("Companion connecting. Microphone will turn on when ready.");
+                const auto package=active_app();
+                const bool start_muted=package.kind=="companion" && package.start_muted;
+                if(contract && ampve::companion_start("wss://ampve.com"+path,ticket,volume,start_muted)){
+                    local_muted=start_muted;
+                    message(start_muted?"Companion connecting. Unmute locally to speak.":
+                        "Companion connecting. Microphone will turn on when ready.");
                 }else message(status==409?"Finish Companion setup at ampve.com.":"Companion could not start. Microphone remains off.");
                 cJSON_Delete(response);
             }
@@ -596,6 +843,9 @@ static void worker(void*) {
                         for(const char* key:{"enrollment","proof","code","expiry"})cJSON_DeleteItemFromObject(state,key);
                         if(save(encode(state))){
                             device=received;identity_reported=false;enrollment.clear();proof.clear();expiry=0;
+                            platform_paired=true;platform_online=false;
+                            {std::lock_guard<std::mutex> guard(core_link_mutex);
+                             core_link_device=device;core_link_token=token;}
                             {std::lock_guard<std::mutex> lock(ui_mutex);pair_code.clear();}
                             message("Paired. Connecting to your dashboard.");show_pair_page();
                         }
@@ -612,6 +862,7 @@ static void worker(void*) {
                 cJSON_AddItemToObject(payload,"hardware_report",hardware_report());
                 std::string reply;int status=post(device+"/heartbeat/",token,payload,reply);cJSON_Delete(payload);
                 auto response=cJSON_Parse(reply.c_str());
+                platform_online=status==200 && response;
                 if(status==200 && response){
                     auto config=cJSON_GetObjectItemCaseSensitive(response,"configuration");
                     int version=0,remote_volume=0;
@@ -648,6 +899,8 @@ static void worker(void*) {
                 } else if(status==401){
                     // Retain the credential until a physical user starts fresh pairing.
                     device.clear();identity_reported=false;cJSON_DeleteItemFromObject(state,"device_id");save(encode(state));
+                    platform_paired=false;platform_online=false;
+                    {std::lock_guard<std::mutex> guard(core_link_mutex);core_link_device.clear();}
                     message("Device revoked. Start pairing locally to reconnect.");
                 } else message("Dashboard unavailable. Local controls still work.");
                 cJSON_Delete(response);
