@@ -236,6 +236,29 @@ class DeviceFirmware(models.Model):
     last_poll_at = models.DateTimeField(null=True, editable=False)
 
 
+class DeviceImageObservation(models.Model):
+    """Authenticated running-image proof awaiting owner review; never authorizes an OTA."""
+    device = models.OneToOneField(Device, on_delete=models.CASCADE, primary_key=True,
+                                  related_name='image_observation')
+    app_sha256 = models.CharField(max_length=64)
+    firmware_version = models.CharField(max_length=31)
+    observed_at = models.DateTimeField(auto_now=True)
+
+
+class DeviceFirmwareRecoveryEvent(models.Model):
+    """Audit a reviewed local USB image reconciliation without any device write."""
+    device = models.ForeignKey(Device, on_delete=models.CASCADE, related_name='recovery_events')
+    owner = models.ForeignKey(User, on_delete=models.CASCADE)
+    previous_release = models.ForeignKey(FirmwareRelease, on_delete=models.PROTECT,
+                                         related_name='+')
+    new_release = models.ForeignKey(FirmwareRelease, on_delete=models.PROTECT,
+                                    related_name='+')
+    previous_app_sha256 = models.CharField(max_length=64)
+    new_app_sha256 = models.CharField(max_length=64)
+    observed_at = models.DateTimeField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+
 class FirmwareDeployment(models.Model):
     import uuid
     ACTIVE = ['queued','downloading','verifying','rebooting']
@@ -288,6 +311,9 @@ class DeviceDiagnosticEvent(models.Model):
     app_version = models.CharField(max_length=31, blank=True)
     heap_free_bytes = models.PositiveIntegerField(null=True)
     stack_min_bytes = models.PositiveIntegerField(null=True)
+    dma_free_bytes = models.PositiveIntegerField(null=True)
+    dma_largest_bytes = models.PositiveIntegerField(null=True)
+    audio_stack_min_bytes = models.PositiveIntegerField(null=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

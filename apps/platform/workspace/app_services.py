@@ -1,5 +1,6 @@
 """One-device declarative app rollout and bounded Core administration."""
 import uuid
+import re
 from datetime import timedelta
 from pathlib import Path
 from django.conf import settings
@@ -12,6 +13,13 @@ from .models import (AppPackage, Device, DeviceAdminCommand, DeviceAppAssignment
 from .release_contract import canonical, strict_json, read_bounded
 
 KINDS = {'assign_app', 'kill_app', 'rollback_app', 'snapshot'}
+
+
+def supports_api_v1(version):
+    if not isinstance(version, str) or len(version) > 31:
+        return False
+    match = re.fullmatch(r'0\.1\.(\d{1,3})(?:-[A-Za-z0-9._+-]+)?', version)
+    return bool(match and int(match.group(1)) >= 23)
 
 
 class AppError(ValueError):
@@ -68,7 +76,7 @@ def request(owner, device_id, kind, key, package_id=None):
         package = None
         if kind == 'assign_app':
             status = DeviceCoreStatus.objects.filter(device=device, api_version=1).first()
-            if not status or not status.core_version.startswith('0.1.23'):
+            if not status or status.api_version != 1 or not supports_api_v1(status.core_version):
                 raise AppError('Core capability API v1 must be reported before assigning apps.')
             package = AppPackage.objects.select_for_update().get(pk=package_id)
             if not hardware_compatible(device, verified(package)):
@@ -100,7 +108,7 @@ def sync(device, data):
     if set(data) != {'protocol', 'api_version', 'core_version', 'active_id', 'app_version',
                      'heap_free_bytes', 'stack_min_bytes'} or type(data['protocol']) is not int or data['protocol'] != 1 or type(data['api_version']) is not int or data['api_version'] != 1:
         raise AppError('Unsupported Core status protocol.')
-    if not isinstance(data['core_version'], str) or not data['core_version'].startswith('0.1.23') or len(data['core_version']) > 31 or not isinstance(data['app_version'], str) or len(data['app_version']) > 31 or not isinstance(data['active_id'], str) or (data['active_id'] and (len(data['active_id']) != 64 or any(c not in '0123456789abcdef' for c in data['active_id']))):
+    if not supports_api_v1(data['core_version']) or not isinstance(data['app_version'], str) or len(data['app_version']) > 31 or not isinstance(data['active_id'], str) or (data['active_id'] and (len(data['active_id']) != 64 or any(c not in '0123456789abcdef' for c in data['active_id']))):
         raise AppError('Core or app identity exceeds the reported capability API.')
     for name, maximum in [('heap_free_bytes', 33554432), ('stack_min_bytes', 65536)]:
         if type(data[name]) is not int or not 0 <= data[name] <= maximum:

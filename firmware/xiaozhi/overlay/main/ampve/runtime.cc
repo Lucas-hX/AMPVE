@@ -187,7 +187,8 @@ static bool app_id(const std::string& value) {
     });
 }
 static void flush_diagnostics(const std::string& device,const std::string& token) {
-    auto payload=ampve::diagnostic_batch();if(!payload)return;
+    // Two measured events stay below the 2 KiB authenticated device API cap.
+    auto payload=ampve::diagnostic_batch(2);if(!payload)return;
     const int count=cJSON_GetArraySize(cJSON_GetObjectItemCaseSensitive(payload,"events"));
     std::string reply;const int status=post(device+"/diagnostics/events/",token,payload,reply);
     cJSON_Delete(payload);

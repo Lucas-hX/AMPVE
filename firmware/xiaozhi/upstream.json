@@ -1,9 +1,9 @@
 {
   "repository": "https://github.com/78/xiaozhi-esp32",
   "commit": "563a4f0a70d34eea5547977f2a39efa401c2ea35",
-  "status": "native-shell-development-candidate-not-approved-for-installation",
+  "status": "development-audio-candidate-awaiting-physical-validation",
   "candidate_build": "esp32-p4-wifi6-touch-lcd-7b",
-  "candidate_version": "0.1.23-core-dev",
+  "candidate_version": "0.1.24-core-dev",
   "hardware_profile": "waveshare-esp32-p4-wifi6-touch-lcd-7b",
   "local_observation": "User-confirmed browser ROM inspection: ESP32-P4 v1.3; USB VID 0x1a86 PID 0x55d3 (2026-09-13). Flash/partitions/security state still require audit.",
   "firmware_artifacts": [],
@@ -11,5 +11,5 @@
     "tag": "v6.1",
     "commit": "fff9895c82d744c7237be8847347bdd1b07c6643"
   },
-  "artifact_policy": "Generated privately by firmware/tools/release.py; no public installable release until local audit and explicit hardware-write approval."
+  "artifact_policy": "Reviewable app-only development OTA artifacts are generated privately and published as drafts. No physical update is triggered by a build or release publication; the owner reviews the exact running image, inactive slot and recovery route before initiating an update."
 }

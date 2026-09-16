@@ -77,7 +77,8 @@ void BoxAudioCodec::Release() {
             const int reference_channel = reference_gain_channel_ >= 0 ? reference_gain_channel_ : 1;
             fs.channel_mask |= ESP_CODEC_DEV_MAKE_CHANNEL_MASK(reference_channel);
         }
-        AMPVE_AUDIO_CHECK(i2s_channel_enable(rx_handle_));
+        // The pinned esp_codec_dev_open() enables its data interface, including
+        // RX I2S. Enabling RX here first double-started the channel.
         AMPVE_AUDIO_CHECK(esp_codec_dev_open(input_dev_, &fs));
         AMPVE_AUDIO_CHECK(esp_codec_dev_set_in_channel_gain(
             input_dev_, ESP_CODEC_DEV_MAKE_CHANNEL_MASK(0), input_gain_));
@@ -86,8 +87,10 @@ void BoxAudioCodec::Release() {
                 ESP_CODEC_DEV_MAKE_CHANNEL_MASK(reference_gain_channel_), reference_gain_));
         }
     } else {
+        // esp_codec_dev_close() disables RX through its data interface. A
+        // second i2s_channel_disable() returns INVALID_STATE on ESP-IDF and
+        // made an ordinary mute/stop permanently poison ampve_codec_failed.
         AMPVE_AUDIO_CHECK(esp_codec_dev_close(input_dev_));
-        AMPVE_AUDIO_CHECK(i2s_channel_disable(rx_handle_));
     }
     AudioCodec::EnableInput(enable);
 }
@@ -123,8 +126,10 @@ def prepare(work, pin):
         previous = original.replace('    ESP_ERROR_CHECK(i2s_channel_enable(rx_handle_));',
                                     '    // AMPVE shell: leave the RX DMA channel disabled; no microphone capture.')
         current = target.read_text()
-        legacy = (path == SOURCE and hashlib.sha256(current.encode()).hexdigest() ==
-                  'bb80f2db14705187e08fce97242a553febf03f7cf6a9b5822353471f9f5f3219')
+        legacy = (path == SOURCE and hashlib.sha256(current.encode()).hexdigest() in {
+                  'bb80f2db14705187e08fce97242a553febf03f7cf6a9b5822353471f9f5f3219',
+                  # Exact reviewed 0.1.23 transformed source, before RX lifecycle repair.
+                  'c843fcb4397cf157bbe52f45cfec684b0984f6ae0e7b268cb6ac584b770b8460'})
         prior_reference = updated.replace('''        if (input_reference_) {
             const int reference_channel = reference_gain_channel_ >= 0 ? reference_gain_channel_ : 1;
             fs.channel_mask |= ESP_CODEC_DEV_MAKE_CHANNEL_MASK(reference_channel);

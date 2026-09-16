@@ -15,7 +15,7 @@ from .app_package_contract import verify
 from . import app_services
 from .device_services import digest
 from .hardware_profiles import CONTRACT, PROFILE
-from .models import (User, Device, DeviceAdminCommand, DeviceAppAssignment,
+from .models import (User, Device, AudioSession, DeviceAdminCommand, DeviceAppAssignment,
                      DeviceCoreStatus, DeviceDiagnosticEvent)
 from .release_contract import canonical, sha256
 
@@ -82,6 +82,19 @@ class CoreCapabilityTests(TestCase):
             'core_version':'0.1.23-core-dev','app_version':'',
             'heap_free_bytes':1000000,'stack_min_bytes':2200}
 
+    def test_later_core_patch_keeps_capability_api_v1(self):
+        report={'protocol':1,'api_version':1,'core_version':'0.1.24-core-dev',
+            'active_id':'','app_version':'','heap_free_bytes':1000000,
+            'stack_min_bytes':5100}
+        self.assertEqual(self.device_post('apps/sync/',report).status_code,200)
+        self.assertEqual(DeviceCoreStatus.objects.get(device=self.device).core_version,'0.1.24-core-dev')
+        self.assertContains(self.client.get(reverse('device_core',args=[self.device.pk])),
+                            'timer-fixture')
+        command=app_services.request(self.owner,self.device.pk,'assign_app',uuid.uuid4(),self.timer.pk)
+        self.assertEqual(command.kind,'assign_app')
+        report['core_version']='0.1.22-companion-playback-dev'
+        self.assertEqual(self.device_post('apps/sync/',report).status_code,409)
+
     def test_signature_size_schema_and_hardware_rejection(self):
         policy, identity=verify(self.signed(self.policy),self.trust)
         self.assertEqual(identity,self.timer.pk)
@@ -139,16 +152,33 @@ class CoreCapabilityTests(TestCase):
         self.assertEqual(DeviceDiagnosticEvent.objects.filter(device=self.device).count(),1)
         capture=self.event(2);capture['kind']='operation';capture['operation']='companion_capture'
         self.assertEqual(self.device_post('diagnostics/events/',{'protocol':1,'events':[capture]}).status_code,200)
+        measured=self.event(3);measured.update(kind='error',operation='companion_capture',
+            error_code='ws_disconnect',reset_reason='',core_version='0.1.24-core-dev',
+            dma_free_bytes=128000,dma_largest_bytes=64000,audio_stack_min_bytes=5100)
+        self.assertEqual(self.device_post('diagnostics/events/',{'protocol':1,'events':[measured]}).status_code,200)
+        self.assertEqual(self.device_post('diagnostics/events/',{'protocol':1,'events':[measured]}).status_code,200)
+        self.assertEqual(DeviceDiagnosticEvent.objects.get(device=self.device,sequence=3).dma_largest_bytes,64000)
+        impossible={**measured,'sequence':4,'dma_largest_bytes':129000}
+        self.assertEqual(self.device_post('diagnostics/events/',{'protocol':1,'events':[impossible]}).status_code,409)
+        partial={key:value for key,value in measured.items() if key!='audio_stack_min_bytes'}
+        partial['sequence']=4
+        self.assertEqual(self.device_post('diagnostics/events/',{'protocol':1,'events':[partial]}).status_code,409)
         changed=self.event();changed['operation']='companion_start'
         self.assertEqual(self.device_post('diagnostics/events/',{'protocol':1,'events':[changed]}).status_code,409)
         raw=self.event(1);raw['uart_text']='password=fixture'
         self.assertEqual(self.device_post('diagnostics/events/',{'protocol':1,'events':[raw]}).status_code,409)
         self.assertEqual(self.device_post('diagnostics/events/',payload,token=secrets.token_urlsafe(32)).status_code,401)
         url=reverse('device_core',args=[self.device.pk])
+        AudioSession.objects.create(owner=self.owner,device=self.device,revision=1,
+            provider='openai',mode='device',status='ended',result_code='disconnected',
+            ended_at=timezone.now())
         self.assertContains(self.client.get(url),'abcdef0123456789')
+        self.assertContains(self.client.get(url),'DMA free')
+        self.assertContains(self.client.get(url),'Recent Companion audio sessions')
+        self.assertContains(self.client.get(url),'disconnected')
         self.client.force_login(self.other);self.assertEqual(self.client.get(url).status_code,404)
         self.client.force_login(self.admin);self.assertEqual(self.client.get(url).status_code,404)
-        for sequence in [1,*range(3,135)]:
+        for sequence in [1,*range(4,135)]:
             DeviceDiagnosticEvent.objects.create(device=self.device,**self.event(sequence))
         self.assertEqual(self.device_post('diagnostics/events/',{'protocol':1,'events':[self.event(200)]}).status_code,200)
         self.assertLessEqual(DeviceDiagnosticEvent.objects.filter(device=self.device).count(),128)

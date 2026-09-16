@@ -10,10 +10,13 @@ KINDS = {'boot', 'operation', 'error', 'snapshot', 'app'}
 OPERATIONS = {'idle', 'companion_start', 'companion_capture', 'companion_stop',
               'app_download', 'app_activate', 'app_rollback', 'core_ota'}
 ERRORS = {'', 'ssl_stack_fault', 'audio_queue', 'audio_io', 'network', 'package_rejected',
-          'package_interrupted', 'package_revoked', 'ota_journal', 'storage', 'unknown'}
+          'package_interrupted', 'package_revoked', 'ota_journal', 'storage', 'unknown',
+          'uplink_send', 'ws_disconnect', 'ws_error', 'ws_timeout',
+          'server_result', 'server_error'}
 RESETS = {'', 'power_on', 'software', 'panic', 'watchdog', 'brownout', 'unknown'}
 FIELDS = {'boot_id', 'sequence', 'kind', 'operation', 'error_code', 'reset_reason',
           'core_version', 'app_version', 'heap_free_bytes', 'stack_min_bytes'}
+MEASURED_FIELDS = {'dma_free_bytes', 'dma_largest_bytes', 'audio_stack_min_bytes'}
 MAX_EVENTS = 4
 KEEP_EVENTS = 128
 KEEP_DAYS = 30
@@ -24,7 +27,7 @@ class DiagnosticError(ValueError):
 
 
 def validate(event):
-    if not isinstance(event, dict) or set(event) != FIELDS or not isinstance(event['boot_id'], str) or not re.fullmatch('[a-f0-9]{16}', event['boot_id']) or type(event['sequence']) is not int or not 0 <= event['sequence'] <= 65535:
+    if not isinstance(event, dict) or set(event) not in (FIELDS, FIELDS | MEASURED_FIELDS) or not isinstance(event['boot_id'], str) or not re.fullmatch('[a-f0-9]{16}', event['boot_id']) or type(event['sequence']) is not int or not 0 <= event['sequence'] <= 65535:
         raise DiagnosticError('Invalid Core boot/event identity.')
     if any(not isinstance(event[field],str) for field in ('kind','operation','error_code','reset_reason')) or event['kind'] not in KINDS or event['operation'] not in OPERATIONS or event['error_code'] not in ERRORS or event['reset_reason'] not in RESETS:
         raise DiagnosticError('Core event contains unsupported text.')
@@ -34,6 +37,15 @@ def validate(event):
     for field, maximum in [('heap_free_bytes', 33554432), ('stack_min_bytes', 65536)]:
         if event[field] is not None and (type(event[field]) is not int or not 0 <= event[field] <= maximum):
             raise DiagnosticError('Invalid bounded health metric.')
+    if MEASURED_FIELDS <= set(event):
+        for field, maximum in [('dma_free_bytes', 33554432),
+                               ('dma_largest_bytes', 33554432),
+                               ('audio_stack_min_bytes', 65536)]:
+            if event[field] is not None and (type(event[field]) is not int or not 0 <= event[field] <= maximum):
+                raise DiagnosticError('Invalid bounded audio health metric.')
+        if (event['dma_largest_bytes'] is not None and event['dma_free_bytes'] is not None
+                and event['dma_largest_bytes'] > event['dma_free_bytes']):
+            raise DiagnosticError('Largest DMA block exceeds free DMA heap.')
     return event
 
 
