@@ -16,13 +16,31 @@ from profile_contract import PROFILE, native_header
 ROOT = Path(__file__).resolve().parents[2]
 UPSTREAM = json.loads((ROOT/'firmware/xiaozhi/upstream.json').read_text())
 PIN = UPSTREAM['commit']
+LEAN_MANIFEST = ROOT/'firmware/xiaozhi/idf_component.ampve.yml'
 
 
 def replace(path, old, new):
-    data = path.read_text()
+    data = path.read_text(encoding='utf-8')
     if old not in data:
         raise RuntimeError('Upstream contract changed: '+str(path))
-    path.write_text(data.replace(old, new))
+    path.write_text(data.replace(old, new), encoding='utf-8', newline='\n')
+
+
+def configure_lean_manifest(work):
+    """Replace XiaoZhi's all-board manifest with the reviewed 7B dependency set."""
+    component = work/'main/idf_component.yml'
+    base = LEAN_MANIFEST.read_text(encoding='utf-8')
+    local = base.replace(
+        '  78/esp-wifi-connect: "==3.3.1"',
+        '  78/esp-wifi-connect:\n'
+        '    version: "3.3.1"\n'
+        '    override_path: ../components/78__esp-wifi-connect')
+    current = component.read_text(encoding='utf-8')
+    if current not in (base, local):
+        component.write_text(base, encoding='utf-8', newline='\n')
+        # A lock produced from XiaoZhi's all-board manifest is not valid for
+        # Core Lite. Component Manager must solve the reviewed manifest once.
+        (work/'dependencies.lock').unlink(missing_ok=True)
 
 
 def stage_overlay(source, destination):
@@ -123,6 +141,39 @@ def minimize_wifi_board(path):
     path.write_text(source)
 
 
+def minimize_board_network_interface(work):
+    """Detach Core Lite from XiaoZhi's modem/network protocol abstraction."""
+    board = work/'main/boards/common/board.h'
+    text = board.read_text(encoding='utf-8')
+    marker = '// AMPVE Core Lite board interface'
+    if marker not in text:
+        for header in ('#include <http.h>\n', '#include <web_socket.h>\n',
+                       '#include <mqtt.h>\n', '#include <udp.h>\n',
+                       '#include <network_interface.h>\n', '#include "camera.h"\n',
+                       '#include "assets.h"\n'):
+            text = text.replace(header, '')
+        text = text.replace('void* create_board();\nclass AudioCodec;\nclass Display;',
+                            marker + '\nvoid* create_board();\nclass AudioCodec;\n'
+                            'class Display;\nclass Camera;')
+        text = text.replace('    virtual NetworkInterface* GetNetwork() = 0;\n', '')
+        board.write_text(text, encoding='utf-8', newline='\n')
+
+    wifi_header = work/'main/boards/common/wifi_board.h'
+    text = wifi_header.read_text(encoding='utf-8')
+    text = text.replace('    virtual NetworkInterface* GetNetwork() override;\n', '')
+    wifi_header.write_text(text, encoding='utf-8', newline='\n')
+
+    wifi_source = work/'main/boards/common/wifi_board.cc'
+    text = wifi_source.read_text(encoding='utf-8')
+    text = text.replace('#include <esp_network.h>\n', '')
+    text = text.replace(
+        'NetworkInterface* WifiBoard::GetNetwork() {\n'
+        '    static EspNetwork network;\n'
+        '    return &network;\n'
+        '}\n\n', '')
+    wifi_source.write_text(text, encoding='utf-8', newline='\n')
+
+
 def prepare(work, mode='usb-assisted'):
     if mode not in {'usb-assisted', 'ota'}:
         raise ValueError('Firmware mode must be usb-assisted or ota')
@@ -133,12 +184,15 @@ def prepare(work, mode='usb-assisted'):
     if not work.exists():
         subprocess.run(['git','clone','--filter=blob:none','--no-checkout',
             'https://github.com/78/xiaozhi-esp32.git',str(work)],check=True)
-        subprocess.run(['git','-C',str(work),'checkout','--detach',PIN],check=True)
-    if subprocess.check_output(['git','-C',str(work),'rev-parse','HEAD']).decode().strip() != PIN:
+        subprocess.run(['git','-c','safe.directory='+str(work),'-C',str(work),
+                        'checkout','--detach',PIN],check=True)
+    if subprocess.check_output(['git','-c','safe.directory='+str(work),'-C',str(work),
+                                'rev-parse','HEAD']).decode().strip() != PIN:
         raise RuntimeError('Checkout must be detached at '+PIN)
     marker=work/'.ampve-prepared'
     if not marker.exists():
-        if subprocess.check_output(['git','-C',str(work),'diff','--name-only']).strip():
+        if subprocess.check_output(['git','-c','safe.directory='+str(work),'-C',str(work),
+                                    'diff','--name-only']).strip():
             raise RuntimeError('Refusing to patch modified upstream checkout.')
         cmake=work/'CMakeLists.txt'
         replace(cmake,'set(PROJECT_VER "2.5.0")','set(PROJECT_VER "0.1.0-dev")')
@@ -215,12 +269,7 @@ def prepare(work, mode='usb-assisted'):
     if f'set(PROJECT_VER "{UPSTREAM["candidate_version"]}")' not in cmake.read_text():
         raise RuntimeError('Prepared project version differs from the candidate version')
     component=work/'main/idf_component.yml'
-    if 'espressif/libsodium:' not in component.read_text():
-        replace(component,'dependencies:\n','dependencies:\n  espressif/libsodium: "==1.0.22~1"\n')
-    if '78/uart-uhci:' not in component.read_text():
-        # This transitive range has newer registry releases. Keep the reviewed
-        # transport bytes fixed when Component Manager must resolve again.
-        replace(component,'dependencies:\n','dependencies:\n  78/uart-uhci: "==0.3.2"\n')
+    configure_lean_manifest(work)
     commissioning_kconfig=work/'main/Kconfig.projbuild'
     if 'config AMPVE_USB_COMMISSIONING' not in commissioning_kconfig.read_text():
         with commissioning_kconfig.open('a') as stream:
@@ -257,12 +306,13 @@ def prepare(work, mode='usb-assisted'):
         replace(wifi_board,'    // Set unified event callback',
             '    if (!SsidManager::GetInstance().IsStorageReady()) { ampve_wifi_initialized = false; ESP_LOGE(TAG, "Wi-Fi credentials unavailable; data preserved"); return; }\n\n    // Set unified event callback')
     minimize_wifi_board(wifi_board)
+    minimize_board_network_interface(work)
     prepare_board(work, PIN)
     stage_overlay(overlay,work)
     configure_lean_sources(component_cmake)
-    (work/'main/ampve/profile.h').write_text(native_header())
+    (work/'main/ampve/profile.h').write_text(native_header(), encoding='utf-8', newline='\n')
     trust_header,trust_metadata=generate_native_trust(os.environ.get('AMPVE_NATIVE_TRUST'))
-    (work/'main/ampve/publisher_trust.h').write_text(trust_header)
+    (work/'main/ampve/publisher_trust.h').write_bytes(trust_header.encode('utf-8'))
     (work/'native-public-trust.json').write_bytes(trust_metadata)
     shutil.copyfile(ROOT/'firmware/xiaozhi/sdkconfig.ampve',work/'sdkconfig.ampve')
     if mode == 'ota':

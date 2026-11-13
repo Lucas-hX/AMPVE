@@ -6,7 +6,8 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT/'firmware/tools'))
-from prepare import configure_lean_sources, normalize_ampve_sources  # noqa: E402
+from prepare import (configure_lean_sources, minimize_board_network_interface,
+                     normalize_ampve_sources)  # noqa: E402
 
 
 class PrepareLinkOrderTests(unittest.TestCase):
@@ -56,3 +57,25 @@ class PrepareLinkOrderTests(unittest.TestCase):
                                'fatfs','xiaozhi-fonts'):
                 self.assertNotIn(dependency,boundary)
             configure_lean_sources(path)
+
+    def test_core_lite_board_does_not_require_modem_protocol_headers(self):
+        with tempfile.TemporaryDirectory(prefix='ampve-board-interface-') as directory:
+            work = Path(directory)
+            common = work/'main/boards/common'; common.mkdir(parents=True)
+            (common/'board.h').write_text(
+                '#include <http.h>\n#include <web_socket.h>\n#include <mqtt.h>\n'
+                '#include <udp.h>\n#include <network_interface.h>\n#include "camera.h"\n'
+                '#include "assets.h"\nvoid* create_board();\nclass AudioCodec;\nclass Display;\n'
+                '    virtual NetworkInterface* GetNetwork() = 0;\n')
+            (common/'wifi_board.h').write_text(
+                '    virtual NetworkInterface* GetNetwork() override;\n')
+            (common/'wifi_board.cc').write_text(
+                '#include <esp_network.h>\nNetworkInterface* WifiBoard::GetNetwork() {\n'
+                '    static EspNetwork network;\n    return &network;\n}\n\n')
+            minimize_board_network_interface(work)
+            minimize_board_network_interface(work)
+            combined = ''.join(path.read_text() for path in common.iterdir())
+            for omitted in ('http.h', 'web_socket.h', 'mqtt.h', 'udp.h',
+                            'network_interface.h', 'esp_network.h', 'GetNetwork()'):
+                self.assertNotIn(omitted, combined)
+            self.assertIn('class Camera;', (common/'board.h').read_text())

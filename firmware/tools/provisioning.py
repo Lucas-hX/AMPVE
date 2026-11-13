@@ -83,7 +83,7 @@ static bool ampve_local_request(httpd_req_t* req) {
             '"{\\"ssid\\":%s,\\"rssi\\":%d,\\"authmode\\":%d}"')
     replace(path, '(char *)this_->ap_records_[i].ssid, this_->ap_records_[i].rssi, this_->ap_records_[i].authmode);',
             'ampve_json_string((char *)this_->ap_records_[i].ssid).c_str(), this_->ap_records_[i].rssi, this_->ap_records_[i].authmode);')
-    replace(work/'main/idf_component.yml', '78/esp-wifi-connect: ~3.3.1',
+    replace(work/'main/idf_component.yml', '78/esp-wifi-connect: "==3.3.1"',
             '78/esp-wifi-connect:\n    version: "3.3.1"\n    override_path: ../components/78__esp-wifi-connect')
     (target/'.ampve-patched').write_text('3.3.1\n')
     prepare_wifi(work)

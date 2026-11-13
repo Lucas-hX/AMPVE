@@ -5,7 +5,7 @@ import sys
 import unittest
 from pathlib import Path
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'tools'))
-from installation_plan import next_selection, select_record
+from installation_plan import inactive_slot_mode, next_selection, select_record
 
 
 def selection(seq,state=2,index=0):
@@ -16,6 +16,16 @@ def selection(seq,state=2,index=0):
 
 
 class BootSelectionTests(unittest.TestCase):
+    def test_occupied_slot_requires_confirmed_ota0_and_is_recorded_as_replacement(self):
+        self.assertEqual(inactive_slot_mode(b'old-image',(9,0,2)),
+                         'replace-confirmed-inactive-ota1')
+        for current in [None,(8,0,2),(9,0,0),(9,0,1)]:
+            with self.subTest(current=current),self.assertRaises(ValueError):
+                inactive_slot_mode(b'old-image',current)
+
+    def test_blank_slot_remains_allowed_for_factory_fallback(self):
+        self.assertEqual(inactive_slot_mode(b'\xff'*32,None),'blank')
+
     def test_retains_valid_stock_record_and_changes_other_sector(self):
         old=selection(5)
         index,new,current=next_selection(old)

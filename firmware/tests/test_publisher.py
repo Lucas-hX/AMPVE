@@ -66,7 +66,7 @@ class PublisherTests(unittest.TestCase):
         config={'schema':1,'build_sequence':sequence,'trust':self.trust}
         header,public=generate(config=config)
         (self.candidate/'native-public-trust.json').write_bytes(public)
-        (self.candidate/'publisher_trust.h').write_text(header)
+        (self.candidate/'publisher_trust.h').write_bytes(header.encode('utf-8'))
         path=self.candidate/'review-manifest.json';manifest=json.loads(path.read_bytes())
         manifest.update(native_build_sequence=sequence,native_ota_testing_only=False,native_public_trust_sha256=hashlib.sha256(public).hexdigest(),
             generated_inputs={'main/ampve/publisher_trust.h':hashlib.sha256(header.encode()).hexdigest()})
@@ -221,7 +221,7 @@ class PublisherTests(unittest.TestCase):
         from native_trust import generate
         header,public=generate(config={'schema':1,'build_sequence':7,'testing_only':True,'trust':self.trust})
         (self.candidate/'native-public-trust.json').write_bytes(public)
-        (self.candidate/'publisher_trust.h').write_text(header)
+        (self.candidate/'publisher_trust.h').write_bytes(header.encode('utf-8'))
         path=self.candidate/'review-manifest.json';manifest=json.loads(path.read_bytes())
         manifest.update(native_ota_testing_only=True,native_public_trust_sha256=hashlib.sha256(public).hexdigest(),
             generated_inputs={'main/ampve/publisher_trust.h':hashlib.sha256(header.encode()).hexdigest()})

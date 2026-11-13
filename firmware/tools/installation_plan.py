@@ -55,6 +55,18 @@ def next_selection(data):
     return target,bytes(sector),current
 
 
+def inactive_slot_mode(slot, current):
+    """Classify ota_1 without ever inferring that an occupied active slot is safe."""
+    if slot == b'\xff' * len(slot):
+        return 'blank'
+    # select_record() only returns a confirmed ota_0 record.  An erased
+    # otadata region means factory fallback and is not enough evidence to
+    # replace an existing application.
+    if current is None or (current[0] - 1) % 2 != 0 or current[2] not in (2, 0xFFFFFFFF):
+        raise ValueError('Occupied ota_1 is not proven inactive and confirmed')
+    return 'replace-confirmed-inactive-ota1'
+
+
 def prepare_plan(audit_dir, candidate_dir, output):
     result=compare(audit_dir,candidate_dir)
     if not result['partition_layout_identical']:
@@ -64,8 +76,17 @@ def prepare_plan(audit_dir, candidate_dir, output):
         raise ValueError('Wrong installation profile')
     original=(audit_dir/'backup-a.bin').read_bytes()
     report=analyze(original)
-    if original[SLOT:SLOT+SLOT_SIZE] != b'\xff'*SLOT_SIZE:
-        raise ValueError('The proposed ota_1 slot is not empty')
+    sector,new_selection,current=next_selection(original[OTA:OTA+2*SECTOR])
+    slot_bytes=original[SLOT:SLOT+SLOT_SIZE]
+    slot_mode=inactive_slot_mode(slot_bytes,current)
+    inactive_partition=next((p for p in report['partitions'] if p['name']=='ota_1' and
+        p['offset']==SLOT and p['size']==SLOT_SIZE),None)
+    if not inactive_partition:
+        raise ValueError('Audited ota_1 partition does not match the installation profile')
+    inactive_slot={'mode':slot_mode,'partition_sha256':digest(slot_bytes),
+        'application':inactive_partition.get('app_metadata')}
+    if slot_mode!='blank':
+        inactive_slot['image']=image_metadata(slot_bytes)
     app=(candidate_dir/'xiaozhi.bin').read_bytes()
     candidate_image=image_metadata(app)
     stock_images=[{'name':'bootloader','offset':0x2000,**image_metadata(original[0x2000:0x8000])}]
@@ -76,7 +97,6 @@ def prepare_plan(audit_dir, candidate_dir, output):
     proposal=manifest['proposed_regions_not_approved_writes']
     if len(proposal)!=1 or proposal[0]['offset']!=SLOT or proposal[0]['sha256']!=digest(app) or len(app)>SLOT_SIZE:
         raise ValueError('Unexpected app proposal')
-    sector,new_selection,current=next_selection(original[OTA:OTA+2*SECTOR])
     output=private_directory(output)
     regions=[]
     for name,offset,data in [('ampve-app.bin',SLOT,app),('select-ampve.bin',OTA+sector*SECTOR,new_selection)]:
@@ -95,7 +115,8 @@ def prepare_plan(audit_dir, candidate_dir, output):
     plan={'schema':1,'profile':PROFILE['installation_id'],'compatibility':CONTRACT,'installable':False,
         'backup_sha256':report['sha256'],'stock_bootloader_region_sha256':digest(original[0x2000:0x8000]),
         'stock_table_sector_sha256':digest(original[0x8000:0x9000]),
-        'current_selection':current,'write_order':regions,'post_boot_recovery_regions':recovery,
+        'current_selection':current,'inactive_slot_before_install':inactive_slot,
+        'write_order':regions,'post_boot_recovery_regions':recovery,
         'preserved_at_install':manifest['preserve_at_install'],
         'runtime_data_changes':manifest['runtime_data_changes'],
         'remaining':['Review the exact stock bootloader and C6 compatibility',
@@ -111,7 +132,8 @@ def prepare_plan(audit_dir, candidate_dir, output):
         'installable':False,'partition_layout_identical':True,'backup_sha256':report['sha256'],
         'bootloader_sha256':plan['stock_bootloader_region_sha256'],'table_sha256':plan['stock_table_sector_sha256'],
         'candidate_sha256':digest(app),'candidate_image':candidate_image,'stock_images':stock_images,
-        'current_selection':current,'proposed_regions':[{k:v for k,v in r.items() if not k.startswith('restore')} for r in regions],
+        'current_selection':current,'inactive_slot_before_install':inactive_slot,
+        'proposed_regions':[{k:v for k,v in r.items() if not k.startswith('restore')} for r in regions],
         'remaining':plan['remaining']}
     (output/'review-summary.json').write_text(json.dumps(summary,indent=2)+'\n')
     for file in output.iterdir():file.chmod(0o600)
