@@ -1,13 +1,17 @@
 """Reader library tests use private temporary files; no PDF processor or hardware."""
 from pathlib import Path
 from tempfile import TemporaryDirectory
+import secrets
 
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import Client, TestCase
 from django.urls import reverse
 
-from .models import (ReaderBook, ReaderBookPart, ReaderCollection,
-                     ReaderDocument, ReaderProgress, User)
+from .device_services import digest
+from .models import (Device, ReaderBook, ReaderBookPart, ReaderCollection,
+                     ReaderDeviceBook, ReaderDocument, ReaderNote,
+                     ReaderPreparedPage, ReaderProgress, User)
+from .reader_preparation import paginate
 
 
 class ReaderLibraryTests(TestCase):
@@ -86,3 +90,108 @@ class ReaderLibraryTests(TestCase):
         guarded.force_login(self.owner)
         self.assertEqual(guarded.post(reverse('reader_library'), {
             'book_title': 'Forged', 'document': self.pdf()}).status_code, 403)
+
+    def test_book_edit_part_order_notes_and_device_selection(self):
+        self.upload()
+        book = ReaderBook.objects.get()
+        self.upload(existing_book=str(book.pk), book_title='', part_title='Volume II',
+                    document=self.pdf('second.pdf', b'%PDF-1.7\nsecond\n%%EOF'))
+        parts = list(book.parts.all())
+        response = self.client.post(reverse('reader_part_move', args=[book.pk, parts[1].pk, 'up']))
+        self.assertRedirects(response, reverse('reader_library'))
+        self.assertEqual(list(book.parts.values_list('title', flat=True)), ['Volume II', 'Volume I'])
+        collection = ReaderCollection.objects.get()
+        self.client.post(reverse('reader_book_edit', args=[book.pk]),
+                         {'title': 'Renamed work', 'collections': [collection.pk]})
+        book.refresh_from_db(); self.assertEqual(book.title, 'Renamed work')
+        self.client.post(reverse('reader_note_add'),
+                         {'book': book.pk, 'page': 4, 'body': 'Return to this idea.'})
+        self.assertTrue(ReaderNote.objects.filter(book=book, page=4).exists())
+        device = Device.objects.create(owner=self.owner, name='Reader 7B',
+            hardware_profile='waveshare-esp32-p4-wifi6-touch-lcd-7b')
+        self.client.post(reverse('reader_device_book'),
+                         {'device': device.pk, 'book': book.pk, 'selected': 'on'})
+        selection = ReaderDeviceBook.objects.get(device=device, book=book)
+        self.client.post(reverse('reader_book_edit', args=[book.pk]),
+                         {'title': 'Renamed again', 'collections': [collection.pk]})
+        selection.refresh_from_db()
+        self.assertEqual(selection.content_revision, 2)
+        self.assertEqual(selection.state, 'pending')
+        foreign = Client(); foreign.force_login(self.other)
+        self.assertEqual(foreign.post(reverse('reader_book_edit', args=[book.pk]),
+                                     {'title': 'Stolen'}).status_code, 404)
+
+    def test_device_shelf_enforces_protocol_limit(self):
+        device = Device.objects.create(owner=self.owner, name='Reader 7B',
+            hardware_profile='waveshare-esp32-p4-wifi6-touch-lcd-7b')
+        books = [ReaderBook.objects.create(owner=self.owner, title=f'Book {index}')
+                 for index in range(7)]
+        for book in books[:6]:
+            ReaderDeviceBook.objects.create(device=device, book=book)
+        response = self.client.post(reverse('reader_device_book'),
+            {'device': device.pk, 'book': books[6].pk, 'selected': 'on'}, follow=True)
+        self.assertContains(response, 'at most 6 books')
+        self.assertFalse(ReaderDeviceBook.objects.filter(device=device, book=books[6]).exists())
+
+    def test_text_pagination_is_small_and_deterministic(self):
+        text = ('A compact paragraph with accented Spanish words: información y también. ' * 100)
+        first = paginate(text)
+        self.assertEqual(first, paginate(text))
+        self.assertGreater(len(first), 1)
+        self.assertTrue(all(len(screen.encode('utf-8')) <= 1200 for screen in first))
+
+
+class ReaderDeviceApiTests(TestCase):
+    def setUp(self):
+        self.temp = TemporaryDirectory(); self.addCleanup(self.temp.cleanup)
+        media = self.settings(MEDIA_ROOT=self.temp.name); media.enable(); self.addCleanup(media.disable)
+        self.owner = User.objects.create_user('device-reader@example.com', 'Fixture-password-42')
+        self.other = User.objects.create_user('other-reader@example.com', 'Fixture-password-43')
+        self.token = secrets.token_urlsafe(32)
+        self.device = Device.objects.create(owner=self.owner, name='Reader 7B',
+            hardware_profile='waveshare-esp32-p4-wifi6-touch-lcd-7b',
+            credential_hash=digest(self.token))
+        self.book = ReaderBook.objects.create(owner=self.owner, title='Libro español')
+        ReaderProgress.objects.create(book=self.book)
+        document = ReaderDocument.objects.create(owner=self.owner,
+            file=SimpleUploadedFile('book.pdf', b'%PDF-1.7\nfixture\n%%EOF'),
+            original_name='book.pdf', sha256='a' * 64, byte_size=24,
+            page_count=1, state='ready')
+        self.part = ReaderBookPart.objects.create(book=self.book, document=document,
+            title='Volumen único', position=0)
+        ReaderPreparedPage.objects.create(document=document, screen_index=1,
+            source_page=1, text='Primera página', text_sha256='b' * 64)
+        ReaderPreparedPage.objects.create(document=document, screen_index=2,
+            source_page=1, text='Segunda página', text_sha256='c' * 64)
+        ReaderDeviceBook.objects.create(device=self.device, book=self.book)
+        self.machine = Client(enforce_csrf_checks=True)
+
+    def post(self, path, payload, token=None):
+        return self.machine.post(f'/api/devices/v1/{self.device.pk}/reader/{path}/',
+            payload, content_type='application/json',
+            HTTP_AUTHORIZATION='Bearer ' + (token or self.token))
+
+    def test_bounded_library_page_and_progress_round_trip(self):
+        sync = self.post('sync', {'protocol': 1})
+        self.assertEqual(sync.status_code, 200)
+        self.assertEqual(sync.json()['books'][0]['title'], 'Libro espanol')
+        page = self.post('page', {'protocol': 1, 'book_id': str(self.book.pk), 'page': 2})
+        self.assertEqual(page.status_code, 200)
+        self.assertEqual(page.json()['text'], 'Segunda pagina')
+        progress = self.post('progress',
+            {'protocol': 1, 'book_id': str(self.book.pk), 'page': 2})
+        self.assertEqual(progress.status_code, 200)
+        self.book.progress.refresh_from_db()
+        self.assertEqual(self.book.progress.page, 2)
+        self.assertEqual(self.post('sync', {'protocol': 1},
+                                   token=secrets.token_urlsafe(32)).status_code, 401)
+
+    def test_unassigned_and_foreign_books_are_not_exposed(self):
+        ReaderDeviceBook.objects.all().delete()
+        response = self.post('page',
+            {'protocol': 1, 'book_id': str(self.book.pk), 'page': 1})
+        self.assertEqual(response.status_code, 409)
+        foreign = ReaderBook.objects.create(owner=self.other, title='Foreign')
+        ReaderProgress.objects.create(book=foreign)
+        ReaderDeviceBook.objects.create(device=self.device, book=foreign)
+        self.assertEqual(self.post('sync', {'protocol': 1}).json()['books'], [])

@@ -10,3 +10,4 @@ whitenoise==6.12.0
 cffi==2.1.1
 cryptography==46.0.7
 pycparser==3.0
+pypdf==6.21.4

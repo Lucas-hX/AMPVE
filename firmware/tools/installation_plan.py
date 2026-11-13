@@ -9,8 +9,6 @@ from compare import compare
 from profile_contract import CONTRACT, PROFILE, PARTITIONS, matches_contract
 
 SECTOR = 4096
-SLOT = PARTITIONS[PROFILE['layout']['initial_app']]['offset']
-SLOT_SIZE = PARTITIONS[PROFILE['layout']['initial_app']]['size']
 OTA = PARTITIONS['otadata']['offset']
 
 
@@ -35,8 +33,8 @@ def select_record(data):
     if len(valid)==2 and valid[0][0]==valid[1][0] and valid[0][2]!=valid[1][2]:
         raise ValueError('Ambiguous OTA states')
     current=max(valid)
-    if (current[0]-1)%2 != 0 or current[2] not in (2,0xFFFFFFFF):
-        raise ValueError('Expected confirmed stock ota_0 or factory; do not replace an active/pending slot')
+    if current[2] not in (2,0xFFFFFFFF):
+        raise ValueError('Expected a confirmed OTA slot or factory; do not replace an active/pending slot')
     return current
 
 
@@ -55,16 +53,25 @@ def next_selection(data):
     return target,bytes(sector),current
 
 
-def inactive_slot_mode(slot, current):
-    """Classify ota_1 without ever inferring that an occupied active slot is safe."""
+def partition_for_sequence(sequence):
+    """Return the OTA partition selected by ESP-IDF's sequence mapping."""
+    if not sequence or sequence >= 0xFFFFFFFE:
+        raise ValueError('Invalid OTA sequence')
+    return 'ota_0' if (sequence - 1) % 2 == 0 else 'ota_1'
+
+
+def inactive_slot_mode(slot, current, target_name):
+    """Classify a target slot without ever inferring that an active slot is safe."""
     if slot == b'\xff' * len(slot):
         return 'blank'
-    # select_record() only returns a confirmed ota_0 record.  An erased
-    # otadata region means factory fallback and is not enough evidence to
-    # replace an existing application.
-    if current is None or (current[0] - 1) % 2 != 0 or current[2] not in (2, 0xFFFFFFFF):
-        raise ValueError('Occupied ota_1 is not proven inactive and confirmed')
-    return 'replace-confirmed-inactive-ota1'
+    # An erased otadata region means factory fallback and is not enough
+    # evidence to replace an occupied application. A pending/unknown record
+    # likewise cannot prove which slot is safe to replace.
+    if current is None or current[2] not in (2, 0xFFFFFFFF):
+        raise ValueError(f'Occupied {target_name} is not proven inactive and confirmed')
+    if partition_for_sequence(current[0]) == target_name:
+        raise ValueError(f'Refusing to replace active {target_name}')
+    return f'replace-confirmed-inactive-{target_name.replace("_", "")}'
 
 
 def prepare_plan(audit_dir, candidate_dir, output):
@@ -77,13 +84,17 @@ def prepare_plan(audit_dir, candidate_dir, output):
     original=(audit_dir/'backup-a.bin').read_bytes()
     report=analyze(original)
     sector,new_selection,current=next_selection(original[OTA:OTA+2*SECTOR])
-    slot_bytes=original[SLOT:SLOT+SLOT_SIZE]
-    slot_mode=inactive_slot_mode(slot_bytes,current)
-    inactive_partition=next((p for p in report['partitions'] if p['name']=='ota_1' and
-        p['offset']==SLOT and p['size']==SLOT_SIZE),None)
+    sequence,=struct.unpack_from('<I',new_selection)
+    target_name=partition_for_sequence(sequence)
+    target=PARTITIONS[target_name]
+    slot_offset,slot_size=target['offset'],target['size']
+    slot_bytes=original[slot_offset:slot_offset+slot_size]
+    slot_mode=inactive_slot_mode(slot_bytes,current,target_name)
+    inactive_partition=next((p for p in report['partitions'] if p['name']==target_name and
+        p['offset']==slot_offset and p['size']==slot_size),None)
     if not inactive_partition:
-        raise ValueError('Audited ota_1 partition does not match the installation profile')
-    inactive_slot={'mode':slot_mode,'partition_sha256':digest(slot_bytes),
+        raise ValueError(f'Audited {target_name} partition does not match the installation profile')
+    inactive_slot={'name':target_name,'mode':slot_mode,'partition_sha256':digest(slot_bytes),
         'application':inactive_partition.get('app_metadata')}
     if slot_mode!='blank':
         inactive_slot['image']=image_metadata(slot_bytes)
@@ -95,11 +106,13 @@ def prepare_plan(audit_dir, candidate_dir, output):
             stock_images.append({'name':p['name'],'offset':p['offset'],**image_metadata(original[p['offset']:p['offset']+p['size']]),
                 'application':p.get('app_metadata',{})})
     proposal=manifest['proposed_regions_not_approved_writes']
-    if len(proposal)!=1 or proposal[0]['offset']!=SLOT or proposal[0]['sha256']!=digest(app) or len(app)>SLOT_SIZE:
+    proposed_offsets={PARTITIONS[name]['offset'] for name in ('ota_0','ota_1')}
+    if (len(proposal)!=1 or proposal[0]['offset'] not in proposed_offsets or
+            proposal[0]['sha256']!=digest(app) or len(app)>slot_size):
         raise ValueError('Unexpected app proposal')
     output=private_directory(output)
     regions=[]
-    for name,offset,data in [('ampve-app.bin',SLOT,app),('select-ampve.bin',OTA+sector*SECTOR,new_selection)]:
+    for name,offset,data in [('ampve-app.bin',slot_offset,app),('select-ampve.bin',OTA+sector*SECTOR,new_selection)]:
         (output/name).write_bytes(data)
         size=((len(data)+SECTOR-1)//SECTOR)*SECTOR
         restore='restore-'+name

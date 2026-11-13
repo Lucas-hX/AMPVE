@@ -1,6 +1,7 @@
 from django import forms
 from django.contrib.auth.forms import AuthenticationForm, UserCreationForm, UserChangeForm
-from .models import ReaderBook, User
+from .models import (Device, ReaderBook, ReaderCollection, ReaderDeviceBook,
+                     ReaderNote, User)
 
 
 class SignInForm(AuthenticationForm):
@@ -106,4 +107,55 @@ class ReaderUploadForm(forms.Form):
             self.add_error('page_end' if end is None else 'page_start', 'Enter both ends of the page range.')
         elif start is not None and end < start:
             self.add_error('page_end', 'The last page must not be before the first page.')
+        return cleaned
+
+
+class ReaderBookForm(forms.ModelForm):
+    collections = forms.ModelMultipleChoiceField(
+        queryset=ReaderCollection.objects.none(), required=False,
+        widget=forms.CheckboxSelectMultiple)
+
+    class Meta:
+        model = ReaderBook
+        fields = ['title', 'collections']
+
+    def __init__(self, *args, owner, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['collections'].queryset = ReaderCollection.objects.filter(owner=owner)
+
+
+class ReaderNoteForm(forms.ModelForm):
+    book = forms.ModelChoiceField(queryset=ReaderBook.objects.none())
+    page = forms.IntegerField(min_value=1)
+
+    class Meta:
+        model = ReaderNote
+        fields = ['book', 'page', 'body']
+        widgets = {'body': forms.Textarea(attrs={'rows': 3})}
+
+    def __init__(self, *args, owner, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['book'].queryset = ReaderBook.objects.filter(owner=owner)
+
+
+class ReaderDeviceSelectionForm(forms.Form):
+    device = forms.ModelChoiceField(queryset=Device.objects.none())
+    book = forms.ModelChoiceField(queryset=ReaderBook.objects.none())
+    selected = forms.BooleanField(required=False, initial=True,
+        label='Keep this book on the device shelf')
+
+    def __init__(self, *args, owner, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['device'].queryset = Device.objects.filter(owner=owner, revoked_at=None)
+        self.fields['book'].queryset = ReaderBook.objects.filter(owner=owner)
+
+    def clean(self):
+        cleaned = super().clean()
+        device, book = cleaned.get('device'), cleaned.get('book')
+        if cleaned.get('selected') and device and book:
+            from .reader_services import MAX_DEVICE_BOOKS
+            exists = ReaderDeviceBook.objects.filter(device=device, book=book).exists()
+            if not exists and ReaderDeviceBook.objects.filter(device=device).count() >= MAX_DEVICE_BOOKS:
+                self.add_error(
+                    'book', f'A Reader shelf can contain at most {MAX_DEVICE_BOOKS} books.')
         return cleaned

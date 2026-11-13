@@ -5,7 +5,7 @@ import sys
 import unittest
 from pathlib import Path
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'tools'))
-from installation_plan import inactive_slot_mode, next_selection, select_record
+from installation_plan import inactive_slot_mode, next_selection, partition_for_sequence, select_record
 
 
 def selection(seq,state=2,index=0):
@@ -17,14 +17,27 @@ def selection(seq,state=2,index=0):
 
 class BootSelectionTests(unittest.TestCase):
     def test_occupied_slot_requires_confirmed_ota0_and_is_recorded_as_replacement(self):
-        self.assertEqual(inactive_slot_mode(b'old-image',(9,0,2)),
+        self.assertEqual(inactive_slot_mode(b'old-image',(9,0,2),'ota_1'),
                          'replace-confirmed-inactive-ota1')
-        for current in [None,(8,0,2),(9,0,0),(9,0,1)]:
+        for current,target in [(None,'ota_1'),((8,0,2),'ota_1'),
+                               ((9,0,0),'ota_1'),((9,0,1),'ota_1')]:
             with self.subTest(current=current),self.assertRaises(ValueError):
-                inactive_slot_mode(b'old-image',current)
+                inactive_slot_mode(b'old-image',current,target)
 
     def test_blank_slot_remains_allowed_for_factory_fallback(self):
-        self.assertEqual(inactive_slot_mode(b'\xff'*32,None),'blank')
+        self.assertEqual(inactive_slot_mode(b'\xff'*32,None,'ota_1'),'blank')
+
+    def test_confirmed_ota1_can_safely_target_ota0_on_the_next_upgrade(self):
+        old=selection(10,index=1)
+        index,new,current=next_selection(old)
+        self.assertEqual((index,current),(0,(10,1,2)))
+        self.assertEqual(partition_for_sequence(struct.unpack_from('<I',new)[0]),'ota_0')
+        self.assertEqual(inactive_slot_mode(b'old-image',current,'ota_0'),
+                         'replace-confirmed-inactive-ota0')
+
+    def test_sequence_partition_mapping(self):
+        self.assertEqual(partition_for_sequence(9),'ota_0')
+        self.assertEqual(partition_for_sequence(10),'ota_1')
 
     def test_retains_valid_stock_record_and_changes_other_sector(self):
         old=selection(5)
@@ -42,8 +55,8 @@ class BootSelectionTests(unittest.TestCase):
         self.assertEqual(struct.unpack_from('<I',new)[0],2)
         self.assertEqual(struct.unpack_from('<I',new,28)[0],binascii.crc32(struct.pack('<I',2),0xFFFFFFFF)&0xFFFFFFFF)
 
-    def test_rejects_target_active_pending_unknown_and_corrupt(self):
-        for data in [selection(2),selection(1,0),selection(1,1),selection(1,9),selection(0),b'\0'*8192,b'\xff'*4096]:
+    def test_rejects_pending_unknown_and_corrupt_selection(self):
+        for data in [selection(1,0),selection(1,1),selection(1,9),selection(0),b'\0'*8192,b'\xff'*4096]:
             with self.subTest(data=data[:4]),self.assertRaises(ValueError):next_selection(data)
 
     def test_crc_corruption_is_not_factory_fallback(self):
