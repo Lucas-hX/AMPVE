@@ -167,7 +167,7 @@ bool verify_app_package(const std::string& envelope, const std::string& expected
     const auto action = str(workflow, "action");
     if ((accepted.kind == "status" && action == "show_status" && duration == 0 && accepted.start_muted) ||
         (accepted.kind == "timer" && action == "local_timer" && duration >= 1 && accepted.start_muted) ||
-        (accepted.kind == "companion" && action == "native_companion" && duration == 0)) {
+        (accepted.kind == "reader" && action == "document_reader" && duration == 0 && accepted.start_muted)) {
         accepted.duration_s = duration; output = std::move(accepted); return true;
     }
     return false;

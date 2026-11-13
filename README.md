@@ -10,7 +10,7 @@
 
 AMPVE is a web platform for giving supported devices new capabilities. It brings device setup, ownership, applications, configuration and software updates into one approachable workspace.
 
-The first experience is **AMPVE Companion**, a friendly AI application designed for voice, touch and expressive screens. AMPVE Core provides the managed foundation beneath it and creates a path for additional applications without giving up device ownership or recovery.
+The active application is **AMPVE Reader**, an offline-first reading experience for private PDF libraries. **AMPVE Core Lite** is the small managed foundation beneath it: ownership, connectivity, display/touch, signed updates, recovery and a bounded application host. The earlier Companion path remains historical compatibility work and is not compiled into the new candidate.
 
 ## Private preview
 
@@ -22,11 +22,11 @@ The preview includes:
 - authenticated device enrollment and ownership;
 - device status, configuration and capability reporting;
 - signed software delivery over Wi-Fi;
-- an authenticated visual console with mouse, touch and keyboard input;
-- encrypted Gemini Live and OpenAI Realtime provider connections; and
-- a browser Companion voice experience and a native 7B development candidate.
+- a private Reader library with collections, books, ordered PDF parts and virtual page ranges;
+- signed, resource-bounded application declarations; and
+- retained legacy provider/Companion services for the already-installed development board.
 
-Native Companion audio is awaiting physical validation on the first 7B; additional hardware profiles remain outside the current preview offering. See [supported hardware](docs/SUPPORTED_HARDWARE.md) for the precise compatibility boundary.
+PDF preparation, bounded internal-flash delivery and on-device reading are not complete. The first physical 7B still runs the prior `0.1.24-core-dev` image; no Core Lite update has been built, signed or deployed. The first Reader intentionally has no microSD support. Additional hardware profiles remain outside the current preview offering. See [Reader](docs/READER.md), [architecture](docs/ARCHITECTURE.md) and [supported hardware](docs/SUPPORTED_HARDWARE.md).
 
 ## How AMPVE works
 
@@ -36,11 +36,11 @@ Native Companion audio is awaiting physical validation on the first 7B; addition
 4. Choose an available application and personalize it.
 5. Manage the device and receive authenticated software updates over Wi-Fi.
 
-Provider credentials stay on the AMPVE server. Devices connect outbound with revocable credentials and receive only the configuration and capabilities assigned to them.
+Private PDF sources stay on the AMPVE server until a later preparation pipeline creates verified device content. Devices connect outbound with revocable credentials and receive only assigned, signed capabilities.
 
 ## Applications without losing AMPVE
 
-AMPVE Core owns device startup, drivers, enrollment, recovery, updates and the visual interface. Companion uses this native foundation. The application model also supports future signed, resource-bounded packages that can coexist with Companion. Applications that require new native drivers follow the reviewed Core release path.
+AMPVE Core Lite owns device startup, required profile drivers, enrollment, recovery, updates and the application host. Reader uses a signed `document_reader` declaration; compact prepared content will use a separately verified, quota-bound internal-flash path. The first Reader does not compile or initialize an SD-card stack. Applications that require new native drivers still follow the reviewed Core release path.
 
 This separation allows AMPVE to grow into a curated application catalog while preserving a consistent management and recovery experience.
 
@@ -49,8 +49,8 @@ This separation allows AMPVE to grow into a curated application catalog while pr
 | Component | Role |
 |---|---|
 | Django and PostgreSQL | Accounts, devices, applications, configuration and deployment state |
-| FastAPI and Pipecat | Realtime provider sessions and audio transport |
-| ESP-IDF and XiaoZhi ESP32 | Native device runtime and supported-board integration |
+| FastAPI and Pipecat | Retained legacy realtime provider sessions; not part of Core Lite |
+| ESP-IDF and pinned XiaoZhi integration | Core Lite runtime and supported-board integration |
 | ESP Web Tools | Browser-assisted USB setup |
 
 AMPVE builds on these open-source foundations and retains their respective notices. No project-wide open-source license is currently provided.

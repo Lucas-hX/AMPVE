@@ -164,7 +164,7 @@ def package(work, idf, destination, comparison=None, notes_file=None):
                 'runtime_data_changes': ['AMPVE boot counters/identity/settings and Wi-Fi state change shared NVS after boot', 'Bootloader/app startup can change otadata'],
                 'required_reviews': ['Exact local board/security audit and two matching private backup reads',
                     'Stock bootloader and C6 ESP-Hosted compatibility', 'Partition/data preservation and exact USB restore route',
-                    'Explicit owner approval for the reviewed write plan', 'Physical startup/display/touch/Wi-Fi/audio/recovery tests'],
+                    'Explicit owner approval for the reviewed write plan', 'Physical startup/display/touch/Wi-Fi/storage/recovery tests'],
                 'bit_reproducibility': reproducibility}
     if notes_bytes is not None:
         (destination/'release-notes.txt').write_bytes(notes_bytes)

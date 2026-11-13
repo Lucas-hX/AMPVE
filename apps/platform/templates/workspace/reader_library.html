@@ -1,0 +1,37 @@
+{% extends 'workspace/base.html' %}
+{% block subtitle %}Books, collections and ordered PDF parts, ready for the preparation pipeline.{% endblock %}
+{% block content %}
+<aside class="notice" role="status"><strong>Reader foundation</strong><p>Your source PDFs remain private and unchanged. Upload and organization work now; compact internal-flash delivery and on-device reading will follow before any Wi-Fi deployment. The first Reader has no microSD support.</p></aside>
+
+<div class="reader-layout">
+  <section class="form-card reader-upload">
+    <p class="eyebrow">ADD CONTENT</p>
+    <h2>Upload a PDF</h2>
+    <p>Add it as a new book or as the next ordered part of a book already in your library.</p>
+    <form method="post" enctype="multipart/form-data">
+      {% csrf_token %}
+      {{ form.as_p }}
+      <button class="button" type="submit">Add to library</button>
+    </form>
+    <p class="helptext">PDF only, up to 100 MB. A page range creates a virtual part; the original file is not modified.</p>
+  </section>
+
+  <section>
+    <div class="reader-section-heading"><div><p class="eyebrow">BOOKS</p><h2>Your reading shelf</h2></div><span class="pill">{{ books|length }} book{{ books|length|pluralize }}</span></div>
+    {% if books %}<div class="reader-book-list">
+      {% for book in books %}<article class="reader-book-card">
+        <div class="reader-cover" aria-hidden="true"><span>AMPVE</span><b>{{ book.title|first|upper }}</b></div>
+        <div class="reader-book-copy">
+          <h3>{{ book.title }}</h3>
+          {% if book.collections.all %}<p class="reader-collections">{% for collection in book.collections.all %}<span>{{ collection.name }}</span>{% endfor %}</p>{% else %}<p class="helptext">Not in a collection</p>{% endif %}
+          <ol class="reader-parts">
+            {% for part in book.parts.all %}<li><div><strong>{{ part.title }}</strong><small>{{ part.document.original_name }} · {{ part.document.byte_size|filesizeformat }}{% if part.page_start %} · pages {{ part.page_start }}–{{ part.page_end }}{% endif %}</small></div><div><span class="pill">{{ part.document.get_state_display }}</span> <a href="{% url 'reader_source_pdf' part.document.pk %}">Download source</a></div></li>{% endfor %}
+          </ol>
+        </div>
+      </article>{% endfor %}
+    </div>{% else %}<section class="large-empty"><h2>Your shelf is empty.</h2><p>Upload one PDF as a book, or start a multi-part work and add more PDFs later.</p></section>{% endif %}
+  </section>
+</div>
+
+{% if collections %}<section class="form-card reader-collection-panel"><p class="eyebrow">COLLECTIONS</p><h2>Personal groups</h2><div class="reader-collection-list">{% for collection in collections %}<article><strong>{{ collection.name }}</strong><span>{{ collection.books.count }} book{{ collection.books.count|pluralize }}</span></article>{% endfor %}</div></section>{% endif %}
+{% endblock %}

@@ -17,7 +17,7 @@ class PlatformTests(TestCase):
         return (client or self.client).post(reverse('login'), {'username': 'LUCAS@example.com', 'password': 'Testing-Secure-Password-42'})
 
     def test_private_routes_require_login(self):
-        for url in ['home', 'devices', 'onboarding', 'apps', 'connections', 'settings', 'password_change']:
+        for url in ['home', 'devices', 'onboarding', 'apps', 'reader_library', 'connections', 'settings', 'password_change']:
             with self.subTest(url=url):
                 self.assertEqual(self.client.get(reverse(url)).status_code, 302)
         self.assertEqual(self.client.get('/accounts/signup/').status_code, 404)
@@ -94,7 +94,8 @@ class PlatformTests(TestCase):
 
     def test_catalog_and_truthful_states(self):
         self.sign_in()
-        self.assertEqual(Application.objects.get(slug='companion').status, 'preview')
+        self.assertEqual(Application.objects.get(slug='reader').status, 'preview')
+        self.assertEqual(Application.objects.get(slug='companion').status, 'retired')
         for page in ['home', 'devices', 'onboarding', 'apps', 'connections', 'settings']:
             self.assertEqual(self.client.get(reverse(page)).status_code, 200)
         self.assertContains(self.client.get(reverse('devices')), 'No devices have been added')
@@ -104,7 +105,7 @@ class PlatformTests(TestCase):
     def test_workspace_navigation_uses_the_ampve_icon_sprite(self):
         self.sign_in()
         response = self.client.get(reverse('home'))
-        for name in ['home', 'devices', 'apps', 'connections', 'settings']:
+        for name in ['home', 'devices', 'apps', 'settings']:
             with self.subTest(name=name):
                 self.assertContains(response, f'ampve-icons-v1.svg#icon-{name}')
         navigation = response.content.decode().split('<nav aria-label="Workspace">', 1)[1].split('</nav>', 1)[0]

@@ -9,7 +9,7 @@ from .release_contract import canonical, sha256, strict_json
 MAX_PAYLOAD = 1024
 MAX_ENVELOPE = 2048
 KINDS = {'status': ('show_status', 0), 'timer': ('local_timer', None),
-         'companion': ('native_companion', 0)}
+         'reader': ('document_reader', 0)}
 FIELDS = {'schema', 'api_version', 'key_id', 'name', 'version', 'kind',
           'profile_id', 'profile_version', 'layout_id', 'chip_revision',
           'flash_bytes', 'minimum_psram_bytes', 'expires_at', 'ui', 'workflow'}
@@ -33,7 +33,7 @@ def validate(policy, now=None):
     if not isinstance(ui, dict) or set(ui) != {'title', 'body'} or not ascii_text(ui['title'], 48) or not ascii_text(ui['body'], 96) or not isinstance(workflow, dict) or set(workflow) != {'action', 'duration_s', 'start_muted'} or type(workflow['duration_s']) is not int or type(workflow['start_muted']) is not bool:
         raise ValueError('Package UI or workflow exceeds API v1')
     action, duration = KINDS[policy['kind']]
-    if workflow['action'] != action or not (1 <= workflow['duration_s'] <= 3600 if duration is None else workflow['duration_s'] == duration) or (policy['kind'] != 'companion' and workflow['start_muted'] is not True):
+    if workflow['action'] != action or not (1 <= workflow['duration_s'] <= 3600 if duration is None else workflow['duration_s'] == duration) or workflow['start_muted'] is not True:
         raise ValueError('Unsupported package capability')
     if len(canonical(policy)) > MAX_PAYLOAD:
         raise ValueError('Package exceeds RAM payload bound')

@@ -3,6 +3,12 @@ from django.db import models
 from django.db.models.functions import Lower
 
 
+def reader_document_path(instance, filename):
+    """Keep untrusted names out of storage paths; the original name is metadata."""
+    import uuid
+    return f'reader/{instance.owner_id}/{uuid.uuid4().hex}.pdf'
+
+
 class UserManager(BaseUserManager):
     use_in_migrations = True
 
@@ -42,10 +48,110 @@ class Application(models.Model):
     name = models.CharField(max_length=100)
     description = models.TextField()
     target_hardware = models.CharField(max_length=150)
-    status = models.CharField(max_length=20, choices=[('preview', 'In development')], default='preview')
+    status = models.CharField(max_length=20, choices=[
+        ('preview', 'In development'), ('retired', 'Not in Core Lite')], default='preview')
 
     def __str__(self):
         return self.name
+
+
+class ReaderDocument(models.Model):
+    """A private, immutable source PDF. Device-ready derivatives are separate."""
+    import uuid
+    STATES = [('pending', 'Awaiting preparation'), ('ready', 'Prepared'), ('failed', 'Needs attention')]
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    owner = models.ForeignKey(User, on_delete=models.CASCADE, related_name='reader_documents')
+    file = models.FileField(upload_to=reader_document_path, max_length=255)
+    original_name = models.CharField(max_length=255)
+    sha256 = models.CharField(max_length=64)
+    byte_size = models.PositiveBigIntegerField()
+    page_count = models.PositiveIntegerField(null=True, editable=False)
+    state = models.CharField(max_length=16, choices=STATES, default='pending')
+    error_code = models.CharField(max_length=32, blank=True, editable=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+
+class ReaderCollection(models.Model):
+    import uuid
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    owner = models.ForeignKey(User, on_delete=models.CASCADE, related_name='reader_collections')
+    name = models.CharField(max_length=80)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['name']
+        constraints = [models.UniqueConstraint(Lower('name'), 'owner', name='reader_collection_owner_name')]
+
+
+class ReaderBook(models.Model):
+    import uuid
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    owner = models.ForeignKey(User, on_delete=models.CASCADE, related_name='reader_books')
+    title = models.CharField(max_length=160)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    collections = models.ManyToManyField(ReaderCollection, through='ReaderCollectionBook', related_name='books')
+
+    class Meta:
+        ordering = ['title', 'created_at']
+
+
+class ReaderCollectionBook(models.Model):
+    collection = models.ForeignKey(ReaderCollection, on_delete=models.CASCADE)
+    book = models.ForeignKey(ReaderBook, on_delete=models.CASCADE)
+    position = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        ordering = ['position', 'id']
+        constraints = [models.UniqueConstraint(fields=['collection', 'book'], name='reader_collection_book_unique')]
+
+
+class ReaderBookPart(models.Model):
+    import uuid
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    book = models.ForeignKey(ReaderBook, on_delete=models.CASCADE, related_name='parts')
+    document = models.ForeignKey(ReaderDocument, on_delete=models.PROTECT, related_name='book_parts')
+    title = models.CharField(max_length=160)
+    position = models.PositiveIntegerField()
+    page_start = models.PositiveIntegerField(null=True, blank=True)
+    page_end = models.PositiveIntegerField(null=True, blank=True)
+
+    class Meta:
+        ordering = ['position', 'id']
+        constraints = [
+            models.UniqueConstraint(fields=['book', 'position'], name='reader_book_part_position_unique'),
+            models.CheckConstraint(
+                condition=(models.Q(page_start__isnull=True, page_end__isnull=True) |
+                           models.Q(page_start__gte=1, page_end__gte=models.F('page_start'))),
+                name='reader_part_page_range_valid'),
+        ]
+
+
+class ReaderProgress(models.Model):
+    """Stable reading position independent of titles and collection membership."""
+    book = models.OneToOneField(ReaderBook, primary_key=True, on_delete=models.CASCADE, related_name='progress')
+    part = models.ForeignKey(ReaderBookPart, null=True, blank=True, on_delete=models.SET_NULL, related_name='+')
+    page = models.PositiveIntegerField(default=1)
+    viewport_offset = models.PositiveIntegerField(default=0)
+    revision = models.PositiveIntegerField(default=1)
+    updated_at = models.DateTimeField(auto_now=True)
+
+
+class ReaderDeviceBook(models.Model):
+    device = models.ForeignKey('Device', on_delete=models.CASCADE, related_name='reader_selections')
+    book = models.ForeignKey(ReaderBook, on_delete=models.CASCADE, related_name='device_selections')
+    content_revision = models.PositiveIntegerField(default=1)
+    acknowledged_revision = models.PositiveIntegerField(default=0)
+    state = models.CharField(max_length=16, choices=[
+        ('pending', 'Waiting for device'), ('syncing', 'Syncing'), ('available', 'Available'),
+        ('failed', 'Needs attention')], default='pending')
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=['device', 'book'], name='reader_device_book_unique')]
 
 
 class ProviderConnection(models.Model):

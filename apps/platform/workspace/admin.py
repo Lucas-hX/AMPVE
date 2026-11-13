@@ -1,6 +1,6 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin
-from .models import User, Application
+from .models import Application, ReaderBook, ReaderCollection, ReaderDocument, User
 from .forms import AccountCreationForm, AccountChangeForm
 
 
@@ -18,5 +18,8 @@ class AccountAdmin(UserAdmin):
 
 
 admin.site.register(Application)
+admin.site.register(ReaderBook)
+admin.site.register(ReaderCollection)
+admin.site.register(ReaderDocument)
 admin.site.site_header = 'AMPVE administration'
 admin.site.site_title = 'AMPVE'

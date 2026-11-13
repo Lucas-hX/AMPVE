@@ -58,6 +58,9 @@ USE_TZ = True
 STATIC_URL = '/static/'
 STATIC_ROOT = REPO_DIR / 'staticfiles'
 STATICFILES_DIRS = [BASE_DIR / 'static', ('brandkit', REPO_DIR / 'images/ampve-brand-kit-v1')]
+MEDIA_ROOT = Path(CONFIG.get('reader_media_root', '/home/ampve/.local/state/ampve/reader-media'))
+# Private Reader files are deliberately not exposed through MEDIA_URL.
+DATA_UPLOAD_MAX_MEMORY_SIZE = 101 * 1024 * 1024
 STORAGES = {'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
             'staticfiles': {'BACKEND': 'whitenoise.storage.CompressedManifestStaticFilesStorage'}}
 if TESTING:

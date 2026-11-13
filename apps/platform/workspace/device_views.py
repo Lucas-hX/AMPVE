@@ -56,8 +56,7 @@ def onboarding(request):
 @login_required
 def detail(request, pk):
     device = get_object_or_404(Device, pk=pk, owner=request.user)
-    form = DeviceSettingsForm(request.POST or None, initial={'name': device.name,
-        'volume': device.volume, 'microphone_muted': device.microphone_muted})
+    form = DeviceSettingsForm(request.POST or None, initial={'name': device.name})
     if request.method == 'POST' and form.is_valid():
         with transaction.atomic():
             device = get_object_or_404(Device.objects.select_for_update(), pk=pk, owner=request.user)

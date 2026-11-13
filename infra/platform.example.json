@@ -3,5 +3,6 @@
   "db_name": "ampve",
   "db_user": "ampve",
   "db_host": "/run/postgresql-neurosis",
-  "db_port": "5433"
+  "db_port": "5433",
+  "reader_media_root": "/home/ampve/.local/state/ampve/reader-media"
 }

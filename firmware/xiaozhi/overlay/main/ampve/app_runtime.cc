@@ -4,7 +4,7 @@
 namespace ampve {
 bool AppRuntime::stage(const AppPackage& package) {
     if (package.id.empty() || package.version.empty() ||
-        (package.kind != "status" && package.kind != "timer" && package.kind != "companion")) return false;
+        (package.kind != "status" && package.kind != "timer" && package.kind != "reader")) return false;
     if (package.id == active_.id) { staged_ = {}; return true; }
     staged_ = package; return true;
 }

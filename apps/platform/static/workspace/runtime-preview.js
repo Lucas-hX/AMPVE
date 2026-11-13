@@ -19,15 +19,4 @@ if (shell) {
     shell.querySelector('#runtime-wifi-result').textContent='Connection simulated. No network settings were changed.';
     shell.querySelector('.runtime-pair').hidden=false;
   });
-  shell.querySelector('#runtime-mute').addEventListener('click', event => {
-    const button=event.currentTarget, muted=button.getAttribute('aria-pressed')!=='true';
-    button.setAttribute('aria-pressed',String(muted));
-    button.textContent=muted?'Microphone muted':'Unmuted · demo only';
-  });
-  shell.querySelector('#runtime-volume').addEventListener('input', event => {
-    shell.querySelector('#runtime-volume-value').textContent=event.target.value+'%';
-  });
-  shell.querySelector('#runtime-sound').addEventListener('click', () => {
-    shell.querySelector('#runtime-sound-result').textContent='On the board: play a quiet tone, then ask “Did you hear it?” This preview does not play audio or mark a test passed.';
-  });
 }

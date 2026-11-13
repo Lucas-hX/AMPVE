@@ -35,9 +35,9 @@ The device initiates network connections. A USB connection is needed for initial
 
 ## Application model
 
-Companion is the first built-in native application because realtime audio and display behavior depend on board-specific drivers and timing.
+Companion was the first built-in native experiment because realtime audio and display behavior depend on board-specific drivers and timing. Its physical result remains useful evidence, but it is not part of the current Core candidate.
 
-AMPVE Core is also designed to host signed, bounded application packages. A portable package uses versioned capabilities, namespaced storage and declared resource limits, allowing it to coexist with Companion. Software that requires new drivers or unrestricted native access is delivered through a reviewed Core release.
+AMPVE Core Lite hosts signed, bounded application packages. A portable package uses versioned capabilities, namespaced storage and declared resource limits. Reader is the active package; Companion is not compiled into the Core Lite candidate. Its first device version also omits SD-card drivers: compact prepared books will use a measured quota in the existing internal `storage` partition after that partition's stock bytes are privately audited and backed up. Original PDFs stay on the server. Software that requires new drivers or unrestricted native access is delivered through a reviewed Core release.
 
 ## Release integrity
 

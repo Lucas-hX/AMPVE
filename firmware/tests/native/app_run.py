@@ -59,10 +59,10 @@ with tempfile.TemporaryDirectory(prefix='ampve-app-native-') as folder:
     status=copy.deepcopy(policy)
     status['kind']='status';status['name']='status-fixture'
     status['workflow']={'action':'show_status','duration_s':0,'start_muted':True}
-    companion=copy.deepcopy(policy)
-    companion['kind']='companion';companion['name']='companion-fixture'
-    companion['workflow']={'action':'native_companion','duration_s':0,'start_muted':True}
-    for name,policy_variant in [('status',status),('companion-muted',companion)]:
+    reader=copy.deepcopy(policy)
+    reader['kind']='reader';reader['name']='reader-fixture'
+    reader['workflow']={'action':'document_reader','duration_s':0,'start_muted':True}
+    for name,policy_variant in [('status',status),('reader',reader)]:
         validate(policy_variant)
         signed_variant,variant_id=signed(policy_variant)
         cases.append((name,signed_variant,variant_id,'accepted'))

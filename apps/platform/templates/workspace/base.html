@@ -5,7 +5,7 @@
   <a href="{% url 'home' %}" {% if section == 'home' %}aria-current="page"{% endif %}>{% include 'workspace/icon.html' with name='home' %} Home</a>
   <a href="{% url 'devices' %}" {% if section == 'devices' or section == 'onboarding' %}aria-current="page"{% endif %}>{% include 'workspace/icon.html' with name='devices' %} My devices</a>
   <a href="{% url 'apps' %}" {% if section == 'apps' %}aria-current="page"{% endif %}>{% include 'workspace/icon.html' with name='apps' %} Explore apps</a>
-  <a href="{% url 'connections' %}" {% if section == 'connections' %}aria-current="page"{% endif %}>{% include 'workspace/icon.html' with name='connections' %} Connections</a>
+  <a href="{% url 'reader_library' %}" {% if section == 'reader' %}aria-current="page"{% endif %}>{% include 'workspace/icon.html' with name='apps' %} Reader library</a>
   <a href="{% url 'settings' %}" {% if section == 'settings' %}aria-current="page"{% endif %}>{% include 'workspace/icon.html' with name='settings' %} Settings</a>
 </nav>
 <div class="sidebar-bottom"><div class="private-note"><span class="dot"></span> Personal workspace</div><a class="user" href="{% url 'settings' %}"><span class="avatar">{{ request.user.first_name|default:request.user.email|first|upper }}</span><span><strong>{{ request.user.first_name|default:'Your account' }}</strong><small>Your little corner of AMPVE</small></span></a>{% if request.user.is_staff %}<a class="admin-link" href="{% url 'admin:index' %}">Administration ↗</a>{% endif %}<form action="{% url 'logout' %}" method="post">{% csrf_token %}<button class="text-button" type="submit">Sign out</button></form></div></aside>

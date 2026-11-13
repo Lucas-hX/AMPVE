@@ -8,8 +8,7 @@ ROOT = Path(__file__).resolve().parents[2]
 
 def generate(destination):
     lines = ['/* Generated from original AMPVE brand assets. */', '#include "lvgl.h"']
-    for name, relative, size in [('ampve_symbol', 'brand/ampve-symbol-avatar-v1.png', 32),
-                                 ('ampve_companion', 'apps/companion-icon-v1.png', 80)]:
+    for name, relative, size in [('ampve_symbol', 'brand/ampve-symbol-avatar-v1.png', 32)]:
         with Image.open(ROOT/'images/ampve-brand-kit-v1'/relative) as original:
             rgba = original.convert('RGBA').resize((size, size), Image.Resampling.LANCZOS)
             background = Image.new('RGBA', rgba.size, '#F7F5EE')

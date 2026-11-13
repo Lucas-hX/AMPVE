@@ -1,7 +1,6 @@
 """Guard the pinned Waveshare display startup; retain the upstream integration diff."""
 import subprocess
 BOARD='main/boards/waveshare/esp32-p4-wifi6-touch-lcd/esp32-p4-wifi6-touch-lcd.cc'
-DISPLAY='main/display/lcd_display.cc'
 
 
 def replace(source, old, new):
@@ -11,8 +10,19 @@ def replace(source, old, new):
 
 
 def baseline(source):
+    source=replace(source,'#include "codecs/box_audio_codec.h"\n','')
+    source=replace(source,'#include "application.h"\n','')
+    source=replace(source,'#include "display/lcd_display.h"\n','')
+    for header in ('#include "esp_video.h"\n', '#include "esp_video_init.h"\n',
+                   '#include "esp_cam_sensor_xclk.h"\n'):
+        source=replace(source,header,'')
     source=replace(source,'#include "wifi_board.h"','#include "wifi_board.h"\n#include "ampve/runtime.h"')
-    source=replace(source,'        InitializeCamera();','        // AMPVE: camera is deliberately not initialized.')
+    source=replace(source,'    LcdDisplay *display_;\n','')
+    source=replace(source,'    EspVideo* camera_ = nullptr;\n','')
+    camera_start=source.index('    void InitializeCamera() {')
+    camera_end=source.index('    void InitializeButtons()',camera_start)
+    source=source[:camera_start]+source[camera_end:]
+    source=replace(source,'        InitializeCamera();\n','')
     a=source.index('        boot_button_.OnClick(');b=source.index('\n    }',a)
     source=source[:a]+'        boot_button_.OnClick([]() { ampve_request_wifi(); });'+source[b:]
     source=replace(source,'ESP_ERROR_CHECK(esp_lcd_new_panel_io_i2c(i2c_bus_, &tp_io_config, &tp_io_handle));',
@@ -20,15 +30,22 @@ def baseline(source):
     source=replace(source,'ESP_ERROR_CHECK(esp_lcd_touch_new_i2c_gt911(tp_io_handle, &tp_cfg, &tp));',
         'if (esp_lcd_touch_new_i2c_gt911(tp_io_handle, &tp_cfg, &tp) != ESP_OK) return;')
     source=replace(source,'        lvgl_port_add_touch(&touch_cfg);','        ampve_touch_ready = lvgl_port_add_touch(&touch_cfg) != nullptr;')
-    source=replace(source,'        InitializeTouch();','        InitializeTouch();\n        ampve_codec_present = i2c_device_probe(AUDIO_CODEC_ES8311_ADDR >> 1) == ESP_OK && i2c_device_probe(AUDIO_CODEC_ES7210_ADDR >> 1) == ESP_OK;')
-    return replace(source,'        static BoxAudioCodec audio_codec(','        if (!ampve_codec_present) return nullptr;\n        static BoxAudioCodec audio_codec(')
+    start=source.index('    virtual AudioCodec* GetAudioCodec() override {')
+    end=source.index('\n    virtual Display *GetDisplay()',start)
+    source=source[:start]+'    virtual AudioCodec* GetAudioCodec() override { return nullptr; }\n'+source[end:]
+    source=replace(source,'''    virtual Display *GetDisplay() override {
+        return display_;
+    }''','''    virtual Display *GetDisplay() override { return nullptr; }''')
+    source=replace(source,'''    virtual Camera* GetCamera() override {
+        return camera_;
+    }''','''    virtual Camera* GetCamera() override { return nullptr; }''')
+    return source
 
 
 def startup_transform(original):
     source=baseline(original)
     source=replace(source,'#include "ampve/runtime.h"','#include "ampve/runtime.h"\n#include <new>')
     source=replace(source,'    i2c_master_bus_handle_t i2c_bus_;','    i2c_master_bus_handle_t i2c_bus_ = nullptr;')
-    source=replace(source,'    LcdDisplay *display_;','    LcdDisplay *display_ = nullptr;')
     source=replace(source,'    void InitializeCodecI2c() {','    bool InitializeCodecI2c() {')
     source=replace(source,'        ESP_ERROR_CHECK(i2c_new_master_bus(&i2c_bus_cfg, &i2c_bus_));',
         '''        if (i2c_new_master_bus(&i2c_bus_cfg, &i2c_bus_) != ESP_OK || !i2c_bus_) {
@@ -53,10 +70,11 @@ def startup_transform(original):
         source=replace(source,call+';', 'if ('+call+' != ESP_OK || !'+handle+') { ESP_LOGE(TAG, "LCD transport creation failed"); return false; }')
     for call in ['esp_lcd_panel_reset(disp_panel)','esp_lcd_panel_init(disp_panel)']:
         source=replace(source,call+';', 'if ('+call+' != ESP_OK) { ESP_LOGE(TAG, "LCD initialization failed"); return false; }')
-    source=replace(source,'display_ = new MipiLcdDisplay(', 'display_ = new (std::nothrow) MipiLcdDisplay(')
+    source=replace(source,'display_ = new MipiLcdDisplay(', 'if (!ampve_initialize_display(')
     source=replace(source,'DISPLAY_OFFSET_X, DISPLAY_OFFSET_Y, DISPLAY_MIRROR_X, DISPLAY_MIRROR_Y, DISPLAY_SWAP_XY);',
-        '''DISPLAY_OFFSET_X, DISPLAY_OFFSET_Y, DISPLAY_MIRROR_X, DISPLAY_MIRROR_Y, DISPLAY_SWAP_XY);
-        if (!display_ || !lv_display_get_default()) { ESP_LOGE(TAG, "LVGL display unavailable"); return false; }
+        '''DISPLAY_OFFSET_X, DISPLAY_OFFSET_Y, DISPLAY_MIRROR_X, DISPLAY_MIRROR_Y, DISPLAY_SWAP_XY)) {
+            ESP_LOGE(TAG, "LVGL display unavailable"); return false;
+        }
         return true;''')
     source=replace(source,'        InitializeCodecI2c();\n        InitializeLCD();',
         '        if (!InitializeCodecI2c() || !InitializeLCD()) return;')
@@ -67,8 +85,6 @@ def startup_transform(original):
 
 def transform(original):
     source=startup_transform(original)
-    source=replace(source,'            AUDIO_INPUT_REFERENCE);','''            AUDIO_INPUT_REFERENCE,
-            30.0f, 2, 0.0f);  // 7B schematic: MIC1 plus ADC_MIC3 speaker reference.''')
     source=replace(source,'''            .flags = {
                 .swap_xy = 0,
                 .mirror_x = 0,
@@ -88,22 +104,12 @@ def transform(original):
     return source
 
 
-def transform_display(source):
-    a=source.index('MipiLcdDisplay::MipiLcdDisplay(');b=source.index('\nLcdDisplay::~LcdDisplay',a)
-    block=replace(source[a:b],'    lvgl_port_init(&port_cfg);',
-        '    if (lvgl_port_init(&port_cfg) != ESP_OK) { ESP_LOGE(TAG, "LVGL port initialization failed"); return; }')
-    return source[:a]+block+source[b:]
-
-
 def prepare(work,pin):
-    for path,transformer in [(BOARD,transform),(DISPLAY,transform_display)]:
+    for path,transformer in [(BOARD,transform)]:
         original=subprocess.check_output(['git','-C',str(work),'show',pin+':'+path]).decode()
         updated=transformer(original);target=work/path
         allowed=[original,updated]
         if path==BOARD:
-            prior=updated.replace('''            AUDIO_INPUT_REFERENCE,
-            30.0f, 2, 0.0f);  // 7B schematic: MIC1 plus ADC_MIC3 speaker reference.''',
-                                  '            AUDIO_INPUT_REFERENCE);')
-            allowed.extend([baseline(original),startup_transform(original),prior])
+            allowed.extend([baseline(original),startup_transform(original)])
         if target.read_text() not in allowed:raise ValueError('Refusing unrelated display changes: '+path)
         if target.read_text()!=updated:target.write_text(updated)
