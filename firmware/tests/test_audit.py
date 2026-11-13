@@ -78,8 +78,28 @@ class ReleaseGateTests(unittest.TestCase):
                 validate_config({**good, 'CONFIG_ESP_MAIN_TASK_STACK_SIZE': size})
         for key in ['CONFIG_SECURE_BOOT', 'CONFIG_SECURE_FLASH_ENC_ENABLED',
                     'CONFIG_BOOTLOADER_APP_ANTI_ROLLBACK', 'CONFIG_APP_COMPILE_TIME_DATE',
-                      'CONFIG_LIBSODIUM_USE_MBEDTLS_SHA', 'CONFIG_PM_SLEEP_CLK_ICG_ENABLE']:
+                    'CONFIG_LIBSODIUM_USE_MBEDTLS_SHA', 'CONFIG_PM_SLEEP_CLK_ICG_ENABLE',
+                    'CONFIG_LV_USE_FS_FATFS']:
             with self.subTest(key=key), self.assertRaises(ValueError): validate_config({**good, key: 'y'})
         with self.assertRaises(ValueError): validate_config({**good, 'CONFIG_FLASH_NONE_ASSETS': 'n'})
+
+    def test_core_lite_component_boundary(self):
+        from release import validate_component_boundary, validate_link_map
+        required = ['main', 'ampve_improv_sdk', 'espressif__esp_hosted',
+                    'espressif__esp_lcd_ek79007', 'espressif__esp_lcd_touch_gt911',
+                    'espressif__esp_lvgl_port', 'lvgl__lvgl', 'sdmmc']
+        validate_component_boundary({'build_components': required})
+        for forbidden in ['fatfs', 'espressif__esp_audio_codec',
+                          'espressif__esp_cam_sensor', '78__xiaozhi-fonts']:
+            with self.subTest(forbidden=forbidden), self.assertRaises(ValueError):
+                validate_component_boundary({'build_components': required + [forbidden]})
+        with self.assertRaises(ValueError):
+            validate_component_boundary({'build_components': required[:-1]})
+        validate_link_map('LOAD esp-idf/esp_driver_i2s/libesp_driver_i2s.a\n')
+        for linked in ['esp-idf/esp_driver_i2s/i2s_std.c.obj',
+                       'esp-idf/main/audio/audio_codec.cc.obj',
+                       'esp-idf/main/boards/common/esp32_camera.cc.obj']:
+            with self.subTest(linked=linked), self.assertRaises(ValueError):
+                validate_link_map(linked)
 
 if __name__ == '__main__': unittest.main()

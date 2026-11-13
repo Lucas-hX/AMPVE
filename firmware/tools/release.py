@@ -3,6 +3,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import sys
 import shutil
 import subprocess
@@ -21,6 +22,11 @@ def sha(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def git_output(checkout, *arguments):
+    return subprocess.check_output(
+        ['git', '-c', 'safe.directory='+str(checkout), '-C', str(checkout), *arguments])
+
+
 def config_values(path):
     return dict(line.split('=', 1) for line in path.read_text().splitlines() if line.startswith('CONFIG_') and '=' in line)
 
@@ -36,9 +42,56 @@ def validate_config(values):
         raise ValueError('Build configuration does not match the reviewed profile')
     for forbidden in ['CONFIG_SECURE_BOOT', 'CONFIG_SECURE_FLASH_ENC_ENABLED',
                       'CONFIG_BOOTLOADER_APP_ANTI_ROLLBACK', 'CONFIG_APP_COMPILE_TIME_DATE',
-                      'CONFIG_LIBSODIUM_USE_MBEDTLS_SHA', 'CONFIG_PM_SLEEP_CLK_ICG_ENABLE']:
+                      'CONFIG_LIBSODIUM_USE_MBEDTLS_SHA', 'CONFIG_PM_SLEEP_CLK_ICG_ENABLE',
+                      'CONFIG_LV_USE_FS_FATFS']:
         if values.get(forbidden) == 'y':
             raise ValueError('Unexpected security, reproducibility or crypto build option: '+forbidden)
+
+
+def validate_component_boundary(description):
+    """Fail closed if an upstream feature bundle enters the Core Lite build."""
+    components = set(description.get('build_components', []))
+    required = {
+        'main', 'ampve_improv_sdk', 'espressif__esp_hosted',
+        'espressif__esp_lcd_ek79007', 'espressif__esp_lcd_touch_gt911',
+        'espressif__esp_lvgl_port', 'lvgl__lvgl', 'sdmmc',
+    }
+    forbidden = {
+        'fatfs', 'spiffs', '78__esp-ml307', '78__uart-eth-modem',
+        '78__xiaozhi-fonts', 'espressif__esp-sr',
+        'espressif__esp_audio_codec', 'espressif__esp_audio_effects',
+        'espressif__esp_codec_dev', 'espressif__esp_cam_sensor',
+        'espressif__esp_h264', 'espressif__esp_image_effects',
+        'espressif__esp_ipa', 'espressif__esp_video',
+        'espressif__esp_new_jpeg', 'espressif__esp_sccb_intf',
+        'espressif2022__esp_emote_assets',
+        'espressif2022__esp_emote_expression',
+        'espressif2022__esp_emote_gfx',
+        'espressif2022__esp_emote_image_player',
+        'espressif__esp_mmap_assets', 'espressif__gmf_audio',
+        'espressif__gmf_ai_audio', 'espressif__usb_host_uvc',
+    }
+    missing = sorted(required - components)
+    unexpected = sorted(forbidden & components)
+    if missing or unexpected:
+        raise ValueError(
+            'Core Lite component boundary mismatch; missing='
+            + ','.join(missing) + '; forbidden=' + ','.join(unexpected))
+
+
+def validate_link_map(text):
+    """Reject forbidden object code while allowing unreferenced IDF archives."""
+    patterns = {
+        'I2S driver object': r'esp-idf[/\\](?:esp_driver_i2s|esp_hal_i2s)[/\\].*?\.obj',
+        'FAT/SPIFFS object': r'esp-idf[/\\](?:fatfs|spiffs)[/\\].*?\.obj',
+        'upstream audio object': r'esp-idf[/\\]main[/\\](?:.*?[/\\])?audio[/\\].*?\.obj',
+        'upstream camera object': r'(?:esp32_camera|esp_video)\.(?:cc|cpp|c)\.obj',
+        'Companion object': r'companion(?:_face)?\.cc\.obj',
+        'visual-console object': r'visual_console.*?\.obj',
+    }
+    linked = [name for name, pattern in patterns.items() if re.search(pattern, text, re.I)]
+    if linked:
+        raise ValueError('Forbidden Core Lite object code linked: ' + ', '.join(linked))
 
 
 def package(work, idf, destination, comparison=None, notes_file=None):
@@ -49,7 +102,7 @@ def package(work, idf, destination, comparison=None, notes_file=None):
         decode_notes(notes_bytes)
     upstream = json.loads((ROOT/'firmware/xiaozhi/upstream.json').read_text())
     for checkout, pin in [(work, upstream['commit']), (idf, IDF_PIN)]:
-        if subprocess.check_output(['git', '-C', str(checkout), 'rev-parse', 'HEAD']).decode().strip() != pin:
+        if git_output(checkout, 'rev-parse', 'HEAD').decode().strip() != pin:
             raise ValueError('Unreviewed source revision')
     build = work/'build'
     if (work/'main/ampve/profile.h').read_text() != native_header():
@@ -125,7 +178,7 @@ def package(work, idf, destination, comparison=None, notes_file=None):
         if notice.is_file():shutil.copyfile(notice,destination/(notice.name+'.xiaozhi'))
     shutil.copyfile(work/'managed_components/espressif__libsodium/LICENSE', destination/'LICENSE.libsodium')
     shutil.copyfile(idf/'LICENSE', destination/'LICENSE.esp-idf')
-    patch = subprocess.check_output(['git', '-C', str(work), 'diff', '--no-ext-diff', '--binary'])
+    patch = git_output(work, 'diff', '--no-ext-diff', '--binary')
     (destination/'xiaozhi-integration.patch').write_bytes(patch)
     # Keep the modified third-party component and its original license reproducible outside Git.
     shutil.copytree(work/'components/78__esp-wifi-connect', destination/'provisioning-component')
@@ -137,10 +190,16 @@ def package(work, idf, destination, comparison=None, notes_file=None):
                 inputs[str(path.relative_to(ROOT))] = sha(path)
     overlay_inputs = {str(p.relative_to(work)): sha(p) for p in sorted((work/'main/ampve').glob('*')) if p.is_file()}
     description=json.loads((build/'project_description.json').read_text())
+    validate_component_boundary(description)
+    validate_link_map((build/'xiaozhi.map').read_text(errors='replace'))
     compiler=subprocess.check_output([description['c_compiler'], '--version']).decode().splitlines()[0]
     tools_path=Path(os.environ.get('IDF_TOOLS_PATH', str(Path.home()/'.espressif')))
-    idf_python=tools_path/'python_env/idf6.1_py3.13_env/bin/python'
-    if not idf_python.is_file():
+    idf_python_candidates = [
+        tools_path/'python_env/idf6.1_py3.13_env/bin/python',
+        tools_path/'python_env/idf6.1_py3.13_env/Scripts/python.exe',
+    ]
+    idf_python = next((path for path in idf_python_candidates if path.is_file()), None)
+    if idf_python is None:
         raise ValueError('Expected recorded IDF 6.1 / Python 3.13 build environment')
     for executable, name in [(idf_python, 'idf-python-freeze.txt'), (Path(sys.executable), 'tooling-python-freeze.txt')]:
         (destination/name).write_bytes(subprocess.check_output([str(executable), '-m', 'pip', 'freeze']))
@@ -148,7 +207,7 @@ def package(work, idf, destination, comparison=None, notes_file=None):
                 'hardware_profile': upstream['hardware_profile'], 'runtime_revision_guard': 103,
                 'improv_sdk': json.loads((ROOT/'firmware/xiaozhi/improv.json').read_text()),
                 'xiaozhi_commit': upstream['commit'], 'esp_idf_commit': IDF_PIN, 'compiler': compiler,
-                'repository_commit': subprocess.check_output(['git', '-C', str(ROOT), 'rev-parse', 'HEAD']).decode().strip(),
+                'repository_commit': git_output(ROOT, 'rev-parse', 'HEAD').decode().strip(),
                 'repository_inputs': inputs, 'generated_inputs': overlay_inputs,
                 'sdkconfig_sha256': sha(work/'sdkconfig'), 'dependency_lock_sha256': sha(work/'dependencies.lock'),
                 'installation_profile': PROFILE['installation_id'], 'compatibility': CONTRACT,

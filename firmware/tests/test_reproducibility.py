@@ -19,11 +19,18 @@ class ReproductionTests(unittest.TestCase):
             (root/'build/CMakeCache.txt').write_text('CMAKE_HOME_DIRECTORY:INTERNAL='+str(root)+'\n')
             (root/'build/app.bin').write_bytes(b'synthetic fixture')
         self.items=[{'file':'app.bin','sha256':hashlib.sha256(b'synthetic fixture').hexdigest()}]
+    def symlink_or_skip(self, link, target, *, target_is_directory=False):
+        try:
+            link.symlink_to(target, target_is_directory=target_is_directory)
+        except OSError as error:
+            if getattr(error, 'winerror', None) == 1314:
+                self.skipTest('Windows symlink privilege is unavailable')
+            raise
     def test_distinct_matching_artifacts(self):
         result=compare(self.a,self.b,self.items)
         self.assertTrue(result['verified']);self.assertIn('do not prove compiler execution',result['scope'])
     def test_same_directory_and_alias(self):
-        alias=self.base/'alias';alias.symlink_to(self.a,target_is_directory=True)
+        alias=self.base/'alias';self.symlink_or_skip(alias,self.a,target_is_directory=True)
         for target in [self.a,alias,self.a/'nested']:
             with self.assertRaisesRegex(ValueError,'separate'):compare(self.a,target,self.items)
     def test_wrong_source_configuration(self):
@@ -32,7 +39,7 @@ class ReproductionTests(unittest.TestCase):
     def test_shared_file_and_external_symlink(self):
         file=self.b/'build/app.bin';file.unlink();os.link(self.a/'build/app.bin',file)
         with self.assertRaisesRegex(ValueError,'same file'):compare(self.a,self.b,self.items)
-        file.unlink();file.symlink_to(self.a/'build/app.bin')
+        file.unlink();self.symlink_or_skip(file,self.a/'build/app.bin')
         with self.assertRaisesRegex(ValueError,'outside'):compare(self.a,self.b,self.items)
     def test_corruption_in_either_build(self):
         for root in [self.a,self.b]:

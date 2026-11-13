@@ -1,0 +1,16 @@
+## AMPVE Core Lite dependency boundary for the supported Waveshare 7B only.
+## The ESP-Hosted SDIO transport is required for the on-board ESP32-C6 Wi-Fi
+## coprocessor. It does not enable FAT, a filesystem, or microSD content access.
+dependencies:
+  78/esp-wifi-connect: "==3.3.1"
+  espressif/button: "==4.2.1"
+  espressif/cjson: "==1.7.19~2"
+  espressif/esp_hosted: "==2.12.13"
+  espressif/esp_lcd_ek79007: "==2.0.2~1"
+  espressif/esp_lcd_touch_gt911: "==1.2.1"
+  espressif/esp_lvgl_port: "==2.9.0"
+  espressif/esp_wifi_remote: "==1.6.4"
+  espressif/libsodium: "==1.0.22~1"
+  lvgl/lvgl: "==9.5.0"
+  idf:
+    version: "==6.1.0"

@@ -6,7 +6,7 @@ Source PDFs remain private on the AMPVE server. The platform records a SHA-256 d
 
 ## First device storage boundary
 
-The first Reader has no microSD or SD-card support. Core Lite omits the FAT and SDMMC driver surface. Prepared books will use a strict quota in the board's existing 5 MiB internal `storage` partition (`0x1AF0000`–`0x1FEFFFF`, inclusive). That partition belongs to the preserved stock layout, so Reader must not mount, format or write it until its current bytes have been privately audited and backed up and the exact migration has been approved.
+The first Reader has no microSD or SD-card support and Core Lite omits FAT and every removable-storage path. The board's ESP32-C6 Wi-Fi coprocessor is physically connected over ESP-Hosted/SDIO, so the minimal firmware necessarily retains ESP-IDF's SDMMC/SDIO transport component exclusively for Wi-Fi; it is not exposed to Reader and never mounts storage. Prepared books will use a strict quota in the board's existing 5 MiB internal `storage` partition (`0x1AF0000`–`0x1FEFFFF`, inclusive). That partition belongs to the preserved stock layout, so Reader must not mount, format or write it until its current bytes have been privately audited and backed up and the exact migration has been approved.
 
 Internal space is deliberately limited. The preparation pipeline must generate compact display-sized derivatives, reserve room for an interrupted transfer, verify every file before activation and evict content without losing server-side library metadata or reading progress. Actual usable quota remains pending a reproducible firmware build and physical storage validation.
 
