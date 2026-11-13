@@ -27,7 +27,8 @@ def page(request, section='home'):
               'apps': 'Find a little possibility.', 'connections': 'Your AI connections.',
               'onboarding': 'A new home for your ideas.'}
     return render(request, f'workspace/{section}.html', {'section': section,
-        'title': titles[section], 'applications': Application.objects.all(), 'device_count': Device.objects.filter(owner=request.user).count()})
+        'title': titles[section], 'applications': Application.objects.filter(status='preview').order_by('name'),
+        'device_count': Device.objects.filter(owner=request.user).count()})
 
 
 @never_cache

@@ -59,7 +59,7 @@ class CoreCapabilityTests(TestCase):
             'expires_at':(timezone.now()+timedelta(days=30)).strftime('%Y-%m-%dT%H:%M:%SZ'),
             'ui':{'title':'Fixture '+kind,'body':'Local bounded workflow'},
             'workflow':{'action':action,'duration_s':duration,
-                        'start_muted':kind!='companion'}}
+                        'start_muted':True}}
 
     def signed(self,policy):
         payload=canonical(policy)
@@ -162,7 +162,11 @@ class CoreCapabilityTests(TestCase):
         self.assertEqual(self.device_post('diagnostics/events/',{'protocol':1,'events':[impossible]}).status_code,409)
         partial={key:value for key,value in measured.items() if key!='audio_stack_min_bytes'}
         partial['sequence']=4
-        self.assertEqual(self.device_post('diagnostics/events/',{'protocol':1,'events':[partial]}).status_code,409)
+        self.assertEqual(self.device_post('diagnostics/events/',{'protocol':1,'events':[partial]}).status_code,200)
+        self.assertIsNone(DeviceDiagnosticEvent.objects.get(device=self.device,sequence=4).audio_stack_min_bytes)
+        incomplete={key:value for key,value in partial.items() if key!='dma_largest_bytes'}
+        incomplete['sequence']=5
+        self.assertEqual(self.device_post('diagnostics/events/',{'protocol':1,'events':[incomplete]}).status_code,409)
         changed=self.event();changed['operation']='companion_start'
         self.assertEqual(self.device_post('diagnostics/events/',{'protocol':1,'events':[changed]}).status_code,409)
         raw=self.event(1);raw['uart_text']='password=fixture'
@@ -174,11 +178,11 @@ class CoreCapabilityTests(TestCase):
             ended_at=timezone.now())
         self.assertContains(self.client.get(url),'abcdef0123456789')
         self.assertContains(self.client.get(url),'DMA free')
-        self.assertContains(self.client.get(url),'Recent Companion audio sessions')
-        self.assertContains(self.client.get(url),'disconnected')
+        self.assertNotContains(self.client.get(url),'Recent Companion audio sessions')
+        self.assertNotContains(self.client.get(url),'disconnected')
         self.client.force_login(self.other);self.assertEqual(self.client.get(url).status_code,404)
         self.client.force_login(self.admin);self.assertEqual(self.client.get(url).status_code,404)
-        for sequence in [1,*range(4,135)]:
+        for sequence in [1,*range(5,135)]:
             DeviceDiagnosticEvent.objects.create(device=self.device,**self.event(sequence))
         self.assertEqual(self.device_post('diagnostics/events/',{'protocol':1,'events':[self.event(200)]}).status_code,200)
         self.assertLessEqual(DeviceDiagnosticEvent.objects.filter(device=self.device).count(),128)

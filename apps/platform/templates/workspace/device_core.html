@@ -10,7 +10,7 @@
 </section>
 <section class="form-card">
   <h2>One-device rollout</h2>
-  <p>Packages use capability API v1. They contain signed UI text and supported local workflows; native drivers and microphone consent remain in Core. Packages live in RAM and are downloaded again after reboot.</p>
+  <p>Packages use capability API v1. They contain signed UI text and supported local workflows; connectivity, display, touch, recovery and package verification remain in Core. Packages live in RAM and are downloaded again after reboot.</p>
   {% if packages %}<form method="post" action="{% url 'device_core_command' device.pk %}">{% csrf_token %}<input type="hidden" name="request_key" value="{{ assign_key }}"><input type="hidden" name="kind" value="assign_app"><label for="core-package">Compatible curated package</label><select name="package_id" id="core-package" required>{% for package in packages %}<option value="{{ package.pk }}">{{ package.policy.name }} {{ package.policy.version }} · {{ package.policy.kind }}</option>{% endfor %}</select><button class="button" type="submit">Stage on this device</button></form>{% else %}<p>No verified package is compatible with the reported Core and hardware.</p>{% endif %}
   <div class="settings-grid">
     <form method="post" action="{% url 'device_core_command' device.pk %}">{% csrf_token %}<input type="hidden" name="request_key" value="{{ kill_key }}"><input type="hidden" name="kind" value="kill_app"><button class="button secondary" type="submit">Disable assigned app</button></form>
@@ -20,13 +20,8 @@
 </section>
 <section class="form-card">
   <h2>Recent typed diagnostics</h2>
-  <p class="helptext">Core sends IDs, reset reason, last operation, allowlisted error codes and bounded health figures. No audio, Wi-Fi secrets, provider keys, device token or unrestricted serial log is retained. A stock 7B has no coredump partition; a panic may have no full backtrace here.</p>
-  <ol>{% for event in events %}<li><time datetime="{{ event.created_at|date:'c' }}">{{ event.created_at|date:'M j, Y H:i:s' }} UTC</time> · {{ event.kind }} · {{ event.operation }}{% if event.reset_reason %} · reset {{ event.reset_reason }}{% endif %}{% if event.error_code %} · {{ event.error_code }}{% endif %} · boot {{ event.boot_id }} #{{ event.sequence }}{% if event.dma_free_bytes != None %} · DMA free {{ event.dma_free_bytes|filesizeformat }}, largest block {{ event.dma_largest_bytes|filesizeformat }}{% endif %}{% if event.audio_stack_min_bytes != None %} · Companion stack minimum {{ event.audio_stack_min_bytes|filesizeformat }}{% endif %}</li>{% empty %}<li>No authenticated Core event has been received.</li>{% endfor %}</ol>
-</section>
-<section class="form-card">
-  <h2>Recent Companion audio sessions</h2>
-  <p class="helptext">The server result code records how its WebSocket session ended. Compare it with the device's typed event; a disconnect code alone does not establish which endpoint closed first.</p>
-  <ol>{% for session in audio_sessions %}<li><time datetime="{{ session.started_at|date:'c' }}">{{ session.started_at|date:'M j, Y H:i:s' }} UTC</time> · {{ session.status }} · result <code>{{ session.result_code|default:'pending' }}</code>{% if session.ended_at %} · ended {{ session.ended_at|date:'M j, Y H:i:s' }} UTC{% endif %}</li>{% empty %}<li>No Companion audio session has been recorded for this device.</li>{% endfor %}</ol>
+  <p class="helptext">Core sends IDs, reset reason, last operation, allowlisted error codes and bounded health figures. No document content, Wi-Fi secrets, device token or unrestricted serial log is retained. A stock 7B has no coredump partition; a panic may have no full backtrace here.</p>
+  <ol>{% for event in events %}<li><time datetime="{{ event.created_at|date:'c' }}">{{ event.created_at|date:'M j, Y H:i:s' }} UTC</time> · {{ event.kind }} · {{ event.operation }}{% if event.reset_reason %} · reset {{ event.reset_reason }}{% endif %}{% if event.error_code %} · {{ event.error_code }}{% endif %} · boot {{ event.boot_id }} #{{ event.sequence }}{% if event.dma_free_bytes != None %} · DMA free {{ event.dma_free_bytes|filesizeformat }}, largest block {{ event.dma_largest_bytes|filesizeformat }}{% endif %}</li>{% empty %}<li>No authenticated Core event has been received.</li>{% endfor %}</ol>
 </section>
 <section class="form-card"><h2>Administration history</h2><ol>{% for job in commands %}<li>{{ job.kind }} · {{ job.state }}{% if job.result_code %} · {{ job.result_code }}{% endif %} · expires {{ job.expires_at|date:'M j, Y H:i:s' }} UTC</li>{% empty %}<li>No Core commands requested.</li>{% endfor %}</ol></section>
 {% endblock %}

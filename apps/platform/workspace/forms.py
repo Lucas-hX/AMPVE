@@ -1,6 +1,6 @@
 from django import forms
 from django.contrib.auth.forms import AuthenticationForm, UserCreationForm, UserChangeForm
-from .models import User
+from .models import ReaderBook, User
 
 
 class SignInForm(AuthenticationForm):
@@ -66,5 +66,44 @@ class ClaimDeviceForm(forms.Form):
 
 class DeviceSettingsForm(forms.Form):
     name = forms.CharField(max_length=80, label='Device name')
-    volume = forms.IntegerField(min_value=0, max_value=80, label='Speaker volume (0–80)')
-    microphone_muted = forms.BooleanField(required=False, label='Mute microphone')
+
+
+class ReaderUploadForm(forms.Form):
+    MAX_BYTES = 100 * 1024 * 1024
+
+    existing_book = forms.ModelChoiceField(
+        queryset=ReaderBook.objects.none(), required=False, empty_label='Create a new book',
+        label='Add to an existing book')
+    book_title = forms.CharField(max_length=160, required=False, label='New book title')
+    part_title = forms.CharField(max_length=160, required=False, label='Part name')
+    collection_name = forms.CharField(max_length=80, required=False, label='Collection')
+    page_start = forms.IntegerField(min_value=1, required=False, label='First page (optional)')
+    page_end = forms.IntegerField(min_value=1, required=False, label='Last page (optional)')
+    document = forms.FileField(label='PDF file')
+
+    def __init__(self, *args, owner, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['existing_book'].queryset = ReaderBook.objects.filter(owner=owner)
+
+    def clean_document(self):
+        document = self.cleaned_data['document']
+        if document.size <= 0 or document.size > self.MAX_BYTES:
+            raise forms.ValidationError('Choose a PDF no larger than 100 MB.')
+        if not document.name.lower().endswith('.pdf'):
+            raise forms.ValidationError('Choose a PDF file.')
+        header = document.read(1024)
+        document.seek(0)
+        if b'%PDF-' not in header:
+            raise forms.ValidationError('This file does not have a valid PDF header.')
+        return document
+
+    def clean(self):
+        cleaned = super().clean()
+        if not cleaned.get('existing_book') and not cleaned.get('book_title'):
+            self.add_error('book_title', 'Enter a title for the new book.')
+        start, end = cleaned.get('page_start'), cleaned.get('page_end')
+        if (start is None) != (end is None):
+            self.add_error('page_end' if end is None else 'page_start', 'Enter both ends of the page range.')
+        elif start is not None and end < start:
+            self.add_error('page_end', 'The last page must not be before the first page.')
+        return cleaned

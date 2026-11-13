@@ -60,7 +60,7 @@ void ImprovService::feed(uint8_t byte){
 }
 bool ImprovService::command(improv::ImprovCommand request){
  error(improv::ERROR_NONE);
- if(request.command==improv::GET_DEVICE_INFO){rpc(request.command,{"AMPVE",port_.version(),"waveshare-p4-7b","AMPVE Companion"});return false;}
+ if(request.command==improv::GET_DEVICE_INFO){rpc(request.command,{"AMPVE",port_.version(),"waveshare-p4-7b","AMPVE Core Lite"});return false;}
  if(request.command==improv::GET_CURRENT_STATE){auto current=state();packet(improv::TYPE_CURRENT_STATE,{current});if(current==improv::STATE_PROVISIONED)rpc(request.command,{kNext});return false;}
  if(request.command!=improv::WIFI_SETTINGS){error(improv::ERROR_UNKNOWN_RPC);return false;}
  auto until=port_.authorized_until();

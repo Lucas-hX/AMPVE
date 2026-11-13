@@ -1,4 +1,4 @@
-// AMPVE native development shell. No cloud audio or firmware-write endpoint.
+// AMPVE Core Lite: management, recovery and bounded application hosting only.
 #include "runtime.h"
 #include "image_identity.h"
 #include "ota_platform.h"
@@ -7,18 +7,15 @@
 #include "profile.h"
 #include "driver/gpio.h"
 #include "wifi_board.h"
-#include "audio_codec.h"
 #include "ampve/boot_guard.h"
 #include "ampve/app_package.h"
 #include "ampve/app_runtime.h"
-#include "ampve/companion.h"
-#include "ampve/companion_face.h"
 #include "ampve/diagnostics.h"
 #include "ampve/improv_platform.h"
 #include "ampve/publisher_trust.h"
 #include "wifi_manager.h"
-#include "display.h"
 #include "esp_lvgl_port.h"
+#include "esp_lcd_panel_ops.h"
 #include "lvgl.h"
 #include "esp_app_desc.h"
 #include "esp_chip_info.h"
@@ -38,25 +35,48 @@
 #include "mbedtls/base64.h"
 #include "freertos/task.h"
 #include <algorithm>
-#include <cmath>
 #include <ctime>
 #include <cstring>
 #include <mutex>
 #include <string>
-#include <vector>
 
 extern "C" {
 extern const lv_image_dsc_t ampve_symbol;
-extern const lv_image_dsc_t ampve_companion;
 }
-std::atomic<bool> ampve_wifi_initialized{false}, ampve_touch_ready{false}, ampve_codec_present{false}, ampve_codec_failed{false};
-static std::atomic<bool> wifi_requested{false}, pair_requested{false}, tone_requested{false};
-static std::atomic<bool> companion_start_requested{false}, companion_stop_requested{false};
-static std::atomic<bool> local_muted{true}, heard_tone{false}, tone_played{false};
-static std::atomic<bool> companion_enabled{false};
+
+bool ampve_initialize_display(void* raw_io, void* raw_panel, int width, int height,
+                              int offset_x, int offset_y, bool mirror_x,
+                              bool mirror_y, bool swap_xy) {
+    auto io = static_cast<esp_lcd_panel_io_handle_t>(raw_io);
+    auto panel = static_cast<esp_lcd_panel_handle_t>(raw_panel);
+    if (!io || !panel || width <= 0 || height <= 0) return false;
+    const auto on = esp_lcd_panel_disp_on_off(panel, true);
+    if (on != ESP_OK && on != ESP_ERR_NOT_SUPPORTED) return false;
+    lv_init();
+    lvgl_port_cfg_t port = ESP_LVGL_PORT_INIT_CONFIG();
+    if (lvgl_port_init(&port) != ESP_OK) return false;
+    const lvgl_port_display_cfg_t display = {
+        .io_handle = io,
+        .panel_handle = panel,
+        .control_handle = nullptr,
+        .buffer_size = static_cast<uint32_t>(width * 50),
+        .double_buffer = false,
+        .hres = static_cast<uint32_t>(width),
+        .vres = static_cast<uint32_t>(height),
+        .monochrome = false,
+        .rotation = {.swap_xy = swap_xy, .mirror_x = mirror_x, .mirror_y = mirror_y},
+        .flags = {.buff_dma = true, .buff_spiram = false, .sw_rotate = true},
+    };
+    const lvgl_port_display_dsi_cfg_t dsi = {.flags = {.avoid_tearing = false}};
+    auto lv_display = lvgl_port_add_disp_dsi(&display, &dsi);
+    if (!lv_display) return false;
+    if (offset_x || offset_y) lv_display_set_offset(lv_display, offset_x, offset_y);
+    return true;
+}
+
+std::atomic<bool> ampve_wifi_initialized{false}, ampve_touch_ready{false};
+static std::atomic<bool> wifi_requested{false}, pair_requested{false};
 static std::atomic<bool> platform_paired{false}, platform_online{false};
-static std::atomic<bool> companion_package_killed{false};
-static std::atomic<int> local_volume{-1};
 static std::atomic<uint32_t> ui_ticks{0};
 static std::atomic<int64_t> app_timer_deadline{0};
 static std::atomic<uint32_t> app_ui_revision{0};
@@ -65,21 +85,13 @@ static std::mutex ui_mutex;
 static std::string network_text="Starting Wi-Fi", management_text="Not paired", pair_code;
 static std::string device_name="My AMPVE", about_text;
 static std::atomic<bool> storage_ok{true};
-static std::atomic<bool> codec_initialized{false};
 static std::string setup_password, usb_image_hash;
 static std::atomic<const char*> usb_phase{"starting"};
 static std::atomic<bool> usb_display_ready{false};
 extern "C" const char* ampve_wifi_password() { return setup_password.c_str(); }
-static std::atomic<int> displayed_volume{40};
 static lv_obj_t *screen, *header, *body, *network_label, *platform_label, *header_name, *status_label, *nav;
-static lv_obj_t *remote_label=nullptr, *companion_controls=nullptr;
 static lv_obj_t *app_timer_label=nullptr;
-static lv_obj_t *companion_status_label=nullptr, *companion_action_label=nullptr, *companion_mute_label=nullptr;
 static std::atomic<int> current_page{0};
-static std::atomic<bool> remote_allowed{true}, remote_active{false};
-static std::atomic<uint32_t> console_revision{1};
-static std::mutex console_mutex;
-static std::string console_ack_id, console_ack_result;
 static uint32_t flash_bytes=0;
 static esp_chip_info_t chip;
 static nvs_handle_t store_handle=0;
@@ -96,7 +108,7 @@ static bool identifier(const std::string& value, size_t size, bool uuid);
 static bool app_session_idle() {
     const auto deadline=app_timer_deadline.load();
     if(deadline && esp_timer_get_time()>=deadline)app_timer_deadline=0;
-    return !ampve::companion_active() && app_timer_deadline.load()==0;
+    return app_timer_deadline.load()==0;
 }
 
 
@@ -227,15 +239,11 @@ static void core_app_tick(const std::string& device,const std::string& token) {
     }
     const auto desired=json_string(response,"desired_id",64);
     auto disabled=cJSON_GetObjectItemCaseSensitive(response,"disabled");
-    auto killed_kind=json_string(response,"disabled_kind",16);
     auto revoked_active=cJSON_GetObjectItemCaseSensitive(response,"revoked_active");
     if(!cJSON_IsBool(disabled) || (!desired.empty() && !app_id(desired))) {
         cJSON_Delete(response);return;
     }
     if(!cJSON_IsBool(revoked_active)) { cJSON_Delete(response);return; }
-    companion_package_killed=(cJSON_IsTrue(disabled) && killed_kind=="companion") ||
-        (cJSON_IsTrue(revoked_active) && active_app().kind=="companion");
-    if(companion_package_killed && ampve::companion_active())ampve::companion_stop();
     if((cJSON_IsTrue(disabled) || cJSON_IsTrue(revoked_active)) && app_timer_deadline.load())
         app_timer_deadline=0;
     const auto revoked=cJSON_GetObjectItemCaseSensitive(response,"revoked_ids");
@@ -351,8 +359,8 @@ static cJSON* hardware_report() {
     auto caps=cJSON_AddObjectToObject(report,"capabilities");
     cJSON_AddStringToObject(caps,"display","initialized");
     cJSON_AddStringToObject(caps,"touch",ampve_touch_ready?"initialized":"failed");
-    cJSON_AddStringToObject(caps,"speaker",ampve_codec_failed?"failed":heard_tone?"passed":codec_initialized?"initialized":"configured");
-    cJSON_AddStringToObject(caps,"microphone",ampve_codec_present?"configured":"unknown");
+    cJSON_AddStringToObject(caps,"speaker","unavailable");
+    cJSON_AddStringToObject(caps,"microphone","unavailable");
     cJSON_AddStringToObject(caps,"wifi",!ampve_wifi_initialized?"failed":WifiManager::GetInstance().IsConnected()?"passed":"initialized");
     return report;
 }
@@ -370,45 +378,27 @@ static lv_obj_t* button(lv_obj_t* parent,const char* text,lv_event_cb_t callback
     lv_obj_add_event_cb(item,callback,LV_EVENT_CLICKED,reinterpret_cast<void*>(data));return item;
 }
 static void go(lv_event_t* e) {page(reinterpret_cast<intptr_t>(lv_event_get_user_data(e)));}
-static void toggle_companion_controls(lv_event_t*) {
-    if(!companion_controls)return;
-    if(lv_obj_has_flag(companion_controls,LV_OBJ_FLAG_HIDDEN))lv_obj_remove_flag(companion_controls,LV_OBJ_FLAG_HIDDEN);
-    else lv_obj_add_flag(companion_controls,LV_OBJ_FLAG_HIDDEN);
-}
 static void page(int id) {
-    ampve::companion_face_hide();
-    companion_controls=nullptr;companion_status_label=nullptr;companion_action_label=nullptr;companion_mute_label=nullptr;app_timer_label=nullptr;
-    if(current_page.exchange(id)!=id)console_revision++;
-    const bool immersive=id==4;
-    lv_obj_set_style_pad_all(screen,immersive?0:20,0);
-    for(auto chrome:{header,status_label,nav}) {
-        if(immersive)lv_obj_add_flag(chrome,LV_OBJ_FLAG_HIDDEN);
-        else lv_obj_remove_flag(chrome,LV_OBJ_FLAG_HIDDEN);
-    }
-    lv_obj_set_style_pad_all(body,immersive?0:8,0);
+    app_timer_label=nullptr;
+    current_page=id;
+    lv_obj_set_style_pad_all(screen,20,0);
+    for(auto chrome:{header,status_label,nav})lv_obj_remove_flag(chrome,LV_OBJ_FLAG_HIDDEN);
+    lv_obj_set_style_pad_all(body,8,0);
     lv_obj_clean(body);
     if(id==0) {
         const auto package=active_app();
         auto row=lv_obj_create(body);lv_obj_set_size(row,LV_PCT(100),154);lv_obj_set_style_pad_all(row,6,0);
         lv_obj_set_flex_flow(row,LV_FLEX_FLOW_ROW);lv_obj_set_style_border_width(row,0,0);
         lv_obj_set_style_bg_opa(row,LV_OPA_TRANSP,0);
-        auto companion=lv_obj_create(row);lv_obj_set_size(companion,320,140);
-        lv_obj_set_style_bg_color(companion,lv_color_hex(0xE8ECDD),0);
-        auto icon=lv_image_create(companion);lv_image_set_src(icon,&ampve_companion);
-        lv_obj_align(icon,LV_ALIGN_LEFT_MID,0,0);
-        auto title=label(companion,package.kind=="companion"?package.title.c_str():"Companion",&lv_font_montserrat_28);
-        lv_obj_set_width(title,180);lv_obj_align(title,LV_ALIGN_RIGHT_MID,0,0);
-        lv_obj_add_flag(companion,LV_OBJ_FLAG_CLICKABLE);
-        lv_obj_add_event_cb(companion,go,LV_EVENT_CLICKED,reinterpret_cast<void*>(4));
+        const std::string app_title=package.id.empty()?"Apps":package.title;
+        auto open=button(row,app_title.c_str(),go,4);lv_obj_set_size(open,320,140);
         auto wifi=button(row,"Wi-Fi",go,1);lv_obj_set_size(wifi,245,140);
         auto info=button(row,"My device",go,2);lv_obj_set_size(info,245,140);
-        if(package.kind=="status" || package.kind=="timer") {
-            auto open=button(body,("Open "+package.title).c_str(),go,5);
-            lv_obj_set_width(open,400);
-        }
+        label(body,package.id.empty()?"No application is assigned. Choose one from ampve.com.":
+              "The assigned application is active in the bounded AMPVE runtime.");
     } else if(id==1) {
         label(body,"Let's get connected.",&lv_font_montserrat_36);
-        label(body,"Wi-Fi setup stays local. Your provider keys stay on AMPVE.");
+        label(body,"Wi-Fi setup stays local. Device credentials remain protected by AMPVE Core.");
         button(body,"Open local Wi-Fi setup",[](lv_event_t*){ampve_request_wifi();});
         if(ampve_wifi_initialized && WifiManager::GetInstance().IsConfigMode()) {
             auto& wifi=WifiManager::GetInstance();
@@ -423,69 +413,23 @@ static void page(int id) {
         label(body,"My device",&lv_font_montserrat_36);
         label(body,about_text.c_str());
         label(body,ampve_touch_ready?"Touch driver initialized":"Touch not initialized");
-        label(body,ampve_codec_failed?"Audio unavailable. Navigation and recovery remain available.":heard_tone?"Speaker: you confirmed the test":ampve_codec_present?"Audio codecs responded; speaker test pending":"Audio codecs not confirmed");
-        button(body,"Play a quiet speaker test",[](lv_event_t*){tone_requested=true;});
-        if(tone_played && !ampve_codec_failed)button(body,"I heard the tone",[](lv_event_t*){if(tone_played && !ampve_codec_failed)heard_tone=true;page(2);});
+        label(body,"Audio and Companion are not included in this Core Lite build.");
     } else if(id==3) {
-        label(body,"Comfort comes first.",&lv_font_montserrat_36);
-        label(body,"Only local Companion Start can begin microphone capture.");
-        label(body,"Desired volume (0-80). Test tones always start quietly.");
-        auto slider=lv_slider_create(body);lv_obj_set_size(slider,850,36);lv_slider_set_range(slider,0,80);
-        lv_slider_set_value(slider,displayed_volume,LV_ANIM_OFF);
-        lv_obj_add_event_cb(slider,[](lv_event_t* event) {
-            local_volume=lv_slider_get_value(static_cast<lv_obj_t*>(lv_event_get_target(event)));
-        },LV_EVENT_RELEASED,nullptr);
+        label(body,"Core settings",&lv_font_montserrat_36);
+        label(body,"Core keeps only connectivity, recovery, signed updates and the application host.");
         button(body,"Wi-Fi and pairing",go,1);
         button(body,"Cancel firmware download",[](lv_event_t*){ampve_cancel_update();message("Cancellation requested before firmware restart.");});
-    } else if(id==4) {
-        const auto package=active_app();
-        auto face=ampve::companion_face_show(body);
-        lv_obj_add_event_cb(face,toggle_companion_controls,LV_EVENT_CLICKED,nullptr);
-        companion_controls=lv_obj_create(face);lv_obj_set_size(companion_controls,760,142);
-        lv_obj_align(companion_controls,LV_ALIGN_BOTTOM_MID,0,-24);
-        lv_obj_set_style_bg_color(companion_controls,lv_color_hex(0xF7F5EE),0);
-        lv_obj_set_style_bg_opa(companion_controls,LV_OPA_90,0);
-        lv_obj_set_style_border_width(companion_controls,0,0);
-        lv_obj_set_style_radius(companion_controls,18,0);
-        lv_obj_set_style_pad_all(companion_controls,12,0);
-        lv_obj_set_flex_flow(companion_controls,LV_FLEX_FLOW_COLUMN);
-        if(!companion_enabled || companion_package_killed) {
-            label(companion_controls,companion_package_killed?
-                  "Assigned Companion is disabled from your workspace.":
-                  "Activate Companion at ampve.com to begin.");
-            auto home=button(companion_controls,"Home",go,0);lv_obj_set_height(home,58);
-        } else {
-            if(package.kind=="companion")label(companion_controls,package.body.c_str());
-            companion_status_label=label(companion_controls,ampve::companion_status());
-            lv_obj_set_height(companion_status_label,30);
-            auto actions=lv_obj_create(companion_controls);lv_obj_set_size(actions,LV_PCT(100),68);
-            lv_obj_set_style_bg_opa(actions,LV_OPA_TRANSP,0);lv_obj_set_style_border_width(actions,0,0);
-            lv_obj_set_style_pad_all(actions,4,0);lv_obj_set_flex_flow(actions,LV_FLEX_FLOW_ROW);
-            auto action=button(actions,ampve::companion_active()?"Stop":"Start",[](lv_event_t*) {
-                if(ampve::companion_active())companion_stop_requested=true;
-                else companion_start_requested=true;
-            });
-            lv_obj_set_size(action,220,58);
-            companion_action_label=lv_obj_get_child(action,0);
-            auto mute=button(actions,ampve::companion_active()&&ampve::companion_muted()?"Unmute":"Mute",[](lv_event_t*) {
-                ampve::companion_toggle_mute();local_muted=ampve::companion_muted();
-            });
-            lv_obj_set_size(mute,220,58);
-            companion_mute_label=lv_obj_get_child(mute,0);
-            auto home=button(actions,"Home",go,0);lv_obj_set_size(home,220,58);
-        }
-        if(ampve::companion_active())lv_obj_add_flag(companion_controls,LV_OBJ_FLAG_HIDDEN);
     } else {
         const auto package=active_app();
-        if(package.kind!="status" && package.kind!="timer") {
-            label(body,"No portable app is active. Companion remains available from Home.");
+        if(package.kind!="status" && package.kind!="timer" && package.kind!="reader") {
+            label(body,"No portable application is active.");
         } else {
             label(body,package.title.c_str(),&lv_font_montserrat_36);
             label(body,package.body.c_str());
             if(package.kind=="status") {
                 label(body,platform_online?"AMPVE platform connected":"AMPVE platform offline");
                 label(body,ampve_wifi_initialized?"Wi-Fi driver ready":"Wi-Fi driver unavailable");
-            } else {
+            } else if(package.kind=="timer") {
                 app_timer_label=label(body,"Timer ready");
                 auto start=button(body,"Start local timer",[](lv_event_t*) {
                     const auto current=active_app();
@@ -496,6 +440,9 @@ static void page(int id) {
                 lv_obj_set_width(start,320);
                 auto stop=button(body,"Stop local timer",[](lv_event_t*){app_timer_deadline=0;});
                 lv_obj_set_width(stop,320);
+            } else {
+                label(body,"Reader application host ready.");
+                label(body,"Bounded internal-flash storage and content synchronization require the next reviewed Reader slice. No SD card is used.");
             }
         }
         auto home=button(body,"Home",go,0);lv_obj_set_width(home,220);
@@ -523,19 +470,6 @@ static void create_ui() {
     nav=lv_obj_create(screen);lv_obj_set_size(nav,LV_PCT(100),84);
     lv_obj_set_flex_flow(nav,LV_FLEX_FLOW_ROW);lv_obj_set_style_pad_all(nav,8,0);
     for(int id: {0,3}){auto b=button(nav,id==0?"Home":"Settings",go,id);lv_obj_set_width(b,200);}
-    auto mute=button(nav,"Microphone muted",[](lv_event_t*) {
-        if(ampve::companion_active())ampve::companion_toggle_mute();
-        else ampve::companion_mute();
-        local_muted=ampve::companion_muted();
-        message(local_muted?"Microphone muted locally.":"Microphone enabled for this Companion session.");
-    });
-    lv_obj_set_width(mute,250);
-    auto remote=button(nav,"Remote control allowed",[](lv_event_t*) {
-        bool allow=!remote_allowed.load();
-        remote_allowed=allow;remote_active=false;console_revision++;
-        message(allow?"Remote console allowed when an owner session is active.":"Remote console stopped locally.");
-    });
-    lv_obj_set_width(remote,300);remote_label=lv_obj_get_child(remote,0);
     lv_screen_load(screen);page(0);
     lv_timer_create([](lv_timer_t*) {
         ui_ticks++;
@@ -545,10 +479,6 @@ static void create_ui() {
             lv_label_set_text(platform_label,!platform_paired?"Not paired":platform_online?"Paired":"Paired offline");
             lv_label_set_text(status_label,management_text.c_str());
             lv_label_set_text(header_name,device_name.c_str());
-            if(remote_label)lv_label_set_text(remote_label,!remote_allowed?"Remote control stopped":remote_active?"Remote active · tap to stop":"Remote control allowed");
-            if(companion_status_label)lv_label_set_text(companion_status_label,ampve::companion_status());
-            if(companion_action_label)lv_label_set_text(companion_action_label,ampve::companion_active()?"Stop":"Start");
-            if(companion_mute_label)lv_label_set_text(companion_mute_label,ampve::companion_active()&&ampve::companion_muted()?"Unmute":"Mute");
         }
         if(app_timer_label) {
             const auto deadline=app_timer_deadline.load();
@@ -561,7 +491,7 @@ static void create_ui() {
         if(shown_revision!=app_ui_revision.load()) {
             shown_revision=app_ui_revision.load();
             const int id=current_page.load();
-            if(id==0 || id==4 || id==5)page(id);
+            if(id==0 || id==4)page(id);
         }
     },500,nullptr);
     lvgl_port_unlock();
@@ -579,66 +509,6 @@ static bool identifier(const std::string& value, size_t size, bool uuid=false) {
         }else if(!((c>='0'&&c<='9')||(c>='a'&&c<='z')||(c>='A'&&c<='Z')||c=='-'||c=='_'))return false;
     }
     return true;
-}
-static const char* page_name() {
-    switch(current_page.load()){case 1:return "wifi";case 2:return "device";case 3:return "settings";case 4:return "companion";default:return "home";}
-}
-static bool apply_console_target(const std::string& target) {
-    int destination=-1;
-    if(target=="home")destination=0;else if(target=="wifi")destination=1;else if(target=="device")destination=2;
-    else if(target=="settings")destination=3;else if(target=="companion")destination=4;
-    if(destination>=0){lvgl_port_lock(0);page(destination);lvgl_port_unlock();return true;}
-    if(target=="wifi_setup"){wifi_requested=true;return true;}
-    if(target=="pair"){pair_requested=true;return true;}
-    if(target=="speaker_test"){tone_requested=true;return true;}
-    if(target=="cancel_update"){ampve_cancel_update();message("Remote cancellation requested before firmware restart.");return true;}
-    if(target=="mute"){local_muted=true;ampve::companion_mute();message("Microphone muted remotely; only the local screen can unmute it.");return true;}
-    return false;
-}
-static bool console_sync(const std::string& device,const std::string& token,int& interval_ms) {
-    auto payload=cJSON_CreateObject();cJSON_AddNumberToObject(payload,"protocol",1);
-    cJSON_AddNumberToObject(payload,"state_revision",console_revision.load());
-    auto screen=cJSON_AddObjectToObject(payload,"screen");
-    cJSON_AddStringToObject(screen,"page",page_name());cJSON_AddStringToObject(screen,"display_mode","physical");
-    cJSON_AddBoolToObject(screen,"remote_allowed",remote_allowed.load());
-    std::string sent_ack;
-    {
-        std::lock_guard<std::mutex> lock(console_mutex);sent_ack=console_ack_id;
-        if(!sent_ack.empty()){
-            auto ack=cJSON_AddObjectToObject(payload,"acknowledgement");
-            cJSON_AddStringToObject(ack,"id",sent_ack.c_str());cJSON_AddStringToObject(ack,"result",console_ack_result.c_str());
-        }
-    }
-    std::string reply;int status=post(device+"/console/sync/",token,payload,reply);cJSON_Delete(payload);
-    auto response=cJSON_Parse(reply.c_str());
-    if(status!=200 || !response){cJSON_Delete(response);interval_ms=status==429?1000:5000;return remote_active.load();}
-    auto protocol=cJSON_GetObjectItemCaseSensitive(response,"protocol");
-    auto active=cJSON_GetObjectItemCaseSensitive(response,"active");
-    int server_interval=0;
-    if(!cJSON_IsNumber(protocol)||protocol->valueint!=1||!cJSON_IsBool(active)||
-       !number(response,"poll_interval_ms",500,30000,server_interval)){
-        cJSON_Delete(response);interval_ms=5000;return remote_active.load();
-    }
-    interval_ms=server_interval;
-    if(!sent_ack.empty()){
-        std::lock_guard<std::mutex> lock(console_mutex);
-        if(console_ack_id==sent_ack){console_ack_id.clear();console_ack_result.clear();}
-    }
-    bool enabled=cJSON_IsTrue(active);
-    bool was_active=remote_active.exchange(enabled && remote_allowed.load());
-    if(was_active!=remote_active.load())message(remote_active?"Remote console active. Tap its local control to stop.":"Remote console ended. Local controls remain available.");
-    auto command=cJSON_GetObjectItemCaseSensitive(response,"command");
-    if(remote_active && cJSON_IsObject(command)){
-        auto id=json_string(command,"id",36),target=json_string(command,"target",32);
-        auto kind=json_string(command,"kind",16),source=json_string(command,"input_source",16);
-        int sequence=0;
-        bool valid=identifier(id,36,true)&&number(command,"sequence",1,1000000000,sequence)&&kind=="activate"&&
-            (source=="mouse"||source=="touch"||source=="keyboard");
-        bool applied=valid&&apply_console_target(target);
-        std::lock_guard<std::mutex> lock(console_mutex);
-        if(valid){console_ack_id=id;console_ack_result=applied?"applied":"ignored";}
-    }
-    cJSON_Delete(response);return enabled;
 }
 static void startup_check(void*) {
     vTaskDelay(pdMS_TO_TICKS(60000));
@@ -683,9 +553,8 @@ static void worker(void*) {
         core_link_device=device;core_link_token=token;
     }
     {std::lock_guard<std::mutex> lock(ui_mutex);auto name=json_string(state,"name",80);if(!name.empty())device_name=name;}
-    int ack=0,volume=40;
-    number(state,"ack",0,1000000000,ack);number(state,"volume",0,80,volume);
-    displayed_volume=volume;
+    int ack=0;
+    number(state,"ack",0,1000000000,ack);
     std::string enrollment=json_string(state,"enrollment",36),proof=json_string(state,"proof",43);
     int saved_expiry=0;number(state,"expiry",0,2147483647,saved_expiry);time_t expiry=saved_expiry;
     if(!enrollment.empty() && (!identifier(enrollment,36,true)||!identifier(proof,43)||token.empty()||!expiry)) {
@@ -693,7 +562,7 @@ static void worker(void*) {
     }
     {std::lock_guard<std::mutex> lock(ui_mutex);pair_code=json_string(state,"code",12);}
     int64_t ap_started=0;
-    bool clock_started=false,console_open=false;int64_t next_request=0,console_next=0;
+    bool clock_started=false;int64_t next_request=0;
     management_started=true;
     while(true) {
         const auto now=esp_timer_get_time();
@@ -712,10 +581,6 @@ static void worker(void*) {
         auto& wifi=WifiManager::GetInstance();
         const bool connected=wifi.IsConnected();
         if(!connected)platform_online=false;
-        if(connected && console_open && !device.empty() && now>=console_next){
-            int interval=600;console_open=console_sync(device,token,interval);
-            console_next=esp_timer_get_time()+static_cast<int64_t>(interval)*1000;
-        }
         if(wifi.IsConfigMode()){
             if(!ap_started)ap_started=now;
             if(now-ap_started>300000000){wifi.StopConfigAp();wifi.StartStation();if(!wifi.IsConfigMode()){ap_started=0;message("Wi-Fi setup closed after five minutes. Open it locally to retry.");}}
@@ -725,71 +590,6 @@ static void worker(void*) {
         if(connected && !clock_started){
             esp_sntp_setoperatingmode(SNTP_OPMODE_POLL);
             esp_sntp_setservername(0,"pool.ntp.org");esp_sntp_init();clock_started=true;
-        }
-        if(tone_requested.exchange(false)){
-            if(ampve_codec_failed){message("Audio unavailable. Restart the board before retrying diagnostics.");}
-            else if(!ampve_codec_present){message("Audio codecs not confirmed. No tone played.");}
-            else {
-                auto codec=Board::GetInstance().GetAudioCodec();
-                if(codec && !ampve_codec_failed){
-                    codec_initialized=true;codec->EnableInput(false);
-                    // Set volume while closed, then allow the codec and PA to settle. The
-                    // former test wrote volume before open, used a near-silent amplitude,
-                    // and closed immediately after a quarter-second tone.
-                    codec->SetOutputVolume(std::clamp(volume,25,45));codec->EnableOutput(true);
-                    vTaskDelay(pdMS_TO_TICKS(120));
-                    std::vector<int16_t> tone(480);
-                    for(int frame=0;frame<40 && !ampve_codec_failed;frame++){
-                        const double frequency=frame<20?523.25:659.25;
-                        for(size_t i=0;i<tone.size();i++){
-                            const double phase=2*3.14159265*frequency*(frame*tone.size()+i)/codec->output_sample_rate();
-                            const double edge=std::min(1.0,std::min((frame*480+i)/2400.0,(40*480-frame*480-i)/2400.0));
-                            tone[i]=static_cast<int16_t>(9000*std::max(0.0,edge)*sin(phase));
-                        }
-                        codec->OutputData(tone);
-                    }
-                    vTaskDelay(pdMS_TO_TICKS(80));codec->EnableOutput(false);codec->SetOutputVolume(volume);
-                    tone_played=!ampve_codec_failed;
-                    if(ampve_codec_failed){codec_initialized=false;heard_tone=false;message("Speaker test failed. Navigation and recovery remain available.");}
-                    else message("Did you hear the tone? Confirm on My device.");
-                    lvgl_port_lock(0);if(current_page==2)page(2);lvgl_port_unlock();
-                }else message("Audio initialization failed. Navigation and recovery remain available.");
-            }
-        }
-        ampve::companion_poll();
-        if(!companion_enabled && ampve::companion_active())ampve::companion_stop();
-        if(companion_stop_requested.exchange(false)){
-            ampve::companion_stop();local_muted=true;message("Companion stopped. Microphone off.");
-        }
-        if(companion_start_requested.exchange(false)){
-            if(companion_package_killed){message("Assigned Companion is disabled from your workspace.");}
-            else if(!companion_enabled){message("Activate Companion at ampve.com before starting.");}
-            else if(device.empty() || token.empty() || !connected){message("Companion needs an authenticated Wi-Fi connection.");}
-            else if(ampve_codec_failed || !ampve_codec_present){message("Companion audio is unavailable. Run the speaker diagnostic first.");}
-            else if(!ampve::companion_active()){
-                auto payload=cJSON_CreateObject();cJSON_AddNumberToObject(payload,"protocol",1);
-                std::string reply;int status=post(device+"/companion/session/",token,payload,reply);cJSON_Delete(payload);
-                auto response=cJSON_Parse(reply.c_str());
-                auto ticket=response?json_string(response,"ticket",43):"";
-                auto path=response?json_string(response,"path",80):"";
-                int sample_rate=0,channels=0,frame_samples=0,max_seconds=0;
-                bool contract=response && status==200 && ticket.size()==43 && path=="/audio/device/ws" &&
-                    number(response,"sample_rate",24000,24000,sample_rate) && number(response,"channels",1,1,channels) &&
-                    number(response,"frame_samples",480,480,frame_samples) && number(response,"max_seconds",1,300,max_seconds);
-                const auto package=active_app();
-                const bool start_muted=package.kind=="companion" && package.start_muted;
-                if(contract && ampve::companion_start("wss://ampve.com"+path,ticket,volume,start_muted)){
-                    local_muted=start_muted;
-                    message(start_muted?"Companion connecting. Unmute locally to speak.":
-                        "Companion connecting. Microphone will turn on when ready.");
-                }else message(status==409?"Finish Companion setup at ampve.com.":"Companion could not start. Microphone remains off.");
-                cJSON_Delete(response);
-            }
-        }
-        int requested_volume=local_volume.exchange(-1);
-        if(requested_volume>=0){
-            cJSON_DeleteItemFromObject(state,"volume");cJSON_AddNumberToObject(state,"volume",requested_volume);
-            if(save(encode(state))){volume=requested_volume;displayed_volume=volume;}
         }
         if(pair_requested.exchange(false)){
             if(!connected || time(nullptr)<1700000000 || !storage_ok) {
@@ -866,37 +666,19 @@ static void worker(void*) {
                 platform_online=status==200 && response;
                 if(status==200 && response){
                     auto config=cJSON_GetObjectItemCaseSensitive(response,"configuration");
-                    int version=0,remote_volume=0;
-                    auto mute=cJSON_GetObjectItemCaseSensitive(config,"microphone_muted");
-                    auto companion=cJSON_GetObjectItemCaseSensitive(config,"companion");
-                    auto companion_on=companion?cJSON_GetObjectItemCaseSensitive(companion,"enabled"):nullptr;
-                    auto companion_provider=companion?cJSON_GetObjectItemCaseSensitive(companion,"provider"):nullptr;
+                    int version=0;
                     auto name=json_string(config,"name",80);
-                    if(number(config,"version",1,1000000000,version) && version>=ack &&
-                        number(config,"volume",0,80,remote_volume) && cJSON_IsBool(mute) && !name.empty() &&
-                        cJSON_IsObject(companion) && cJSON_IsBool(companion_on) && cJSON_IsString(companion_provider) &&
-                        strlen(companion_provider->valuestring)<=16){
-                        companion_enabled=cJSON_IsTrue(companion_on);
-                        if(!companion_enabled){ampve::companion_stop();local_muted=true;}
+                    if(number(config,"version",1,1000000000,version) && version>=ack && !name.empty()){
                         if(version>ack){
-                            // Dashboard preference never starts capture; the local Start action does.
                             cJSON_DeleteItemFromObject(state,"ack");cJSON_AddNumberToObject(state,"ack",version);
-                            cJSON_DeleteItemFromObject(state,"volume");cJSON_AddNumberToObject(state,"volume",remote_volume);
                             cJSON_DeleteItemFromObject(state,"name");cJSON_AddStringToObject(state,"name",name.c_str());
                             if(save(encode(state))){
-                                ack=version;volume=remote_volume;displayed_volume=volume;
+                                ack=version;
                                 std::lock_guard<std::mutex> lock(ui_mutex);device_name=name;
                             }
                         }
-                        message(ampve::companion_active()?ampve::companion_status():
-                            cJSON_IsTrue(mute)?"Dashboard connected - microphone off":"Dashboard prefers unmuted; local Start is still required.");
+                        message("Dashboard connected. Core is ready for application assignments.");
                     }else message("Invalid configuration. Previous settings kept.");
-                    auto console=cJSON_GetObjectItemCaseSensitive(response,"console");
-                    auto active=cJSON_GetObjectItemCaseSensitive(console,"active");
-                    int interval=0;
-                    if(cJSON_IsObject(console)&&cJSON_IsBool(active)&&number(console,"poll_interval_ms",500,30000,interval)){
-                        console_open=cJSON_IsTrue(active);console_next=now;
-                    }
                 } else if(status==401){
                     // Retain the credential until a physical user starts fresh pairing.
                     device.clear();identity_reported=false;cJSON_DeleteItemFromObject(state,"device_id");save(encode(state));
@@ -988,7 +770,7 @@ void ampve_runtime_start() {
     if(!lv_display_get_default()){printf("AMPVE recovery: display not initialized.\n");return;}
     about_text="Waveshare P4 Touch LCD 7B\nAMPVE "+std::string(esp_app_get_description()->version)+
         " | ESP32-P4 revision 1.3\nFlash "+std::to_string(flash_bytes/(1024*1024))+" MiB | PSRAM "+
-        std::to_string(esp_psram_get_size()/(1024*1024))+" MiB\nDisplay 1024 x 600 | microphone capture disabled";
+        std::to_string(esp_psram_get_size()/(1024*1024))+" MiB\nDisplay 1024 x 600 | Core Lite application host";
     create_ui();usb_display_ready=true;
     if(!usb_ready)message("USB setup unavailable. Use the reviewed recovery route.");
     if(xTaskCreate(start_network,"ampve_network",8192,nullptr,2,nullptr)!=pdPASS)

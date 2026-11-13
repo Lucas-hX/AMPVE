@@ -1,7 +1,7 @@
 from django.contrib import admin
 from django.contrib.auth import views as auth
 from django.urls import path
-from workspace import companion_views, diagnostic_views, views, connection_views, device_views, firmware_views, deployment_views, console_views, core_views
+from workspace import companion_views, diagnostic_views, views, connection_views, device_views, firmware_views, deployment_views, console_views, core_views, reader_views
 
 urlpatterns = [
     path('', views.landing, name='landing'),
@@ -24,6 +24,8 @@ urlpatterns = [
     path('devices/<uuid:pk>/core/', core_views.core, name='device_core'),
     path('devices/<uuid:pk>/core/commands/', core_views.command, name='device_core_command'),
     path('apps/packages/<str:package_id>/revoke/', core_views.revoke_package, name='app_package_revoke'),
+    path('reader/', reader_views.library, name='reader_library'),
+    path('reader/documents/<uuid:pk>/source/', reader_views.source_pdf, name='reader_source_pdf'),
     path('devices/<uuid:pk>/console/session/', console_views.start, name='device_console_start'),
     path('devices/<uuid:pk>/console/session/<uuid:session_id>/', console_views.state, name='device_console_state'),
     path('devices/<uuid:pk>/console/session/<uuid:session_id>/commands/', console_views.command, name='device_console_command'),

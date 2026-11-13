@@ -5,7 +5,6 @@ from improv_integration import prepare as prepare_improv
 from credential_guard import prepare as prepare_credentials
 from wifi_guard import prepare as prepare_wifi
 from board_guard import prepare as prepare_board
-from audio_guard import prepare as prepare_audio
 from native_trust import generate as generate_native_trust
 import json
 import re
@@ -36,21 +35,92 @@ def stage_overlay(source, destination):
 def normalize_ampve_sources(component_cmake):
     # Older prepared workdirs and clean checkouts insert modules in different
     # orders. Link order changes ELF bytes even when every source/config matches.
-    ordered = ('diagnostics.cc', 'app_runtime.cc', 'app_package.cc',
-               'companion_face.cc', 'companion.cc', 'improv_service.cc',
-               'improv_platform.cc', 'boot_guard.cc', 'ota_client.cc',
+    ordered = ('diagnostics.cc', 'app_runtime.cc', 'app_package.cc', 'board_base.cc',
+               'improv_service.cc', 'improv_platform.cc', 'boot_guard.cc', 'ota_client.cc',
                'ota_platform.cc', 'image_identity.cc', 'ota_policy.cc',
                'runtime.cc', 'brand_assets.c')
     text = component_cmake.read_text()
+    if '# AMPVE Core Lite source boundary' in text:
+        missing = [name for name in ordered if f'"ampve/{name}"' not in text]
+        if missing:
+            raise RuntimeError('Prepared Core Lite source list is incomplete')
+        return
     pattern = r'set\(SOURCES (?P<ampve>(?:"ampve/[^"]+" )+)"audio/audio_codec.cc"'
     match = re.search(pattern, text)
     expected = [f'ampve/{name}' for name in ordered]
-    if not match or sorted(re.findall(r'"(ampve/[^"]+)"', match.group('ampve'))) != sorted(expected):
+    legacy = expected + ['ampve/companion.cc', 'ampve/companion_face.cc']
+    actual = re.findall(r'"(ampve/[^"]+)"', match.group('ampve')) if match else []
+    if not match or not set(expected) <= set(actual) or not set(actual) <= set(legacy):
         raise RuntimeError('Prepared AMPVE source list is incomplete or duplicated')
     canonical = ' '.join(f'"{name}"' for name in expected) + ' '
     if match.group('ampve') != canonical:
         component_cmake.write_text(text[:match.start('ampve')] + canonical +
                                    text[match.end('ampve'):])
+
+
+def configure_lean_sources(component_cmake):
+    """Compile only the managed shell and the board primitives it actually calls."""
+    sources = (
+        'main.cc', 'settings.cc', 'boards/common/wifi_board.cc',
+        'boards/common/backlight.cc', 'boards/common/button.cc',
+        'ampve/diagnostics.cc', 'ampve/app_runtime.cc', 'ampve/app_package.cc',
+        'ampve/board_base.cc', 'ampve/improv_service.cc', 'ampve/improv_platform.cc',
+        'ampve/boot_guard.cc', 'ampve/ota_client.cc', 'ampve/ota_platform.cc',
+        'ampve/image_identity.cc', 'ampve/ota_policy.cc', 'ampve/runtime.cc',
+        'ampve/brand_assets.c')
+    lines = ['# AMPVE Core Lite source boundary: omit upstream audio, AI protocols,',
+             '# camera, emoji/assets and the XiaoZhi application state machine.',
+             'set(SOURCES']
+    lines.extend(f'    "{source}"' for source in sources)
+    lines.extend(['    ${BOARD_SOURCES}', ')', 'set(LANG_SOUNDS "")',
+                  'set(COMMON_SOUNDS "")', ''])
+    block = '\n'.join(lines)
+    text = component_cmake.read_text()
+    marker = 'idf_component_register(SRCS ${SOURCES}'
+    if '# AMPVE Core Lite source boundary' in text:
+        if block not in text:
+            raise RuntimeError('Prepared Core Lite source boundary differs')
+    else:
+        if text.count(marker) != 1:
+            raise RuntimeError('Pinned component registration changed')
+        text = text.replace(marker, block + marker)
+    for dependency in ('esp_driver_i2s', 'esp_driver_jpeg', 'esp_driver_ppa',
+                       'esp_driver_tsens', 'esp_driver_sdmmc', 'sdmmc', 'console',
+                       'bt', 'fatfs', 'xiaozhi-fonts'):
+        text = re.sub(r'^[ \t]*' + re.escape(dependency) + r'[ \t]*\n', '', text,
+                      flags=re.MULTILINE)
+    component_cmake.write_text(text)
+
+
+def minimize_wifi_board(path):
+    """Remove remaining compile-time links to the upstream AI/audio UI."""
+    source = path.read_text()
+    if '// AMPVE Core Lite Wi-Fi surface' in source:
+        return
+    for header in ('#include "display.h"\n', '#include "application.h"\n',
+                   '#include "system_info.h"\n', '#include "settings.h"\n',
+                   '#include "assets/lang_config.h"\n', '#include <material_symbols.h>\n'):
+        source = source.replace(header, '')
+    source = source.replace('    config.language = Lang::CODE;',
+                            '    config.language = "en-US"; // AMPVE Core Lite Wi-Fi surface')
+
+    def method(text, signature, body):
+        start = text.index(signature)
+        brace = text.index('{', start)
+        depth, end = 1, brace + 1
+        while depth:
+            if text[end] == '{': depth += 1
+            elif text[end] == '}': depth -= 1
+            end += 1
+        return text[:start] + signature + ' {\n' + body + '\n}' + text[end:]
+
+    source = method(source, 'const char* WifiBoard::GetNetworkStateIcon()',
+                    '    return "";')
+    source = method(source, 'std::string WifiBoard::GetBoardJson()',
+                    '    return "{}";')
+    source = method(source, 'std::string WifiBoard::GetDeviceStatusJson()',
+                    '    return "{}";')
+    path.write_text(source)
 
 
 def prepare(work, mode='usb-assisted'):
@@ -75,9 +145,6 @@ def prepare(work, mode='usb-assisted'):
         replace(work/'main/CMakeLists.txt','set(SOURCES "audio/audio_codec.cc"',
             'set(SOURCES "ampve/runtime.cc" "ampve/brand_assets.c" "audio/audio_codec.cc"')
         replace(work/'main/CMakeLists.txt','PRIV_REQUIRES\n','PRIV_REQUIRES\n                        esp_http_client esp-tls espressif__cjson esp_timer esp_psram\n')
-        replace(work/'main/audio/codecs/box_audio_codec.cc',
-            '    ESP_ERROR_CHECK(i2s_channel_enable(rx_handle_));',
-            '    // AMPVE shell: leave the RX DMA channel disabled; no microphone capture.')
         wifi=work/'main/boards/common/wifi_board.cc'
         replace(wifi,'config.ssid_prefix = "Xiaozhi";','config.ssid_prefix = "AMPVE";')
         replace(wifi,'config.show_ota_config = true;','config.show_ota_config = false;')
@@ -141,7 +208,7 @@ def prepare(work, mode='usb-assisted'):
         replace(cmake,'set(PROJECT_VER "0.1.18-companion-dev")',f'set(PROJECT_VER "{UPSTREAM["candidate_version"]}")')
     for previous in ('0.1.19-companion-aec-dev', '0.1.19-companion-face-dev',
                      '0.1.21-companion-face-safe-dev', '0.1.22-companion-playback-dev',
-                     '0.1.23-core-dev'):
+                     '0.1.23-core-dev', '0.1.24-core-dev'):
         if f'set(PROJECT_VER "{previous}")' in cmake.read_text():
             replace(cmake, f'set(PROJECT_VER "{previous}")',
                     f'set(PROJECT_VER "{UPSTREAM["candidate_version"]}")')
@@ -168,13 +235,9 @@ def prepare(work, mode='usb-assisted'):
                 'set(SOURCES "ampve/image_identity.cc" "ampve/ota_policy.cc"')
     if '"ampve/ota_client.cc"' not in component_cmake.read_text():
         replace(component_cmake,'set(SOURCES ', 'set(SOURCES "ampve/ota_client.cc" "ampve/ota_platform.cc" ')
-    if '"ampve/companion.cc"' not in component_cmake.read_text():
-        replace(component_cmake,'set(SOURCES ', 'set(SOURCES "ampve/companion.cc" ')
-    if '"ampve/companion_face.cc"' not in component_cmake.read_text():
-        replace(component_cmake,'set(SOURCES ', 'set(SOURCES "ampve/companion_face.cc" ')
     if '"ampve/boot_guard.cc"' not in component_cmake.read_text():
         replace(component_cmake,'set(SOURCES ', 'set(SOURCES "ampve/boot_guard.cc" ')
-    for source in ('app_package.cc', 'app_runtime.cc', 'diagnostics.cc'):
+    for source in ('app_package.cc', 'app_runtime.cc', 'diagnostics.cc', 'board_base.cc'):
         if f'"ampve/{source}"' not in component_cmake.read_text():
             replace(component_cmake,'set(SOURCES ',f'set(SOURCES "ampve/{source}" ')
     wifi_board=work/'main/boards/common/wifi_board.cc'
@@ -193,9 +256,10 @@ def prepare(work, mode='usb-assisted'):
     if 'SsidManager::GetInstance().IsStorageReady()' not in wifi_board.read_text():
         replace(wifi_board,'    // Set unified event callback',
             '    if (!SsidManager::GetInstance().IsStorageReady()) { ampve_wifi_initialized = false; ESP_LOGE(TAG, "Wi-Fi credentials unavailable; data preserved"); return; }\n\n    // Set unified event callback')
+    minimize_wifi_board(wifi_board)
     prepare_board(work, PIN)
-    prepare_audio(work, PIN)
     stage_overlay(overlay,work)
+    configure_lean_sources(component_cmake)
     (work/'main/ampve/profile.h').write_text(native_header())
     trust_header,trust_metadata=generate_native_trust(os.environ.get('AMPVE_NATIVE_TRUST'))
     (work/'main/ampve/publisher_trust.h').write_text(trust_header)

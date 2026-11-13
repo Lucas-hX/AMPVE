@@ -26,9 +26,9 @@ def create(args):
         'minimum_psram_bytes':PROFILE['resources']['minimum_psram_bytes'],
         'expires_at':args.expires_at,'ui':{'title':args.title,'body':args.body},
         'workflow':{'action':{'status':'show_status','timer':'local_timer',
-                              'companion':'native_companion'}[args.kind],
+                              'reader':'document_reader'}[args.kind],
                     'duration_s':args.duration_s,
-                    'start_muted':args.start_muted or args.kind!='companion'}}
+                    'start_muted':True}}
     validate(policy, now)
     payload = canonical(policy)
     key = Ed25519PrivateKey.from_private_bytes(args.private_key.read_bytes())
@@ -47,7 +47,6 @@ if __name__ == '__main__':
     for name in ('key-id','name','version','kind','title','body','expires-at'):
         parser.add_argument('--'+name, required=True)
     parser.add_argument('--duration-s', type=int, default=0)
-    parser.add_argument('--start-muted', action='store_true')
     parser.add_argument('--private-key', type=Path, required=True)
     parser.add_argument('--output', type=Path, required=True)
     create(parser.parse_args())
