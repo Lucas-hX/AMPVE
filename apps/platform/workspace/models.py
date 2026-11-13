@@ -73,6 +73,9 @@ class ReaderDocument(models.Model):
     class Meta:
         ordering = ['-created_at']
 
+    def __str__(self):
+        return self.original_name
+
 
 class ReaderCollection(models.Model):
     import uuid
@@ -84,6 +87,9 @@ class ReaderCollection(models.Model):
     class Meta:
         ordering = ['name']
         constraints = [models.UniqueConstraint(Lower('name'), 'owner', name='reader_collection_owner_name')]
+
+    def __str__(self):
+        return self.name
 
 
 class ReaderBook(models.Model):
@@ -97,6 +103,9 @@ class ReaderBook(models.Model):
 
     class Meta:
         ordering = ['title', 'created_at']
+
+    def __str__(self):
+        return self.title
 
 
 class ReaderCollectionBook(models.Model):
@@ -138,6 +147,38 @@ class ReaderProgress(models.Model):
     viewport_offset = models.PositiveIntegerField(default=0)
     revision = models.PositiveIntegerField(default=1)
     updated_at = models.DateTimeField(auto_now=True)
+
+
+class ReaderPreparedPage(models.Model):
+    """Deterministic, display-sized text derived from one immutable PDF."""
+    document = models.ForeignKey(
+        ReaderDocument, on_delete=models.CASCADE, related_name='prepared_pages')
+    screen_index = models.PositiveIntegerField()
+    source_page = models.PositiveIntegerField()
+    text = models.TextField(max_length=1400)
+    text_sha256 = models.CharField(max_length=64)
+
+    class Meta:
+        ordering = ['screen_index']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['document', 'screen_index'], name='reader_prepared_page_unique'),
+            models.CheckConstraint(
+                condition=models.Q(source_page__gte=1), name='reader_prepared_source_page_valid'),
+        ]
+
+
+class ReaderNote(models.Model):
+    import uuid
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    book = models.ForeignKey(ReaderBook, on_delete=models.CASCADE, related_name='notes')
+    page = models.PositiveIntegerField(default=1)
+    body = models.CharField(max_length=1000)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['page', 'created_at']
 
 
 class ReaderDeviceBook(models.Model):
@@ -237,6 +278,9 @@ class Device(models.Model):
 
     class Meta:
         ordering = ['-created_at']
+
+    def __str__(self):
+        return self.name
 
 
 class CompanionInstallation(models.Model):

@@ -1,37 +1,40 @@
 {% extends 'workspace/base.html' %}
-{% block subtitle %}Books, collections and ordered PDF parts, ready for the preparation pipeline.{% endblock %}
+{% block subtitle %}Upload, organize, prepare and choose what appears on each Reader.{% endblock %}
 {% block content %}
-<aside class="notice" role="status"><strong>Reader foundation</strong><p>Your source PDFs remain private and unchanged. Upload and organization work now; compact internal-flash delivery and on-device reading will follow before any Wi-Fi deployment. The first Reader has no microSD support.</p></aside>
+<aside class="notice" role="status"><strong>Reader MVP</strong><p>Original PDFs remain private and unchanged. The server prepares compact, reflowable text screens; only selected prepared books are offered to an authenticated device. No microSD is used and this version does not write the board's internal content partition.</p></aside>
 
 <div class="reader-layout">
   <section class="form-card reader-upload">
-    <p class="eyebrow">ADD CONTENT</p>
-    <h2>Upload a PDF</h2>
-    <p>Add it as a new book or as the next ordered part of a book already in your library.</p>
-    <form method="post" enctype="multipart/form-data">
-      {% csrf_token %}
-      {{ form.as_p }}
-      <button class="button" type="submit">Add to library</button>
-    </form>
-    <p class="helptext">PDF only, up to 100 MB. A page range creates a virtual part; the original file is not modified.</p>
+    <p class="eyebrow">ADD CONTENT</p><h2>Upload a PDF</h2>
+    <p>Create a book or add the next ordered volume to one already on your shelf.</p>
+    <form method="post" enctype="multipart/form-data">{% csrf_token %}{{ form.as_p }}<button class="button" type="submit">Add to library</button></form>
+    <p class="helptext">PDF only, up to 100 MB. Preparation is an explicit server operation, never part of the upload request.</p>
   </section>
-
-  <section>
-    <div class="reader-section-heading"><div><p class="eyebrow">BOOKS</p><h2>Your reading shelf</h2></div><span class="pill">{{ books|length }} book{{ books|length|pluralize }}</span></div>
-    {% if books %}<div class="reader-book-list">
-      {% for book in books %}<article class="reader-book-card">
-        <div class="reader-cover" aria-hidden="true"><span>AMPVE</span><b>{{ book.title|first|upper }}</b></div>
-        <div class="reader-book-copy">
-          <h3>{{ book.title }}</h3>
-          {% if book.collections.all %}<p class="reader-collections">{% for collection in book.collections.all %}<span>{{ collection.name }}</span>{% endfor %}</p>{% else %}<p class="helptext">Not in a collection</p>{% endif %}
-          <ol class="reader-parts">
-            {% for part in book.parts.all %}<li><div><strong>{{ part.title }}</strong><small>{{ part.document.original_name }} · {{ part.document.byte_size|filesizeformat }}{% if part.page_start %} · pages {{ part.page_start }}–{{ part.page_end }}{% endif %}</small></div><div><span class="pill">{{ part.document.get_state_display }}</span> <a href="{% url 'reader_source_pdf' part.document.pk %}">Download source</a></div></li>{% endfor %}
-          </ol>
-        </div>
-      </article>{% endfor %}
-    </div>{% else %}<section class="large-empty"><h2>Your shelf is empty.</h2><p>Upload one PDF as a book, or start a multi-part work and add more PDFs later.</p></section>{% endif %}
+  <section class="form-card reader-device-panel">
+    <p class="eyebrow">DEVICE SHELF</p><h2>Choose books for a Reader</h2>
+    <form method="post" action="{% url 'reader_device_book' %}">{% csrf_token %}{{ selection_form.as_p }}<button class="button" type="submit">Update device shelf</button></form>
+    {% if selections %}<ul class="reader-selections">{% for selection in selections %}<li><strong>{{ selection.book.title }}</strong><span>{{ selection.device.name }} · {{ selection.get_state_display }}</span></li>{% endfor %}</ul>{% else %}<p class="helptext">No books selected for a device yet.</p>{% endif %}
   </section>
 </div>
 
-{% if collections %}<section class="form-card reader-collection-panel"><p class="eyebrow">COLLECTIONS</p><h2>Personal groups</h2><div class="reader-collection-list">{% for collection in collections %}<article><strong>{{ collection.name }}</strong><span>{{ collection.books.count }} book{{ collection.books.count|pluralize }}</span></article>{% endfor %}</div></section>{% endif %}
+<section>
+  <div class="reader-section-heading"><div><p class="eyebrow">BOOKS</p><h2>Your reading shelf</h2></div><span class="pill">{{ books|length }} book{{ books|length|pluralize }}</span></div>
+  {% if books %}<div class="reader-book-list">
+    {% for book in books %}<article class="reader-book-card">
+      <div class="reader-cover" aria-hidden="true"><span>AMPVE</span><b>{{ book.title|first|upper }}</b></div>
+      <div class="reader-book-copy">
+        <div class="reader-book-heading"><div><h3>{{ book.title }}</h3>{% if book.collections.all %}<p class="reader-collections">{% for collection in book.collections.all %}<span>{{ collection.name }}</span>{% endfor %}</p>{% else %}<p class="helptext">Not in a collection</p>{% endif %}</div><details><summary>Edit</summary><form method="post" action="{% url 'reader_book_edit' book.pk %}">{% csrf_token %}{{ book.settings_form.as_p }}<button class="button secondary" type="submit">Save book</button></form></details></div>
+        <ol class="reader-parts">
+          {% for part in book.parts.all %}<li><div><strong>{{ part.title }}</strong><small>{{ part.document.original_name }} · {{ part.document.byte_size|filesizeformat }}{% if part.document.page_count %} · {{ part.document.page_count }} PDF pages{% endif %}{% if part.page_start %} · selected pages {{ part.page_start }}–{{ part.page_end }}{% endif %}</small></div><div class="reader-part-actions"><span class="pill">{{ part.document.get_state_display }}</span><a href="{% url 'reader_source_pdf' part.document.pk %}">Download source</a><form method="post" action="{% url 'reader_part_move' book.pk part.pk 'up' %}">{% csrf_token %}<button class="reader-order" type="submit" aria-label="Move {{ part.title }} up">↑</button></form><form method="post" action="{% url 'reader_part_move' book.pk part.pk 'down' %}">{% csrf_token %}<button class="reader-order" type="submit" aria-label="Move {{ part.title }} down">↓</button></form></div></li>{% endfor %}
+        </ol>
+        {% if book.notes.all %}<div class="reader-notes"><strong>Notes</strong><ul>{% for note in book.notes.all %}<li><span>Page {{ note.page }}</span>{{ note.body }}</li>{% endfor %}</ul></div>{% endif %}
+      </div>
+    </article>{% endfor %}
+  </div>{% else %}<section class="large-empty"><h2>Your shelf is empty.</h2><p>Upload one PDF as a book, or start a multi-part work and add more PDFs later.</p></section>{% endif %}
+</section>
+
+<div class="reader-layout reader-tools">
+  <section class="form-card"><p class="eyebrow">NOTES</p><h2>Add a reading note</h2><form method="post" action="{% url 'reader_note_add' %}">{% csrf_token %}{{ note_form.as_p }}<button class="button" type="submit">Save note</button></form></section>
+  {% if collections %}<section class="form-card reader-collection-panel"><p class="eyebrow">COLLECTIONS</p><h2>Personal groups</h2><div class="reader-collection-list">{% for collection in collections %}<article><strong>{{ collection.name }}</strong><span>{{ collection.books.count }} book{{ collection.books.count|pluralize }}</span></article>{% endfor %}</div></section>{% endif %}
+</div>
 {% endblock %}

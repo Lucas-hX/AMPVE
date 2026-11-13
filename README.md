@@ -26,7 +26,7 @@ The preview includes:
 - signed, resource-bounded application declarations; and
 - retained legacy provider/Companion services for the already-installed development board.
 
-PDF preparation, bounded internal-flash delivery and on-device reading are not complete. The first physical 7B still runs the prior `0.1.24-core-dev` image; no Core Lite update has been built, signed or deployed. The first Reader intentionally has no microSD support. Additional hardware profiles remain outside the current preview offering. See [Reader](docs/READER.md), [architecture](docs/ARCHITECTURE.md) and [supported hardware](docs/SUPPORTED_HARDWARE.md).
+Core Lite `0.1.25-core-lite-dev` has been physically validated on the first 7B. The Reader MVP adds explicit server-side PDF-to-text preparation, owner-selected device shelves, synchronized progress and touch page navigation. It is intentionally online-only until the internal content partition receives a separate quota, staging and recovery review. The first Reader has no microSD support. Additional hardware profiles remain outside the current preview offering. See [Reader](docs/READER.md), [architecture](docs/ARCHITECTURE.md) and [supported hardware](docs/SUPPORTED_HARDWARE.md).
 
 ## How AMPVE works
 

@@ -39,6 +39,7 @@
 #include <cstring>
 #include <mutex>
 #include <string>
+#include <vector>
 
 extern "C" {
 extern const lv_image_dsc_t ampve_symbol;
@@ -100,6 +101,16 @@ static std::mutex app_mutex;
 static std::string last_admin_id, last_admin_result;
 static std::mutex core_link_mutex;
 static std::string core_link_device, core_link_token;
+struct ReaderBook {
+    std::string id, title;
+    int pages = 0, progress = 1, revision = 0;
+};
+static std::mutex reader_mutex;
+static std::vector<ReaderBook> reader_books;
+static std::string reader_book_id, reader_book_title, reader_part, reader_text;
+static int reader_page = 1, reader_pages = 0, reader_source_page = 0;
+static std::atomic<int> reader_requested_page{0};
+static std::atomic<bool> reader_progress_dirty{false};
 
 static ampve::AppPackage active_app() {
     std::lock_guard<std::mutex> guard(app_mutex); return live_app.active();
@@ -329,7 +340,82 @@ static void core_app_tick(const std::string& device,const std::string& token) {
     }
     cJSON_Delete(response);
 }
+static bool reader_report_progress(const std::string& device,const std::string& token,
+                                   const std::string& book_id,int page) {
+    auto request=cJSON_CreateObject();cJSON_AddNumberToObject(request,"protocol",1);
+    cJSON_AddStringToObject(request,"book_id",book_id.c_str());cJSON_AddNumberToObject(request,"page",page);
+    std::string reply;const int status=post(device+"/reader/progress/",token,request,reply);
+    cJSON_Delete(request);return status==200;
+}
+static void reader_tick(const std::string& device,const std::string& token) {
+    if(active_app().kind!="reader")return;
+    auto request=cJSON_CreateObject();cJSON_AddNumberToObject(request,"protocol",1);
+    std::string reply;const int status=post(device+"/reader/sync/",token,request,reply);
+    cJSON_Delete(request);
+    auto response=cJSON_Parse(reply.c_str());int protocol=0;
+    auto books=response?cJSON_GetObjectItemCaseSensitive(response,"books"):nullptr;
+    if(status!=200 || !response || !number(response,"protocol",1,1,protocol) ||
+       !cJSON_IsArray(books) || cJSON_GetArraySize(books)>6){cJSON_Delete(response);return;}
+    std::vector<ReaderBook> parsed;
+    for(auto item=books->child;item;item=item->next){
+        int pages=0,progress=0,revision=0;
+        const auto id=json_string(item,"id",36),title=json_string(item,"title",64);
+        if(!cJSON_IsObject(item) || !identifier(id,36,true) || title.empty() ||
+           !number(item,"pages",1,100000,pages) || !number(item,"progress",1,pages,progress) ||
+           !number(item,"revision",1,1000000000,revision)){cJSON_Delete(response);return;}
+        parsed.push_back({id,title,pages,progress,revision});
+    }
+    cJSON_Delete(response);
+    {
+        std::lock_guard<std::mutex> guard(reader_mutex);
+        reader_books=std::move(parsed);
+        if(!reader_book_id.empty()){
+            auto found=std::find_if(reader_books.begin(),reader_books.end(),[](const ReaderBook& book){
+                return book.id==reader_book_id;
+            });
+            if(found==reader_books.end()){
+                reader_book_id.clear();reader_book_title.clear();reader_text.clear();
+                reader_page=1;reader_pages=0;reader_requested_page=0;app_ui_revision++;
+            }
+        }
+    }
+    std::string book_id;int current=1;int wanted=reader_requested_page.load();
+    {
+        std::lock_guard<std::mutex> guard(reader_mutex);book_id=reader_book_id;current=reader_page;
+    }
+    if(book_id.empty())return;
+    if(wanted<1){
+        if(reader_progress_dirty.exchange(false) &&
+           !reader_report_progress(device,token,book_id,current))reader_progress_dirty=true;
+        return;
+    }
+    request=cJSON_CreateObject();cJSON_AddNumberToObject(request,"protocol",1);
+    cJSON_AddStringToObject(request,"book_id",book_id.c_str());cJSON_AddNumberToObject(request,"page",wanted);
+    reply.clear();const int page_status=post(device+"/reader/page/",token,request,reply);cJSON_Delete(request);
+    response=cJSON_Parse(reply.c_str());int page=0,pages_count=0,source_page=0;
+    const auto returned_id=response?json_string(response,"book_id",36):"";
+    const auto title=response?json_string(response,"title",64):"";
+    const auto part=response?json_string(response,"part",48):"";
+    const auto text=response?json_string(response,"text",1200):"";
+    if(page_status!=200 || !response || returned_id!=book_id || title.empty() || part.empty() || text.empty() ||
+       !number(response,"protocol",1,1,protocol) || !number(response,"page",1,100000,page) ||
+       !number(response,"pages",page,100000,pages_count) ||
+       !number(response,"source_page",1,100000,source_page)){
+        cJSON_Delete(response);return;
+    }
+    cJSON_Delete(response);
+    {
+        std::lock_guard<std::mutex> guard(reader_mutex);
+        if(reader_book_id!=book_id)return;
+        reader_book_title=title;reader_part=part;reader_text=text;reader_page=page;
+        reader_pages=pages_count;reader_source_page=source_page;reader_requested_page=0;
+        reader_progress_dirty=true;app_ui_revision++;
+    }
+    if(reader_progress_dirty.exchange(false) &&
+       !reader_report_progress(device,token,book_id,page))reader_progress_dirty=true;
+}
 static void core_network_task(void*) {
+    unsigned cycle=0;
     while(true) {
         std::string device,token;
         {
@@ -337,10 +423,10 @@ static void core_network_task(void*) {
             device=core_link_device;token=core_link_token;
         }
         if(platform_online && boot_confirmed && !device.empty() && !token.empty()) {
-            core_app_tick(device,token);
-            flush_diagnostics(device,token);
+            if(cycle%6==0){core_app_tick(device,token);flush_diagnostics(device,token);}
+            reader_tick(device,token);
         }
-        vTaskDelay(pdMS_TO_TICKS(30000));
+        cycle++;vTaskDelay(pdMS_TO_TICKS(5000));
     }
 }
 static cJSON* hardware_report() {
@@ -378,12 +464,34 @@ static lv_obj_t* button(lv_obj_t* parent,const char* text,lv_event_cb_t callback
     lv_obj_add_event_cb(item,callback,LV_EVENT_CLICKED,reinterpret_cast<void*>(data));return item;
 }
 static void go(lv_event_t* e) {page(reinterpret_cast<intptr_t>(lv_event_get_user_data(e)));}
+static void reader_open(lv_event_t* e) {
+    const auto index=static_cast<size_t>(reinterpret_cast<intptr_t>(lv_event_get_user_data(e)));
+    std::lock_guard<std::mutex> guard(reader_mutex);
+    if(index>=reader_books.size())return;
+    const auto& book=reader_books[index];reader_book_id=book.id;reader_book_title=book.title;
+    reader_page=book.progress;reader_pages=book.pages;reader_part.clear();reader_text.clear();
+    reader_requested_page=book.progress;app_ui_revision++;
+}
+static void reader_turn(lv_event_t* e) {
+    const int change=static_cast<int>(reinterpret_cast<intptr_t>(lv_event_get_user_data(e)));
+    std::lock_guard<std::mutex> guard(reader_mutex);
+    const int target=std::max(1,std::min(reader_pages,reader_page+change));
+    if(!reader_book_id.empty() && target!=reader_page){
+        reader_requested_page=target;reader_text.clear();app_ui_revision++;
+    }
+}
+static void reader_shelf(lv_event_t*) {
+    std::lock_guard<std::mutex> guard(reader_mutex);
+    reader_book_id.clear();reader_book_title.clear();reader_part.clear();reader_text.clear();
+    reader_page=1;reader_pages=0;reader_requested_page=0;app_ui_revision++;
+}
 static void page(int id) {
     app_timer_label=nullptr;
     current_page=id;
     lv_obj_set_style_pad_all(screen,20,0);
     for(auto chrome:{header,status_label,nav})lv_obj_remove_flag(chrome,LV_OBJ_FLAG_HIDDEN);
     lv_obj_set_style_pad_all(body,8,0);
+    lv_obj_set_style_bg_opa(body,LV_OPA_TRANSP,0);
     lv_obj_clean(body);
     if(id==0) {
         const auto package=active_app();
@@ -421,6 +529,7 @@ static void page(int id) {
         button(body,"Cancel firmware download",[](lv_event_t*){ampve_cancel_update();message("Cancellation requested before firmware restart.");});
     } else {
         const auto package=active_app();
+        bool reader_at_shelf=true;
         if(package.kind!="status" && package.kind!="timer" && package.kind!="reader") {
             label(body,"No portable application is active.");
         } else {
@@ -441,11 +550,43 @@ static void page(int id) {
                 auto stop=button(body,"Stop local timer",[](lv_event_t*){app_timer_deadline=0;});
                 lv_obj_set_width(stop,320);
             } else {
-                label(body,"Reader application host ready.");
-                label(body,"Bounded internal-flash storage and content synchronization require the next reviewed Reader slice. No SD card is used.");
+                std::lock_guard<std::mutex> guard(reader_mutex);
+                reader_at_shelf=reader_book_id.empty();
+                if(reader_book_id.empty()){
+                    label(body,"Your shelf",&lv_font_montserrat_36);
+                    label(body,reader_books.empty()?"No prepared books are selected in ampve.com.":
+                          "Choose a book. Reading progress is synchronized with your private library.");
+                    for(size_t index=0;index<reader_books.size();index++){
+                        auto open=button(body,reader_books[index].title.c_str(),reader_open,index);
+                        lv_obj_set_height(open,58);
+                    }
+                }else{
+                    for(auto chrome:{header,status_label,nav})lv_obj_add_flag(chrome,LV_OBJ_FLAG_HIDDEN);
+                    lv_obj_set_style_pad_all(screen,8,0);lv_obj_set_style_pad_all(body,10,0);
+                    lv_obj_set_style_bg_color(body,lv_color_hex(0xF4EEDC),0);
+                    lv_obj_set_style_bg_opa(body,LV_OPA_COVER,0);
+                    auto top=lv_obj_create(body);lv_obj_set_size(top,LV_PCT(100),58);
+                    lv_obj_set_flex_flow(top,LV_FLEX_FLOW_ROW);lv_obj_set_style_bg_opa(top,LV_OPA_TRANSP,0);
+                    lv_obj_set_style_border_width(top,0,0);lv_obj_set_style_pad_all(top,2,0);
+                    auto back=button(top,"Shelf",reader_shelf);lv_obj_set_size(back,120,52);
+                    auto title=label(top,reader_book_title.c_str(),&lv_font_montserrat_20);lv_obj_set_flex_grow(title,1);
+                    const std::string counter="Page "+std::to_string(reader_page)+" / "+std::to_string(reader_pages);
+                    auto count=label(top,counter.c_str(),&lv_font_montserrat_20);lv_obj_set_width(count,180);
+                    auto reading=label(body,reader_text.empty()?"Loading this page...":reader_text.c_str(),&lv_font_montserrat_20);
+                    lv_obj_set_flex_grow(reading,1);lv_obj_set_style_text_line_space(reading,7,0);
+                    auto source=label(body,(reader_part+" | PDF page "+std::to_string(reader_source_page)).c_str());
+                    lv_obj_set_height(source,30);
+                    auto controls=lv_obj_create(body);lv_obj_set_size(controls,LV_PCT(100),68);
+                    lv_obj_set_flex_flow(controls,LV_FLEX_FLOW_ROW);lv_obj_set_style_bg_opa(controls,LV_OPA_TRANSP,0);
+                    lv_obj_set_style_border_width(controls,0,0);lv_obj_set_style_pad_all(controls,2,0);
+                    auto previous=button(controls,"Previous",reader_turn,-1);lv_obj_set_size(previous,220,60);
+                    auto next=button(controls,"Next",reader_turn,1);lv_obj_set_size(next,220,60);
+                }
             }
         }
-        auto home=button(body,"Home",go,0);lv_obj_set_width(home,220);
+        if(package.kind!="reader" || reader_at_shelf){
+            auto home=button(body,"Home",go,0);lv_obj_set_width(home,220);
+        }
     }
 }
 static void create_ui() {
