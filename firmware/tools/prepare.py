@@ -184,12 +184,15 @@ def prepare(work, mode='usb-assisted'):
     if not work.exists():
         subprocess.run(['git','clone','--filter=blob:none','--no-checkout',
             'https://github.com/78/xiaozhi-esp32.git',str(work)],check=True)
-        subprocess.run(['git','-C',str(work),'checkout','--detach',PIN],check=True)
-    if subprocess.check_output(['git','-C',str(work),'rev-parse','HEAD']).decode().strip() != PIN:
+        subprocess.run(['git','-c','safe.directory='+str(work),'-C',str(work),
+                        'checkout','--detach',PIN],check=True)
+    if subprocess.check_output(['git','-c','safe.directory='+str(work),'-C',str(work),
+                                'rev-parse','HEAD']).decode().strip() != PIN:
         raise RuntimeError('Checkout must be detached at '+PIN)
     marker=work/'.ampve-prepared'
     if not marker.exists():
-        if subprocess.check_output(['git','-C',str(work),'diff','--name-only']).strip():
+        if subprocess.check_output(['git','-c','safe.directory='+str(work),'-C',str(work),
+                                    'diff','--name-only']).strip():
             raise RuntimeError('Refusing to patch modified upstream checkout.')
         cmake=work/'CMakeLists.txt'
         replace(cmake,'set(PROJECT_VER "2.5.0")','set(PROJECT_VER "0.1.0-dev")')

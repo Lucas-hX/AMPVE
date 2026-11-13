@@ -60,6 +60,10 @@ if (Test-Path -LiteralPath $sdkconfig) {
         Copy-Item -LiteralPath $sdkconfig -Destination "$sdkconfig.pre-scheduler-stack-fix" -Force
         Replace-GeneratedText $sdkconfig 'CONFIG_ESP_MAIN_TASK_STACK_SIZE=16384' 'CONFIG_ESP_MAIN_TASK_STACK_SIZE=4096'
     }
+    if (Select-String -Quiet -LiteralPath $sdkconfig -SimpleMatch 'CONFIG_MBEDTLS_HARDWARE_ECDSA_VERIFY=y') {
+        Copy-Item -LiteralPath $sdkconfig -Destination "$sdkconfig.pre-p4-ecdsa-fix" -Force
+        Replace-GeneratedText $sdkconfig 'CONFIG_MBEDTLS_HARDWARE_ECDSA_VERIFY=y' '# CONFIG_MBEDTLS_HARDWARE_ECDSA_VERIFY is not set'
+    }
     if ($Mode -eq 'ota') {
         Replace-GeneratedText $sdkconfig 'CONFIG_AMPVE_USB_COMMISSIONING=y' '# CONFIG_AMPVE_USB_COMMISSIONING is not set'
     } else {

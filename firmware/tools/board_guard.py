@@ -106,7 +106,8 @@ def transform(original):
 
 def prepare(work,pin):
     for path,transformer in [(BOARD,transform)]:
-        original=subprocess.check_output(['git','-C',str(work),'show',pin+':'+path]).decode()
+        original=subprocess.check_output(['git','-c','safe.directory='+str(work),'-C',str(work),
+                                          'show',pin+':'+path]).decode()
         updated=transformer(original);target=work/path
         allowed=[original,updated]
         if path==BOARD:

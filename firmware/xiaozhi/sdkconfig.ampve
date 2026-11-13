@@ -35,6 +35,11 @@ CONFIG_USE_DEVICE_AEC=n
 
 CONFIG_LIBSODIUM_USE_MBEDTLS_SHA=n
 
+# ESP32-P4 ECDSA hardware is available only from silicon revision 3.0.
+# The supported Waveshare unit is revision 1.3, so certificate verification
+# must use the software implementation instead of repeatedly probing hardware.
+# CONFIG_MBEDTLS_HARDWARE_ECDSA_VERIFY is not set
+
 # Initial installation only; OTA must use the full startup health requirements.
 CONFIG_AMPVE_USB_COMMISSIONING=y
 

@@ -39,10 +39,14 @@ def prepare(work):
     sdk=work.parent/'improv-sdk'
     if not sdk.exists():
         subprocess.run(['git','clone',PIN['repository'],str(sdk)],check=True)
-        subprocess.run(['git','-C',str(sdk),'checkout','--detach',PIN['commit']],check=True)
-    if subprocess.check_output(['git','-C',str(sdk),'rev-parse','HEAD']).decode().strip()!=PIN['commit']:
+        subprocess.run(['git','-c','safe.directory='+str(sdk),'-C',str(sdk),
+                        'checkout','--detach',PIN['commit']],check=True)
+    if subprocess.check_output(['git','-c','safe.directory='+str(sdk),'-C',str(sdk),
+                                'rev-parse','HEAD']).decode().strip()!=PIN['commit']:
         raise ValueError('Unreviewed Improv SDK checkout')
-    subprocess.run(['git','-C',str(sdk),'diff','--exit-code','HEAD','--','src','CMakeLists.txt','LICENSE'],check=True,stdout=subprocess.DEVNULL)
+    subprocess.run(['git','-c','safe.directory='+str(sdk),'-C',str(sdk),
+                    'diff','--exit-code','HEAD','--','src','CMakeLists.txt','LICENSE'],
+                   check=True,stdout=subprocess.DEVNULL)
     destination=work/'components/ampve_improv_sdk'
     if destination.exists() and not (destination/'.ampve-source.json').exists():raise ValueError('Untracked Improv component')
     destination.mkdir(parents=True,exist_ok=True)
