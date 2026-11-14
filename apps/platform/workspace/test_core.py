@@ -118,6 +118,8 @@ class CoreCapabilityTests(TestCase):
         self.assertEqual(self.sync().json()['desired_id'],self.timer.pk)
         response=self.device_post(f'apps/{self.timer.pk}/package/',{'protocol':1})
         self.assertEqual(response.status_code,200)
+        self.assertEqual(response.content,canonical(self.timer.envelope))
+        self.assertEqual(response['Content-Type'],'application/json')
         self.assertEqual(verify(response.json(),self.trust)[1],self.timer.pk)
         with self.assertRaises(Exception):verify({'payload':response.json()['payload'][:-8],
             'signature':response.json()['signature']},self.trust)
