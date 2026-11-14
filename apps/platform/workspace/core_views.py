@@ -2,7 +2,7 @@
 import uuid
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
-from django.http import JsonResponse, Http404
+from django.http import HttpResponse, JsonResponse, Http404
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_GET, require_POST
@@ -11,6 +11,7 @@ from .deployment_views import firmware_api
 from .device_views import context
 from .models import (AppPackage, Device, DeviceAdminCommand,
                      DeviceAppAssignment, DeviceCoreStatus, DeviceDiagnosticEvent)
+from .release_contract import canonical
 
 
 @never_cache
@@ -95,7 +96,10 @@ def app_package(request,data,device,package_id):
         envelope=app_services.package_for_device(device,package_id)
     except (app_services.AppError,AppPackage.DoesNotExist) as error:
         return JsonResponse({'error':str(error)},status=409)
-    return JsonResponse(envelope)
+    # The native verifier accepts only the bounded canonical envelope.  A
+    # JSONField round-trip (especially through PostgreSQL jsonb) is allowed to
+    # reorder object members, so do not let JsonResponse choose the wire bytes.
+    return HttpResponse(canonical(envelope), content_type='application/json')
 
 
 @firmware_api
